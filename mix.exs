@@ -91,7 +91,19 @@ defmodule Rover.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      extras: ["README.md", "notebooks/rover.livemd", "CHANGELOG.md", "NOTICE.md"],
+      extras: [
+        "README.md",
+        # An explicit filename: the default would be `rover.html`, which collides
+        # with the `Rover` module page on any case-insensitive filesystem — and
+        # `mix hex.publish` builds the docs locally, so that includes macOS.
+        {"notebooks/rover.livemd", [filename: "playground", title: "Playground"]},
+        "CHANGELOG.md",
+        "NOTICE.md",
+        "LICENSE"
+      ],
+      # `mix docs` runs in :dev, which compiles the playground under dev/. Without
+      # this, RoverDev.DemoLive and friends end up in the published API reference.
+      filter_modules: ~r/^Elixir\.Rover(\.|$)/,
       groups_for_modules: [
         Components: [Rover.Components],
         Data: [Rover.Marker, Rover.Geo, Rover.Tiles]

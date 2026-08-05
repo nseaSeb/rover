@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-08-05
 
 ### Added
 
@@ -70,3 +70,5 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Marker ids round-trip through JSON: integers and strings survive, atoms come
   back as strings and will not match.
 - `fit` governs *re*fitting; the initial framing is separate.
+
+[0.1.0]: https://github.com/nseaSeb/rover/releases/tag/v0.1.0
