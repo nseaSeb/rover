@@ -1,10 +1,18 @@
 import { build, context } from "esbuild"
-import { mkdirSync } from "node:fs"
+import { existsSync, mkdirSync } from "node:fs"
 
 const watch = process.argv.includes("--watch")
 
+// The playground bundle imports Phoenix and LiveView out of ../deps, so it can
+// only be built once `mix deps.get` has run. CI builds the library bundles
+// without an Elixir toolchain, and a fresh clone may reach for `npm run build`
+// before fetching deps — in both cases, skip it rather than fail.
+const playground =
+  existsSync("../deps/phoenix/priv/static/phoenix.mjs") &&
+  existsSync("../deps/phoenix_live_view/priv/static/phoenix_live_view.esm.js")
+
 mkdirSync("../priv/static", { recursive: true })
-mkdirSync("../dev/static", { recursive: true })
+if (playground) mkdirSync("../dev/static", { recursive: true })
 
 const shared = {
   bundle: true,
@@ -13,7 +21,7 @@ const shared = {
   logLevel: "info",
 }
 
-const targets = [
+const libraryTargets = [
   // The bundle library consumers import. OpenLayers is inlined so that a plain
   // `phx.new` application — which has no npm, no node_modules and no
   // package.json — can use Rover with a single import line.
@@ -43,7 +51,10 @@ const targets = [
     outfile: "../priv/static/rover.css",
     loader: { ".png": "dataurl", ".svg": "dataurl" },
   },
-  // The dev playground (`mix dev`). Never shipped in the Hex package.
+]
+
+// The dev playground (`mix dev`). Never shipped in the Hex package.
+const playgroundTargets = [
   {
     ...shared,
     entryPoints: ["../dev/assets/app.js"],
@@ -56,6 +67,12 @@ const targets = [
     outfile: "../dev/static/app.css",
   },
 ]
+
+const targets = playground ? [...libraryTargets, ...playgroundTargets] : libraryTargets
+
+if (!playground) {
+  console.log("[rover] ../deps not populated — building the library bundles only.")
+}
 
 if (watch) {
   await Promise.all(
