@@ -1,0 +1,22 @@
+# Build artifacts
+/_build/
+/cover/
+/deps/
+/doc/
+/.fetch
+erl_crash.dump
+*.ez
+/tmp/
+rover-*.tar
+
+# JS toolchain — the built bundles in priv/static ARE committed on purpose:
+# they are what Hex ships to library consumers.
+npm-debug.log
+/assets/node_modules/
+/dev/static/
+
+# OS
+.DS_Store
+
+# Local agent state
+/.dexter/

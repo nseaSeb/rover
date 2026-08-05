@@ -1,0 +1,135 @@
+@import "ol/ol.css";
+
+/* Rover keeps its own styling to a minimum: a container that behaves, controls
+   that look like they belong in a 2020s app, and a tooltip. Everything else is
+   yours. */
+
+.rover-map {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: #eef1f5;
+}
+
+.rover-map__canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* --- controls ------------------------------------------------------------ */
+
+.rover-map .ol-control {
+  background: none;
+  padding: 0;
+}
+
+.rover-map .ol-zoom {
+  top: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.1), 0 1px 6px rgb(0 0 0 / 0.08);
+}
+
+.rover-map .ol-control button {
+  width: 1.875rem;
+  height: 1.875rem;
+  margin: 0;
+  border-radius: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #1f2937;
+  background: #fff;
+  transition: background-color 120ms ease;
+}
+
+.rover-map .ol-control button:hover,
+.rover-map .ol-control button:focus-visible {
+  background: #f3f4f6;
+  color: #111827;
+  outline: none;
+}
+
+.rover-map .ol-control button:focus-visible {
+  box-shadow: inset 0 0 0 2px #6366f1;
+}
+
+.rover-map .ol-attribution {
+  right: 0;
+  bottom: 0;
+  max-width: 100%;
+  font-size: 0.6875rem;
+  border-radius: 0.375rem 0 0 0;
+  background: rgb(255 255 255 / 0.85);
+  backdrop-filter: blur(4px);
+}
+
+.rover-map .ol-attribution ul {
+  color: #4b5563;
+  text-shadow: none;
+}
+
+.rover-map .ol-attribution a {
+  color: #4338ca;
+}
+
+.rover-map .ol-scale-line {
+  left: 0.75rem;
+  bottom: 0.75rem;
+  background: rgb(255 255 255 / 0.85);
+  border-radius: 0.25rem;
+}
+
+/* --- tooltip -------------------------------------------------------------- */
+
+.rover-tooltip {
+  pointer-events: none;
+  white-space: nowrap;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.1rem;
+  font-weight: 500;
+  color: #f9fafb;
+  background: rgb(17 24 39 / 0.92);
+  border-radius: 0.375rem;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+}
+
+.rover-tooltip[hidden] {
+  display: none;
+}
+
+/* --- dark scheme ---------------------------------------------------------- */
+
+@media (prefers-color-scheme: dark) {
+  .rover-map {
+    background: #1f2430;
+  }
+
+  .rover-map .ol-control button {
+    color: #e5e7eb;
+    background: #262b36;
+  }
+
+  .rover-map .ol-control button:hover,
+  .rover-map .ol-control button:focus-visible {
+    background: #333a48;
+    color: #fff;
+  }
+
+  .rover-map .ol-attribution {
+    background: rgb(31 36 48 / 0.85);
+  }
+
+  .rover-map .ol-attribution ul {
+    color: #cbd5e1;
+  }
+
+  .rover-map .ol-attribution a {
+    color: #a5b4fc;
+  }
+}

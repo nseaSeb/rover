@@ -1,0 +1,17 @@
+{
+  "name": "rover-openlayers",
+  "version": "0.1.0",
+  "description": "Build tooling for the Rover Elixir library. Not published to npm.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "ol": "^10.4.0"
+  }
+}
