@@ -30,6 +30,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   connection.
 - `listeners: [Phoenix.CodeReloader]` added, which Phoenix 1.8 requires for code
   reloading; without it every request logged a warning and a stacktrace.
+- Any 404 in the playground — the browser asking for `/favicon.ico` was enough —
+  raised in Phoenix's error handler, because no error view was configured. The
+  playground now renders status pages, and the layout carries an inline favicon so
+  the request is not made at all.
+- `PORT=4021 mix dev` runs the playground on another port.
 - **The map no longer jumps to a world view when a marker moves.** With no
   `center`, Rover derives one from the markers — a value that shifts whenever any
   marker does. The client read each shift as an instruction and animated to the
