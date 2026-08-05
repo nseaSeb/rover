@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  elixir:
+    name: Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The floor declared in mix.exs. If this one breaks, either the code or
+          # the declared requirement is wrong — do not just drop the row.
+          - elixir: "1.15.8"
+            otp: "26.2"
+          - elixir: "1.17.3"
+            otp: "27.2"
+          - elixir: "1.18.4"
+            otp: "27.2"
+          - elixir: "1.19.5"
+            otp: "28.1"
+            lint: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-${{ hashFiles('mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-${{ matrix.elixir }}-${{ matrix.otp }}-
+
+      - run: mix deps.get
+
+      - name: Check formatting
+        if: matrix.lint
+        run: mix format --check-formatted
+
+      - name: Check for unused dependencies
+        if: matrix.lint
+        run: mix deps.unlock --check-unused
+
+      - name: Compile without warnings
+        run: mix compile --warnings-as-errors
+        env:
+          MIX_ENV: test
+
+      - run: mix test
+        env:
+          MIX_ENV: test
+
+  javascript:
+    name: JavaScript runtime
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+
+      - run: npm ci
+        working-directory: assets
+
+      - run: npm test
+        working-directory: assets
+
+  bundles:
+    name: Committed bundles match the source
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+
+      - run: npm ci
+        working-directory: assets
+
+      # priv/static is committed because it is what Hex ships — an application
+      # with no npm still gets a working bundle. That only holds if the committed
+      # files are actually built from the current assets/js.
+      - run: npm run build
+        working-directory: assets
+
+      - name: Fail if priv/static is stale
+        run: |
+          if ! git diff --quiet -- priv/static; then
+            echo "::error::priv/static is out of date. Run 'mix assets.build' and commit the result."
+            git diff --stat -- priv/static
+            exit 1
+          fi
+          echo "Committed bundles are up to date."

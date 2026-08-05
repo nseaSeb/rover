@@ -180,6 +180,15 @@ If you already build with `npm` and want to own the `ol` version:
 import { RoverHooks } from "../../deps/rover/priv/static/rover.external.js"
 ```
 
+## Try it without installing anything
+
+[![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fgithub.com%2FnseaSeb%2Frover%2Fblob%2Fmain%2Fnotebooks%2Frover.livemd)
+
+[`notebooks/rover.livemd`](notebooks/rover.livemd) walks each layer separately —
+coordinates, markers, basemaps, and the exact JSON that crosses the wire — then
+feeds that real payload to Rover's own bundle to render a live map inside the
+notebook. It is the fastest way to see what a given `<.map>` actually sends.
+
 ## Development
 
 ```sh
@@ -201,4 +210,7 @@ steps. Issues and PRs welcome.
 
 ## Licence
 
-MIT. Rover bundles OpenLayers, which is BSD 2-Clause — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
+
+Rover redistributes OpenLayers (BSD 2-Clause) inside its JavaScript bundle;
+third-party notices are in [NOTICE.md](NOTICE.md).

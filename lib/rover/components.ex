@@ -155,7 +155,7 @@ defmodule Rover.Components do
     ~H"""
     <div
       id={@id}
-      class={["rover-map", @class]}
+      class={classes(@class)}
       style={@height && "height: #{@height};"}
       phx-hook="Rover"
       data-rover={@config_json}
@@ -165,6 +165,14 @@ defmodule Rover.Components do
       <div id={"#{@id}-canvas"} class="rover-map__canvas" phx-update="ignore"></div>
     </div>
     """
+  end
+
+  # A list containing `nil` renders as a trailing space, which then shows up in
+  # every consumer's DOM. Filter before handing it to HEEx.
+  defp classes(extra) do
+    ["rover-map", extra]
+    |> List.flatten()
+    |> Enum.reject(&(&1 in [nil, false, ""]))
   end
 
   # -- config ----------------------------------------------------------------

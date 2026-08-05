@@ -79,7 +79,8 @@ defmodule Rover.MixProject do
         "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md",
         "OpenLayers" => "https://openlayers.org/"
       },
-      files: ~w(lib priv/static assets/js mix.exs .formatter.exs README.md CHANGELOG.md LICENSE)
+      files:
+        ~w(lib priv/static assets/js notebooks mix.exs .formatter.exs README.md CHANGELOG.md LICENSE NOTICE.md)
     ]
   end
 
@@ -87,7 +88,7 @@ defmodule Rover.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      extras: ["README.md", "CHANGELOG.md"],
+      extras: ["README.md", "notebooks/rover.livemd", "CHANGELOG.md", "NOTICE.md"],
       groups_for_modules: [
         Components: [Rover.Components],
         Data: [Rover.Marker, Rover.Geo, Rover.Tiles]

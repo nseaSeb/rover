@@ -1,0 +1,416 @@
+# Rover — bac à sable
+
+```elixir
+Mix.install([
+  {:rover, github: "nseaSeb/rover"},
+  # Swap the line above for this one to test your working copy:
+  # {:rover, path: "/absolute/path/to/rover"},
+  {:kino, "~> 0.19"},
+  {:lazy_html, "~> 0.1"}
+])
+```
+
+## What this notebook is for
+
+Rover's real playground is `mix dev` — a Phoenix endpoint with a LiveView that
+exercises the component the way your application will.
+
+This notebook does something narrower and, for testing, more useful: it lets you
+look at **each layer in isolation**, including the exact bytes that cross the
+wire between Elixir and OpenLayers. When a marker does not show up where you
+expected, this is where you find out which half was wrong.
+
+The last section closes the loop: it takes the payload Rover's Elixir side
+produces and hands it to Rover's own JavaScript bundle, so you get a live,
+interactive map inside the notebook.
+
+## 1. Coordinates are always {lat, lon}
+
+The single most common OpenLayers bug is coordinate order. `Rover.Geo` is strict
+about it so that the mistake surfaces immediately instead of putting your marker
+in the Gulf of Guinea.
+
+```elixir
+alias Rover.Geo
+
+[
+  Geo.coord!({45.75, 4.85}),
+  Geo.coord!(%{lat: 45.75, lon: 4.85}),
+  Geo.coord!(%{lat: 45.75, lng: 4.85}),
+  Geo.coord!(%{"latitude" => 48, "longitude" => 2})
+]
+```
+
+Integers become floats, and the four spellings above are all the same point.
+Now the failure modes — the reason this module exists:
+
+```elixir
+inputs = [
+  {45.75, 4.85},
+  # a longitude in the latitude slot
+  {145.75, 4.85},
+  # half a coordinate
+  %{lat: 45.75},
+  # a string
+  "45.75, 4.85"
+]
+
+for input <- inputs do
+  result =
+    try do
+      {:ok, Geo.coord!(input)}
+    rescue
+      e in ArgumentError -> {:error, e.message |> String.split("\n") |> hd()}
+    end
+
+  %{input: inspect(input), result: inspect(result)}
+end
+|> Kino.DataTable.new()
+```
+
+Bounding boxes and distances come along for free:
+
+```elixir
+lyon = {45.75, 4.85}
+paris = {48.85, 2.35}
+marseille = {43.30, 5.37}
+
+%{
+  bbox_south_west_north_east: Geo.bbox([lyon, paris, marseille]),
+  lyon_to_paris_km: Float.round(Geo.distance(lyon, paris) / 1000, 1),
+  lyon_to_marseille_km: Float.round(Geo.distance(lyon, marseille) / 1000, 1)
+}
+```
+
+## 2. What counts as a marker
+
+A marker needs an id and a coordinate. Everything else is optional. Rover reads
+plain maps, structs and Ecto schemas, and it recognises the usual field names
+without being told.
+
+```elixir
+alias Rover.Marker
+
+defmodule Store do
+  defstruct [:id, :latitude, :longitude, :trade_name]
+end
+```
+
+```elixir
+sources = [
+  # the canonical shape
+  %{id: 1, lat: 45.76, lon: 4.83, label: "Atelier"},
+  # :name and :title are picked up as labels
+  %{id: 2, lat: 45.74, lon: 4.86, name: "Dépôt"},
+  # a struct whose fields Rover recognises on its own
+  %Store{id: 3, latitude: 45.78, longitude: 4.80}
+]
+
+Enum.map(sources, &Marker.new!/1)
+```
+
+When the field names are yours rather than Rover's, map them once:
+
+```elixir
+store = %Store{id: 42, latitude: 45.75, longitude: 4.85, trade_name: "Chez Paul"}
+
+Marker.new!(store, lat: :latitude, lon: :longitude, label: :trade_name)
+```
+
+Accessors can also be functions, which is how you compute a label:
+
+```elixir
+Marker.new!(%{id: 7, lat: 45.75, lon: 4.85, orders: 3},
+  label: fn s -> "#{s.orders} orders" end,
+  color: fn s -> if s.orders > 2, do: "#16a34a", else: "#e11d48" end
+)
+```
+
+`dump/1` is what actually gets serialised. Note that everything unset is
+dropped — with a few hundred markers on screen, that is the difference between a
+readable payload and a wall of `null`.
+
+```elixir
+%{
+  minimal: Marker.new!(%{id: 1, lat: 45.75, lon: 4.85}) |> Marker.dump(),
+  full:
+    Marker.new!(%{
+      id: 2,
+      lat: 45.74,
+      lon: 4.86,
+      label: "Dépôt",
+      color: "#0ea5e9",
+      tooltip: "Open until 18:00",
+      draggable: true,
+      data: %{status: "late", orders: 3}
+    })
+    |> Marker.dump()
+}
+```
+
+The id is mandatory, and the error says why — it is the identity the map diffs
+on, not decoration:
+
+```elixir
+try do
+  Marker.new!(%{lat: 45.75, lon: 4.85})
+rescue
+  e in ArgumentError -> Kino.Text.new(e.message)
+end
+```
+
+## 3. Basemaps and their attribution
+
+```elixir
+Rover.Tiles.presets()
+|> Enum.map(fn preset ->
+  resolved = Rover.Tiles.resolve!(preset)
+
+  %{
+    preset: inspect(preset),
+    max_zoom: resolved.max_zoom,
+    url: resolved.url,
+    attribution: resolved.attributions |> String.replace(~r/<[^>]+>/, "")
+  }
+end)
+|> Kino.DataTable.new()
+```
+
+Every preset carries the attribution its provider requires, and Rover renders it
+in the map's attribution control. The OSM and CARTO presets point at public demo
+servers whose policies forbid production traffic — for anything real, use
+`{:xyz, url, attributions: "…"}` with tiles you are entitled to serve.
+
+## 4. The payload that crosses the wire
+
+This is the part you cannot see from either side alone. The component renders
+two attributes: `data-rover` (the view) and `data-rover-markers` (the list).
+They are separate so that changing only your markers sends only your markers.
+
+```elixir
+import Phoenix.Component
+
+clients = [
+  %{id: 1, lat: 45.7640, lon: 4.8357, label: "Atelier", color: "#e11d48"},
+  %{id: 2, lat: 45.7484, lon: 4.8467, label: "Dépôt", color: "#0ea5e9"},
+  %{id: 3, lat: 45.7797, lon: 4.8000, label: "Chantier", color: "#16a34a", draggable: true}
+]
+
+render = fn assigns ->
+  ~H"""
+  <Rover.Components.map
+    id="clients"
+    markers={@clients}
+    tiles={:carto_light}
+    fit={:once}
+    on_marker_click="select_client"
+  />
+  """
+  |> Phoenix.HTML.Safe.to_iodata()
+  |> IO.iodata_to_binary()
+end
+
+html = render.(%{clients: clients})
+
+Kino.Text.new(html)
+```
+
+Small enough to read in full — and that is the point. Now pull the two payloads
+back out of it, the same way the browser will:
+
+```elixir
+defmodule Payload do
+  def extract(html, attribute) do
+    html
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("[phx-hook='Rover']")
+    |> LazyHTML.attribute(attribute)
+    |> List.first()
+    |> Jason.decode!()
+  end
+end
+
+config = Payload.extract(html, "data-rover")
+markers = Payload.extract(html, "data-rover-markers")
+
+%{config: config, markers: markers}
+```
+
+Things worth noticing in that config:
+
+* `center` was computed from the markers, because none was given — and `fit`
+  became `"once"` for the same reason.
+* `zoom` is only the starting point of the fit animation here.
+* `events` contains only the handler you asked for. Nothing else is sent.
+* `tiles.attributions` travelled with the URL, so the client cannot forget it.
+
+## 5. A live map, driven by Rover's own bundle
+
+Everything above tested the Elixir half. This section takes the `config` and
+`markers` extracted in section 4 — the real payload, not a hand-written one —
+and hands them to the JavaScript Rover ships in `priv/static/rover.js`.
+
+The bundle is read off disk and sent to the browser as data, then imported from
+a blob URL. That means this notebook exercises the *same* `RoverMap` and
+`MarkerLayer` your LiveView will use, not a reimplementation.
+
+```elixir
+defmodule RoverKino do
+  use Kino.JS
+  use Kino.JS.Live
+
+  @priv Path.join(:code.priv_dir(:rover), "static")
+  @bundle File.read!(Path.join(@priv, "rover.min.js"))
+  @stylesheet File.read!(Path.join(@priv, "rover.css"))
+
+  def new(config, markers, opts \\ []) do
+    Kino.JS.Live.new(__MODULE__, %{
+      config: config,
+      markers: markers,
+      height: Keyword.get(opts, :height, 420),
+      events: Keyword.get(opts, :events)
+    })
+  end
+
+  @doc "Push a new marker list, exactly as `assign(socket, :clients, …)` would."
+  def set_markers(kino, markers), do: Kino.JS.Live.cast(kino, {:markers, markers})
+
+  @doc "Push a new view."
+  def set_config(kino, config), do: Kino.JS.Live.cast(kino, {:config, config})
+
+  @impl true
+  def init(state, ctx), do: {:ok, assign(ctx, state)}
+
+  @impl true
+  def handle_connect(ctx) do
+    payload = %{
+      config: ctx.assigns.config,
+      markers: ctx.assigns.markers,
+      height: ctx.assigns.height,
+      bundle: @bundle,
+      stylesheet: @stylesheet
+    }
+
+    {:ok, payload, ctx}
+  end
+
+  @impl true
+  def handle_cast({:markers, markers}, ctx) do
+    broadcast_event(ctx, "markers", markers)
+    {:noreply, assign(ctx, markers: markers)}
+  end
+
+  def handle_cast({:config, config}, ctx) do
+    broadcast_event(ctx, "config", config)
+    {:noreply, assign(ctx, config: config)}
+  end
+
+  # The map pushes the very same events your LiveView would receive in
+  # handle_event/3. Here they are rendered into a frame instead.
+  @impl true
+  def handle_event(event, payload, ctx) do
+    if frame = ctx.assigns.events do
+      Kino.Frame.render(frame, Kino.Text.new("#{event}: #{inspect(payload)}"))
+    end
+
+    {:noreply, ctx}
+  end
+
+  asset "main.js" do
+    """
+    export async function init(ctx, data) {
+      const style = document.createElement("style")
+      style.textContent = data.stylesheet
+      document.head.appendChild(style)
+
+      ctx.root.innerHTML =
+        `<div class="rover-map" style="height:${data.height}px">` +
+        `<div class="rover-map__canvas"></div></div>`
+
+      const canvas = ctx.root.querySelector(".rover-map__canvas")
+
+      // Rover's shipped bundle, imported from the bytes the server sent.
+      const url = URL.createObjectURL(new Blob([data.bundle], { type: "text/javascript" }))
+      const { RoverMap } = await import(url)
+
+      const map = new RoverMap(canvas, data.config, (event, payload) => {
+        ctx.pushEvent(event, payload)
+      })
+
+      map.setMarkers(data.markers)
+
+      ctx.handleEvent("markers", (markers) => map.setMarkers(markers))
+      ctx.handleEvent("config", (config) => map.setConfig(config))
+    }
+    """
+  end
+end
+```
+
+```elixir
+events = Kino.Frame.new()
+map = RoverKino.new(config, markers, height: 440, events: events)
+
+Kino.Layout.grid([map, events], columns: 1)
+```
+
+Click a marker, click the map, drag the green one, pan around — the frame under
+the map shows the events your `handle_event/3` would receive.
+
+### Updating markers the way LiveView would
+
+Run the cell below and watch the map. One marker moves. The other two are not
+re-created: same `Feature` object, same `Style` object, no flicker, and the pan
+you were in the middle of is not interrupted.
+
+```elixir
+moved =
+  Enum.map(markers, fn
+    %{"id" => 1} = marker -> %{marker | "lat" => marker["lat"] + 0.010}
+    marker -> marker
+  end)
+
+RoverKino.set_markers(map, moved)
+```
+
+Recolour everything — styles change, geometries do not:
+
+```elixir
+palette = ["#e11d48", "#0ea5e9", "#16a34a", "#f59e0b", "#7c3aed"]
+
+recoloured = Enum.map(markers, &Map.put(&1, "color", Enum.random(palette)))
+
+RoverKino.set_markers(map, recoloured)
+```
+
+Add one, remove one:
+
+```elixir
+extra = %{
+  "id" => 99,
+  "lat" => 45.7600,
+  "lon" => 4.8600,
+  "label" => "Nouveau",
+  "color" => "#7c3aed"
+}
+
+RoverKino.set_markers(map, markers ++ [extra])
+```
+
+```elixir
+RoverKino.set_markers(map, Enum.take(markers, 1))
+```
+
+Move the view rather than the markers:
+
+```elixir
+RoverKino.set_config(map, %{config | "center" => [48.8566, 2.3522], "zoom" => 13, "fit" => false})
+```
+
+## 6. Where to go next
+
+* `mix dev` in the repository — the LiveView playground, which is what your
+  application actually looks like.
+* `Rover.Components` docs — every attribute and every event.
+* `assets/test/markers.test.js` — the reconciliation guarantees, asserted by
+  object identity.

@@ -33,8 +33,16 @@ defmodule Rover.ComponentsTest do
       document = render_map(height: "60vh", class: "shadow-lg")
 
       assert attribute(document, "style") =~ "height: 60vh;"
-      assert attribute(document, "class") =~ "rover-map"
-      assert attribute(document, "class") =~ "shadow-lg"
+      assert attribute(document, "class") == "rover-map shadow-lg"
+    end
+
+    test "emits no stray whitespace when no class was given" do
+      assert attribute(render_map([]), "class") == "rover-map"
+    end
+
+    test "accepts a class list" do
+      document = render_map(class: ["shadow-lg", nil, "rounded-none"])
+      assert attribute(document, "class") == "rover-map shadow-lg rounded-none"
     end
 
     test "passes global attributes through" do
