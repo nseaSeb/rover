@@ -36,3 +36,10 @@ Application.put_env(:rover, RoverDev.Endpoint,
   Supervisor.start_link([RoverDev.Endpoint], strategy: :one_for_one, name: RoverDev.Supervisor)
 
 Logger.info("Rover playground running at http://localhost:4020")
+
+# `Supervisor.start_link/2` links to the process that calls it — here, the one
+# evaluating this script. Let that process finish and the link takes the endpoint
+# down with it: `--no-halt` keeps the VM alive, so you get a server that logs
+# "Running ... at 127.0.0.1:4020" and then refuses every connection. Sleeping
+# keeps the owning process, and therefore the endpoint, alive.
+Process.sleep(:infinity)

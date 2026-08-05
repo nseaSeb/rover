@@ -23,6 +23,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`mix dev` now actually serves.** `Supervisor.start_link/2` links to the
+  process that calls it — the one evaluating `dev.exs`. That process finished, the
+  link took the endpoint down with it, and `--no-halt` kept the VM alive: the
+  playground logged "Running ... at 127.0.0.1:4020" and then refused every
+  connection.
+- `listeners: [Phoenix.CodeReloader]` added, which Phoenix 1.8 requires for code
+  reloading; without it every request logged a warning and a stacktrace.
 - **The map no longer jumps to a world view when a marker moves.** With no
   `center`, Rover derives one from the markers — a value that shifts whenever any
   marker does. The client read each shift as an instruction and animated to the

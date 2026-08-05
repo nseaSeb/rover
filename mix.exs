@@ -11,6 +11,9 @@ defmodule Rover.MixProject do
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      # Required by Phoenix.CodeReloader in the `mix dev` playground; ignored when
+      # Rover is built as somebody else's dependency.
+      listeners: [Phoenix.CodeReloader],
       deps: deps(),
       aliases: aliases(),
       description: description(),
