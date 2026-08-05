@@ -40,6 +40,14 @@ defmodule Rover.Components do
   Inside a `Phoenix.LiveComponent`, route the events to yourself with
   `target={@myself}`.
 
+  > #### Viewports can straddle the antimeridian {: .warning}
+  >
+  > Longitudes are wrapped into `-180..180`, so a user looking at Fiji or New
+  > Zealand gets a `bbox` where `west` is greater than `east`. When that happens
+  > the map adds `"crosses_antimeridian" => true`, because the obvious query —
+  > `where: m.lon >= ^west and m.lon <= ^east` — matches nothing for those
+  > users. Split the range in two when you see the flag.
+
   ## Controlled view, uncontrolled panning
 
   `center` and `zoom` are applied when they *change on the server*. A user
@@ -47,6 +55,21 @@ defmodule Rover.Components do
   `on_move_end`, and a re-render triggered by something unrelated will not yank
   the view back to where it started. Assign a new `center` and the map animates
   to it.
+
+  When you give no `center` at all, Rover derives a starting frame from the
+  markers. That derived value is explicitly *not* treated as an instruction —
+  otherwise moving one marker would shift the centroid and drag the view along
+  with it on every update.
+
+  ## Framing versus refitting
+
+  Two separate things:
+
+  * **The first frame.** With no `center`, "put my markers on screen" is the
+    whole instruction, so the map always fits the markers once when it appears.
+    The client does it, because only the client knows the viewport size.
+  * **Refitting.** `fit` governs what happens *afterwards*. `false` leaves the
+    view alone, `:once` does nothing more, `true` refits on every change.
   """
 
   use Phoenix.Component
@@ -115,9 +138,10 @@ defmodule Rover.Components do
   attr :fit, :any,
     default: nil,
     doc: """
-    `:once` fits the view to the markers when the map first appears, `true` refits
-    on every change, `false` never does. Defaults to `:once` when no `center` is
-    given, `false` otherwise.
+    Controls *re*fitting as markers change: `true` refits on every change,
+    `:once` or `false` do not. Defaults to `:once` when no `center` is given,
+    `false` otherwise. Note that a map given no `center` always fits once when it
+    first appears, whatever `fit` says — see "Framing versus refitting".
     """
 
   attr :fit_padding, :integer, default: 48, doc: "Pixels kept clear around a fitted view."
@@ -128,7 +152,12 @@ defmodule Rover.Components do
 
   attr :interactive, :boolean,
     default: true,
-    doc: "When false, the map ignores pans, zooms and clicks entirely."
+    doc: """
+    When false the map becomes a picture: no panning, zooming, dragging,
+    tooltips, cursor changes or click events, and the zoom, fullscreen and rotate
+    controls are withheld. The attribution stays — it is a licence obligation,
+    not an interaction — and so does the scale line if you asked for one.
+    """
 
   attr :on_marker_click, :string, default: nil
   attr :on_map_click, :string, default: nil
@@ -188,6 +217,10 @@ defmodule Rover.Components do
 
     %{
       center: [lat, lon],
+      # A center Rover computed from the markers is a starting frame, not an
+      # instruction: it shifts whenever any marker moves. Tell the client, so it
+      # does not re-animate the view on every marker update.
+      derivedCenter: is_nil(assigns.center) || nil,
       zoom: assigns.zoom || default_zoom(assigns.center, markers),
       minZoom: assigns.min_zoom,
       maxZoom: assigns.max_zoom,

@@ -16,12 +16,14 @@ import { MarkerLayer } from "./markers.js"
 
 const HIT_TOLERANCE = 6
 const ANIMATION_MS = 350
+const DEFAULT_CENTER = [0, 0]
+const DEFAULT_ZOOM = 2
 
 export class RoverMap {
   constructor(element, config, push) {
     this.element = element
-    this.config = config
-    this.push = push
+    this.config = normalizeConfig(config)
+    this.push = push || (() => {})
     this.hasFitted = false
     // Programmatic view changes still fire `moveend`. Without this window, a
     // LiveView that assigns `center` in response to `on_move_end` would ping-pong
@@ -32,24 +34,23 @@ export class RoverMap {
 
     this.markerLayer = new MarkerLayer()
     this.tileLayer = new TileLayer({ zIndex: 0 })
-    this.applyTiles(config.tiles)
+    this.applyTiles(this.config.tiles)
 
     this.map = new Map({
       target: element,
       layers: [this.tileLayer, this.markerLayer.layer],
-      controls: buildControls(config),
-      interactions: config.interactive === false ? [] : defaultInteractions(),
+      controls: buildControls(this.config),
+      interactions: buildInteractions(this.config),
       view: new View({
-        center: project(config.center[0], config.center[1]),
-        zoom: config.zoom,
-        minZoom: config.minZoom,
-        maxZoom: config.maxZoom,
+        center: project(this.config.center[0], this.config.center[1]),
+        zoom: this.config.zoom,
+        minZoom: this.config.minZoom,
+        maxZoom: this.config.maxZoom,
         constrainResolution: true,
       }),
     })
 
     this.setupTooltip()
-    this.setupPointer()
     this.setupDragging()
     this.setupEvents()
     this.observeResize()
@@ -64,35 +65,44 @@ export class RoverMap {
 
   setConfig(config) {
     const previous = this.config
-    this.config = config
+    const next = normalizeConfig(config)
+    this.config = next
 
-    // Compare against what the server sent *last time*, not against where the
-    // map currently is. A user who panned away keeps their view; a server that
-    // assigns a new center gets an animation.
-    if (!sameCenter(previous.center, config.center) || previous.zoom !== config.zoom) {
-      this.animateTo(config.center, config.zoom)
+    if (shouldRecenter(previous, next)) this.animateTo(next.center, next.zoom)
+
+    if (changed(previous.tiles, next.tiles)) this.applyTiles(next.tiles)
+
+    // Controls and interactions were built once at mount. A map that locks
+    // itself while a form is saving, or that turns on the scale line, needs them
+    // rebuilt — otherwise the attribute change reaches the client and does
+    // nothing at all.
+    if (changed(previous.controls, next.controls) || previous.interactive !== next.interactive) {
+      this.applyControls(next)
     }
 
-    if (JSON.stringify(previous.tiles) !== JSON.stringify(config.tiles)) {
-      this.applyTiles(config.tiles)
-    }
+    if (previous.interactive !== next.interactive) this.applyInteractions(next)
 
     const view = this.map.getView()
-    if (previous.minZoom !== config.minZoom) view.setMinZoom(config.minZoom ?? 0)
-    if (previous.maxZoom !== config.maxZoom) view.setMaxZoom(config.maxZoom ?? 28)
+    if (previous.minZoom !== next.minZoom) view.setMinZoom(next.minZoom ?? 0)
+    if (previous.maxZoom !== next.maxZoom) view.setMaxZoom(next.maxZoom ?? 28)
   }
 
   animateTo(center, zoom) {
     this.beQuiet(ANIMATION_MS)
-    this.map
-      .getView()
-      .animate({ center: project(center[0], center[1]), zoom, duration: ANIMATION_MS })
+    this.map.getView().animate({ center: project(center[0], center[1]), zoom, duration: ANIMATION_MS })
   }
 
   maybeFit() {
+    // With no center from the caller, "put my markers on screen" is the whole
+    // instruction, so the first frame is always fitted — the client is the only
+    // side that knows the viewport size. `fit` then governs *re*fitting.
+    const initial = !this.hasFitted && this.config.derivedCenter
     const mode = this.config.fit
-    if (!mode) return
-    if (mode === "once" && this.hasFitted) return
+
+    if (!initial) {
+      if (!mode) return
+      if (mode === "once" && this.hasFitted) return
+    }
 
     const extent = this.markerLayer.extent
     if (!extent || !Number.isFinite(extent[0])) return
@@ -136,6 +146,21 @@ export class RoverMap {
     )
   }
 
+  applyControls(config) {
+    const controls = this.map.getControls()
+    controls.clear()
+    buildControls(config).forEach((control) => controls.push(control))
+  }
+
+  applyInteractions(config) {
+    const interactions = this.map.getInteractions()
+    interactions.clear()
+    buildInteractions(config).forEach((interaction) => interactions.push(interaction))
+
+    this.translate = null
+    this.setupDragging()
+  }
+
   // -- interaction ----------------------------------------------------------
 
   setupTooltip() {
@@ -166,8 +191,35 @@ export class RoverMap {
     this.tooltip.setPosition(undefined)
   }
 
-  setupPointer() {
+  setupDragging() {
+    if (this.config.interactive === false) return
+
+    this.translate = new Translate({
+      filter: (feature) => this.markerLayer.isDraggable(feature),
+      hitTolerance: HIT_TOLERANCE,
+    })
+
+    this.translate.on("translateend", (event) => {
+      event.features.forEach((feature) => {
+        const marker = this.markerLayer.markerFor(feature)
+        if (!marker) return
+
+        // The geometry now disagrees with the coordinates the server sent. Forget
+        // the cached hash so that the next payload — whether it accepts the drag
+        // or rejects it — is applied rather than skipped as "unchanged".
+        this.markerLayer.forgetGeometry(feature)
+
+        const { lat, lon } = unproject(feature.getGeometry().getCoordinates())
+        this.emit("markerDragEnd", { id: marker.id, lat, lon, data: marker.data ?? null })
+      })
+    })
+
+    this.map.addInteraction(this.translate)
+  }
+
+  setupEvents() {
     this.map.on("pointermove", (event) => {
+      if (this.config.interactive === false) return
       if (event.dragging) return this.hideTooltip()
 
       const feature = this.featureAt(event.pixel)
@@ -183,31 +235,10 @@ export class RoverMap {
     })
 
     this.map.getViewport().addEventListener("pointerleave", () => this.hideTooltip())
-  }
 
-  setupDragging() {
-    if (this.config.interactive === false) return
-
-    this.translate = new Translate({
-      filter: (feature) => this.markerLayer.isDraggable(feature),
-      hitTolerance: HIT_TOLERANCE,
-    })
-
-    this.translate.on("translateend", (event) => {
-      event.features.forEach((feature) => {
-        const marker = this.markerLayer.markerFor(feature)
-        if (!marker) return
-
-        const { lat, lon } = unproject(feature.getGeometry().getCoordinates())
-        this.emit("markerDragEnd", { id: marker.id, lat, lon, data: marker.data ?? null })
-      })
-    })
-
-    this.map.addInteraction(this.translate)
-  }
-
-  setupEvents() {
     this.map.on("singleclick", (event) => {
+      if (this.config.interactive === false) return
+
       const feature = this.featureAt(event.pixel)
       const marker = this.markerLayer.markerFor(feature)
 
@@ -268,31 +299,66 @@ export class RoverMap {
   }
 }
 
-// -- helpers ----------------------------------------------------------------
+// -- pure helpers ------------------------------------------------------------
+
+/**
+ * Should an incoming config move the view?
+ *
+ * Only when the caller actually asked for a center. When no `center` was given,
+ * Rover derives one from the markers — and that value changes every time any
+ * marker moves. Treating it as an instruction would animate the view (and reset
+ * the zoom) behind the user's back on every marker update.
+ */
+export function shouldRecenter(previous, next) {
+  if (next.derivedCenter) return false
+
+  return !sameCenter(previous.center, next.center) || previous.zoom !== next.zoom
+}
+
+export function normalizeConfig(config) {
+  const source = config || {}
+
+  return {
+    ...source,
+    center: Array.isArray(source.center) ? source.center : DEFAULT_CENTER,
+    zoom: typeof source.zoom === "number" ? source.zoom : DEFAULT_ZOOM,
+  }
+}
 
 function buildControls(config) {
   const wanted = config.controls || {}
+  const locked = config.interactive === false
   const controls = []
 
-  if (wanted.zoom !== false) controls.push(new Zoom())
+  // Zoom buttons are an interaction. Attribution is a licence obligation, and
+  // the scale line is passive — both survive a locked map.
+  if (!locked && wanted.zoom !== false) controls.push(new Zoom())
   if (wanted.attribution !== false) controls.push(new Attribution({ collapsible: true }))
   if (wanted.scaleLine) controls.push(new ScaleLine())
-  if (wanted.fullScreen) controls.push(new FullScreen())
-  if (wanted.rotate) controls.push(new Rotate())
+  if (!locked && wanted.fullScreen) controls.push(new FullScreen())
+  if (!locked && wanted.rotate) controls.push(new Rotate())
 
   return controls
+}
+
+function buildInteractions(config) {
+  return config.interactive === false ? [] : defaultInteractions().getArray()
 }
 
 // Carto and friends use Leaflet's `{r}` placeholder for retina tiles, which
 // OpenLayers does not know about. Resolve it once, here, rather than making
 // every caller strip it out of their URL.
 function resolveRetina(url) {
-  const suffix = (window.devicePixelRatio || 1) > 1.5 ? "@2x" : ""
-  return url.replace(/\{r\}/g, suffix)
+  const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1
+  return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "")
 }
 
 function sameCenter(a, b) {
   return Boolean(a) && Boolean(b) && a[0] === b[0] && a[1] === b[1]
+}
+
+function changed(a, b) {
+  return JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)
 }
 
 function now() {

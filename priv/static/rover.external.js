@@ -25,12 +25,14 @@ function extentToBbox(extent) {
   const [minX, minY, maxX, maxY] = extent;
   const southWest = unproject([minX, minY]);
   const northEast = unproject([maxX, maxY]);
-  return {
+  const bbox = {
     south: southWest.lat,
     west: southWest.lon,
     north: northEast.lat,
     east: northEast.lon
   };
+  if (bbox.west > bbox.east) bbox.crosses_antimeridian = true;
+  return bbox;
 }
 function round(value) {
   return Math.round(value * 1e7) / 1e7;
@@ -50,6 +52,7 @@ import Fill from "ol/style/Fill.js";
 import Stroke from "ol/style/Stroke.js";
 var DEFAULT_COLOR = "#e11d48";
 var cache = /* @__PURE__ */ new Map();
+var CACHE_LIMIT = 512;
 function styleFor(marker) {
   const key = [
     marker.icon || "",
@@ -60,6 +63,7 @@ function styleFor(marker) {
   let style = cache.get(key);
   if (!style) {
     style = buildStyle(marker);
+    if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value);
     cache.set(key, style);
   }
   return style;
@@ -151,6 +155,18 @@ var MarkerLayer = class {
   markerFor(feature) {
     return feature && feature.get(ROVER_KEY);
   }
+  /**
+   * Drop the cached geometry hash for a feature the client moved on its own.
+   *
+   * After a drag, the geometry no longer matches the coordinates the server
+   * sent. Without this, the next payload carrying those same coordinates hashes
+   * identically and is skipped as "unchanged" — so a rejected drag would stick,
+   * and the marker would stay wherever the user dropped it forever.
+   */
+  forgetGeometry(feature) {
+    const entry = feature && this.entries.get(String(feature.getId()));
+    if (entry) entry.geometryHash = null;
+  }
   isDraggable(feature) {
     const marker = this.markerFor(feature);
     return Boolean(marker && marker.draggable);
@@ -175,31 +191,33 @@ function appearanceOf(marker) {
 // js/rover_map.js
 var HIT_TOLERANCE = 6;
 var ANIMATION_MS = 350;
+var DEFAULT_CENTER = [0, 0];
+var DEFAULT_ZOOM = 2;
 var RoverMap = class {
   constructor(element, config, push) {
     this.element = element;
-    this.config = config;
-    this.push = push;
+    this.config = normalizeConfig(config);
+    this.push = push || (() => {
+    });
     this.hasFitted = false;
     this.quietUntil = 0;
     this.markerLayer = new MarkerLayer();
     this.tileLayer = new TileLayer({ zIndex: 0 });
-    this.applyTiles(config.tiles);
+    this.applyTiles(this.config.tiles);
     this.map = new Map2({
       target: element,
       layers: [this.tileLayer, this.markerLayer.layer],
-      controls: buildControls(config),
-      interactions: config.interactive === false ? [] : defaultInteractions(),
+      controls: buildControls(this.config),
+      interactions: buildInteractions(this.config),
       view: new View({
-        center: project(config.center[0], config.center[1]),
-        zoom: config.zoom,
-        minZoom: config.minZoom,
-        maxZoom: config.maxZoom,
+        center: project(this.config.center[0], this.config.center[1]),
+        zoom: this.config.zoom,
+        minZoom: this.config.minZoom,
+        maxZoom: this.config.maxZoom,
         constrainResolution: true
       })
     });
     this.setupTooltip();
-    this.setupPointer();
     this.setupDragging();
     this.setupEvents();
     this.observeResize();
@@ -211,25 +229,29 @@ var RoverMap = class {
   }
   setConfig(config) {
     const previous = this.config;
-    this.config = config;
-    if (!sameCenter(previous.center, config.center) || previous.zoom !== config.zoom) {
-      this.animateTo(config.center, config.zoom);
+    const next = normalizeConfig(config);
+    this.config = next;
+    if (shouldRecenter(previous, next)) this.animateTo(next.center, next.zoom);
+    if (changed(previous.tiles, next.tiles)) this.applyTiles(next.tiles);
+    if (changed(previous.controls, next.controls) || previous.interactive !== next.interactive) {
+      this.applyControls(next);
     }
-    if (JSON.stringify(previous.tiles) !== JSON.stringify(config.tiles)) {
-      this.applyTiles(config.tiles);
-    }
+    if (previous.interactive !== next.interactive) this.applyInteractions(next);
     const view = this.map.getView();
-    if (previous.minZoom !== config.minZoom) view.setMinZoom(config.minZoom ?? 0);
-    if (previous.maxZoom !== config.maxZoom) view.setMaxZoom(config.maxZoom ?? 28);
+    if (previous.minZoom !== next.minZoom) view.setMinZoom(next.minZoom ?? 0);
+    if (previous.maxZoom !== next.maxZoom) view.setMaxZoom(next.maxZoom ?? 28);
   }
   animateTo(center, zoom) {
     this.beQuiet(ANIMATION_MS);
     this.map.getView().animate({ center: project(center[0], center[1]), zoom, duration: ANIMATION_MS });
   }
   maybeFit() {
+    const initial = !this.hasFitted && this.config.derivedCenter;
     const mode = this.config.fit;
-    if (!mode) return;
-    if (mode === "once" && this.hasFitted) return;
+    if (!initial) {
+      if (!mode) return;
+      if (mode === "once" && this.hasFitted) return;
+    }
     const extent = this.markerLayer.extent;
     if (!extent || !Number.isFinite(extent[0])) return;
     const duration = this.hasFitted ? ANIMATION_MS : 0;
@@ -264,6 +286,18 @@ var RoverMap = class {
       })
     );
   }
+  applyControls(config) {
+    const controls = this.map.getControls();
+    controls.clear();
+    buildControls(config).forEach((control) => controls.push(control));
+  }
+  applyInteractions(config) {
+    const interactions = this.map.getInteractions();
+    interactions.clear();
+    buildInteractions(config).forEach((interaction) => interactions.push(interaction));
+    this.translate = null;
+    this.setupDragging();
+  }
   // -- interaction ----------------------------------------------------------
   setupTooltip() {
     this.tooltipEl = document.createElement("div");
@@ -288,8 +322,26 @@ var RoverMap = class {
     this.tooltipEl.hidden = true;
     this.tooltip.setPosition(void 0);
   }
-  setupPointer() {
+  setupDragging() {
+    if (this.config.interactive === false) return;
+    this.translate = new Translate({
+      filter: (feature) => this.markerLayer.isDraggable(feature),
+      hitTolerance: HIT_TOLERANCE
+    });
+    this.translate.on("translateend", (event) => {
+      event.features.forEach((feature) => {
+        const marker = this.markerLayer.markerFor(feature);
+        if (!marker) return;
+        this.markerLayer.forgetGeometry(feature);
+        const { lat, lon } = unproject(feature.getGeometry().getCoordinates());
+        this.emit("markerDragEnd", { id: marker.id, lat, lon, data: marker.data ?? null });
+      });
+    });
+    this.map.addInteraction(this.translate);
+  }
+  setupEvents() {
     this.map.on("pointermove", (event) => {
+      if (this.config.interactive === false) return;
       if (event.dragging) return this.hideTooltip();
       const feature = this.featureAt(event.pixel);
       const marker = this.markerLayer.markerFor(feature);
@@ -301,25 +353,8 @@ var RoverMap = class {
       }
     });
     this.map.getViewport().addEventListener("pointerleave", () => this.hideTooltip());
-  }
-  setupDragging() {
-    if (this.config.interactive === false) return;
-    this.translate = new Translate({
-      filter: (feature) => this.markerLayer.isDraggable(feature),
-      hitTolerance: HIT_TOLERANCE
-    });
-    this.translate.on("translateend", (event) => {
-      event.features.forEach((feature) => {
-        const marker = this.markerLayer.markerFor(feature);
-        if (!marker) return;
-        const { lat, lon } = unproject(feature.getGeometry().getCoordinates());
-        this.emit("markerDragEnd", { id: marker.id, lat, lon, data: marker.data ?? null });
-      });
-    });
-    this.map.addInteraction(this.translate);
-  }
-  setupEvents() {
     this.map.on("singleclick", (event) => {
+      if (this.config.interactive === false) return;
       const feature = this.featureAt(event.pixel);
       const marker = this.markerLayer.markerFor(feature);
       if (marker) {
@@ -367,22 +402,41 @@ var RoverMap = class {
     this.map.setTarget(void 0);
   }
 };
+function shouldRecenter(previous, next) {
+  if (next.derivedCenter) return false;
+  return !sameCenter(previous.center, next.center) || previous.zoom !== next.zoom;
+}
+function normalizeConfig(config) {
+  const source = config || {};
+  return {
+    ...source,
+    center: Array.isArray(source.center) ? source.center : DEFAULT_CENTER,
+    zoom: typeof source.zoom === "number" ? source.zoom : DEFAULT_ZOOM
+  };
+}
 function buildControls(config) {
   const wanted = config.controls || {};
+  const locked = config.interactive === false;
   const controls = [];
-  if (wanted.zoom !== false) controls.push(new Zoom());
+  if (!locked && wanted.zoom !== false) controls.push(new Zoom());
   if (wanted.attribution !== false) controls.push(new Attribution({ collapsible: true }));
   if (wanted.scaleLine) controls.push(new ScaleLine());
-  if (wanted.fullScreen) controls.push(new FullScreen());
-  if (wanted.rotate) controls.push(new Rotate());
+  if (!locked && wanted.fullScreen) controls.push(new FullScreen());
+  if (!locked && wanted.rotate) controls.push(new Rotate());
   return controls;
 }
+function buildInteractions(config) {
+  return config.interactive === false ? [] : defaultInteractions().getArray();
+}
 function resolveRetina(url) {
-  const suffix = (window.devicePixelRatio || 1) > 1.5 ? "@2x" : "";
-  return url.replace(/\{r\}/g, suffix);
+  const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "");
 }
 function sameCenter(a, b) {
   return Boolean(a) && Boolean(b) && a[0] === b[0] && a[1] === b[1];
+}
+function changed(a, b) {
+  return JSON.stringify(a ?? null) !== JSON.stringify(b ?? null);
 }
 function now() {
   return typeof performance !== "undefined" ? performance.now() : Date.now();

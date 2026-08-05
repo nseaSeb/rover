@@ -29,6 +29,13 @@ defmodule Rover.Marker do
 
   The identity is `:id`. Changing anything else updates that marker in place;
   changing the id removes one marker and adds another.
+
+  > #### Ids travel through JSON {: .warning}
+  >
+  > Integers and strings round-trip unchanged, so an event handler matching on
+  > `%{"id" => 1}` works. **Atoms do not**: `:depot` is delivered back as
+  > `"depot"`, and a handler matching `id == :depot` will never fire. Use
+  > integers or strings for ids you intend to match on.
   """
 
   alias Rover.Geo
@@ -159,11 +166,27 @@ defmodule Rover.Marker do
   # -- private ---------------------------------------------------------------
 
   defp coord_from(source, opts) do
-    case {Keyword.get(opts, :lat), Keyword.get(opts, :lon)} do
-      {nil, nil} -> Geo.coord!(source)
-      {lat_key, lon_key} -> Geo.coord!({read(source, lat_key), read(source, lon_key)})
+    overrides =
+      Map.new([:lat, :lon], fn field -> {field, Keyword.get(opts, field)} end)
+      |> Enum.reject(fn {_field, accessor} -> is_nil(accessor) end)
+      |> Map.new(fn {field, accessor} -> {field, read(source, accessor)} end)
+
+    case map_size(overrides) do
+      0 ->
+        Geo.coord!(source)
+
+      2 ->
+        Geo.coord!({overrides.lat, overrides.lon})
+
+      # Mapping one axis must not stop the other being read from its usual key:
+      # `lat: :latitude` on a `%{latitude: _, lon: _}` should still find `:lon`.
+      1 ->
+        Geo.coord!(Map.merge(plain(source), overrides))
     end
   end
+
+  defp plain(source) when is_struct(source), do: Map.from_struct(source)
+  defp plain(source), do: source
 
   defp extract(source, field, opts) do
     case Keyword.fetch(opts, field) do

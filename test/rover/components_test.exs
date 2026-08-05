@@ -122,6 +122,26 @@ defmodule Rover.ComponentsTest do
       assert config["maxZoom"] == 18
     end
 
+    test "marks a center it derived, so the client does not treat it as an order" do
+      # The centroid shifts whenever any marker moves. Without this flag the
+      # client read every marker update as "the server wants a new view" and
+      # animated to the derived centre at the derived zoom — a world view.
+      assert config(render_map(markers: @lyon))["derivedCenter"] == true
+    end
+
+    test "does not mark a center the caller chose" do
+      refute Map.has_key?(config(render_map(center: {45.75, 4.85})), "derivedCenter")
+    end
+
+    test "a moving marker does not change the caller's center" do
+      moved = [%{id: 1, lat: 45.90, lon: 4.83}, %{id: 2, lat: 45.74, lon: 4.86}]
+
+      before = config(render_map(markers: @lyon, center: {45.75, 4.85}))
+      after_move = config(render_map(markers: moved, center: {45.75, 4.85}))
+
+      assert before["center"] == after_move["center"]
+    end
+
     test "rejects an impossible center" do
       assert_raise ArgumentError, ~r/invalid latitude/, fn ->
         render_map(center: {450.0, 4.85})

@@ -92,6 +92,19 @@ export class MarkerLayer {
     return feature && feature.get(ROVER_KEY)
   }
 
+  /**
+   * Drop the cached geometry hash for a feature the client moved on its own.
+   *
+   * After a drag, the geometry no longer matches the coordinates the server
+   * sent. Without this, the next payload carrying those same coordinates hashes
+   * identically and is skipped as "unchanged" — so a rejected drag would stick,
+   * and the marker would stay wherever the user dropped it forever.
+   */
+  forgetGeometry(feature) {
+    const entry = feature && this.entries.get(String(feature.getId()))
+    if (entry) entry.geometryHash = null
+  }
+
   isDraggable(feature) {
     const marker = this.markerFor(feature)
     return Boolean(marker && marker.draggable)

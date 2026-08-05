@@ -46,6 +46,27 @@ defmodule Rover.MarkerTest do
       assert Marker.new!(client).lat == 45.75
     end
 
+    test "mapping one axis still reads the other from its usual key" do
+      # The options are documented as independent, so mapping :lat must not
+      # silently break the lookup for :lon.
+      marker = Marker.new!(%{id: 1, latitude: 45.75, lon: 4.85}, lat: :latitude)
+
+      assert marker.lat == 45.75
+      assert marker.lon == 4.85
+    end
+
+    test "mapping only the longitude works the same way" do
+      marker = Marker.new!(%{id: 1, lat: 45.75, x: 4.85}, lon: :x)
+
+      assert marker.lat == 45.75
+      assert marker.lon == 4.85
+    end
+
+    test "mapping one axis of a struct still reads the other" do
+      client = %Client{id: 7, latitude: 45.75, longitude: 4.85}
+      assert Marker.new!(client, lat: :latitude).lon == 4.85
+    end
+
     test "accepts functions as accessors" do
       marker =
         Marker.new!(%{id: 3, lat: 45.0, lon: 4.0},

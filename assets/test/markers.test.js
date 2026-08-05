@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import { MarkerLayer } from "../js/markers.js"
-import { unproject } from "../js/coords.js"
+import { project, unproject } from "../js/coords.js"
 
 const at = (id, lat, lon, rest = {}) => ({ id, lat, lon, ...rest })
 
@@ -139,6 +139,26 @@ describe("MarkerLayer.reconcile", () => {
     assert.deepEqual(marker.data, { status: "late" })
     assert.equal(layer.isDraggable(feature(layer, 1)), false)
     assert.equal(layer.extent.length, 4)
+  })
+
+  // A client-side drag leaves the geometry disagreeing with the coordinates the
+  // server sent. Without invalidating the hash, the next payload carrying those
+  // same coordinates looks unchanged and is skipped — so a rejected drag sticks.
+  it("re-applies the server position after a client-side drag", () => {
+    const layer = new MarkerLayer()
+    layer.reconcile([at(1, 45.75, 4.85, { draggable: true })])
+
+    const dragged = feature(layer, 1)
+    dragged.getGeometry().setCoordinates(project(46.5, 5.5))
+    layer.forgetGeometry(dragged)
+
+    // The server rejects the drag: it sends the very same list as before.
+    layer.reconcile([at(1, 45.75, 4.85, { draggable: true })])
+
+    const { lat, lon } = unproject(feature(layer, 1).getGeometry().getCoordinates())
+    assert.ok(Math.abs(lat - 45.75) < 1e-6, `latitude stayed at ${lat}`)
+    assert.ok(Math.abs(lon - 4.85) < 1e-6, `longitude stayed at ${lon}`)
+    assert.equal(feature(layer, 1), dragged, "the feature was rebuilt instead of corrected")
   })
 
   it("survives an empty list", () => {

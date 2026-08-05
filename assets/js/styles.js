@@ -11,6 +11,11 @@ export const DEFAULT_COLOR = "#e11d48"
 // between a map that pans smoothly and one that stutters.
 const cache = new Map()
 
+// Labels can be volatile — an ETA, a counter, a telemetry reading — and each
+// distinct one is a distinct cache key. Bounded so a long-lived LiveView session
+// cannot accumulate styles for the lifetime of the page.
+const CACHE_LIMIT = 512
+
 export function styleFor(marker) {
   const key = [
     marker.icon || "",
@@ -20,10 +25,16 @@ export function styleFor(marker) {
   ].join("|")
 
   let style = cache.get(key)
+
   if (!style) {
     style = buildStyle(marker)
+
+    // Map iterates in insertion order, so the first key is the oldest.
+    if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value)
+
     cache.set(key, style)
   }
+
   return style
 }
 
