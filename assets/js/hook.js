@@ -26,6 +26,15 @@ export const Rover = {
       markers: parse(this.markersJson, [], "data-rover-markers"),
     })
     this.popups = new Popups(this.el, this.map)
+
+    // The map instance, on the element that owns it. Markers are drawn into a
+    // canvas and have no DOM node of their own, so this is the only way to get
+    // from a coordinate to a pixel — which is what the browser suite needs to
+    // click one, and what you want in a console when a marker is not where you
+    // expected:
+    //
+    //     document.getElementById("clients")._rover.map.getView().getZoom()
+    this.el._rover = this.map
   },
 
   updated() {
@@ -66,6 +75,7 @@ export const Rover = {
     if (this.map) this.map.destroy()
     this.popups = null
     this.map = null
+    this.el._rover = null
   },
 
   emit(event, payload) {

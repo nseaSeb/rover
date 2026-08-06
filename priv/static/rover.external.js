@@ -781,6 +781,7 @@ var Rover = {
       markers: parse(this.markersJson, [], "data-rover-markers")
     });
     this.popups = new Popups(this.el, this.map);
+    this.el._rover = this.map;
   },
   updated() {
     if (!this.map) return;
@@ -811,6 +812,7 @@ var Rover = {
     if (this.map) this.map.destroy();
     this.popups = null;
     this.map = null;
+    this.el._rover = null;
   },
   emit(event, payload) {
     const target = this.config.target;

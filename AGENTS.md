@@ -9,6 +9,13 @@ the audience is other people's applications.
   It runs `format`, `compile --warnings-as-errors`, the ExUnit suite, the Node
   test suite, and rebuilds the JavaScript bundles.
 - `mix dev` starts the playground on http://localhost:4020 (`dev/demo_live.ex`).
+  `PORT=4021 mix dev` if that port is taken.
+- `mix assets.test.browser` runs the Playwright suite against the playground. It is
+  **not** in `precommit` (it needs a server and a browser) but it runs in CI, and it
+  is the only place the canvas and the popup DOM are exercised at all. When you add
+  a guard there, reintroduce the bug and watch it fail — a regression test nobody
+  has seen go red proves nothing, and one of these did not actually guard what its
+  name claimed until it was checked that way.
 - Keep the dependency list minimal. Library consumers pay for every dep we add;
   anything only the playground needs goes under `only: :dev`.
 - The JavaScript lives in `assets/js` and is bundled into `priv/static` by

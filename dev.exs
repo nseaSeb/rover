@@ -22,6 +22,7 @@ Application.put_env(:rover, RoverDev.Endpoint,
   secret_key_base: String.duplicate("rover", 13),
   live_view: [signing_salt: "rover-dev-salt"],
   code_reloader: true,
+  pubsub_server: RoverDev.PubSub,
   debug_errors: true,
   check_origin: false,
   render_errors: [formats: [html: RoverDev.ErrorHTML], layout: false],
@@ -37,8 +38,14 @@ Application.put_env(:rover, RoverDev.Endpoint,
   ]
 )
 
+# The live-reload channel needs PubSub. Without it every reload attempt raised
+# inside the channel — invisible until the browser suite refused to tolerate it.
 {:ok, _} =
-  Supervisor.start_link([RoverDev.Endpoint], strategy: :one_for_one, name: RoverDev.Supervisor)
+  Supervisor.start_link(
+    [{Phoenix.PubSub, name: RoverDev.PubSub}, RoverDev.Endpoint],
+    strategy: :one_for_one,
+    name: RoverDev.Supervisor
+  )
 
 Logger.info("Rover playground running at http://localhost:#{port}")
 

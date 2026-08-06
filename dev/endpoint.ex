@@ -11,6 +11,13 @@ defmodule RoverDev.Endpoint do
 
   socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 
+  # `plug Phoenix.LiveReloader` injects the client script, but the socket it
+  # connects to has to be declared separately. Without this the browser retried a
+  # 404 forever and live reload silently never worked: the esbuild watcher rebuilt
+  # the bundle and the page never noticed. The browser suite found it on its first
+  # run, by refusing to tolerate console errors.
+  socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket
+
   plug Plug.Static,
     at: "/assets",
     from: Path.expand("static", __DIR__),

@@ -257,7 +257,17 @@ this, by object identity, in `assets/test/markers.test.js` and
 `<.map>` is a floor, not a ceiling. The bundle also exports the pieces:
 
 ```js
-import { RoverMap, MarkerLayer, project, unproject } from "../../deps/rover/priv/static/rover.js"
+import { RoverMap, MarkerLayer, ShapeLayer, project, unproject } from "../../deps/rover/priv/static/rover.js"
+```
+
+The live instance is also on the element that owns it, which is the fastest way to
+answer "why is my marker not there?" from a console:
+
+```js
+const map = document.getElementById("clients")._rover
+map.map.getView().getZoom()
+map.markerLayer.markerById(42)
+map.contentExtent
 ```
 
 ### Bring your own OpenLayers
@@ -285,7 +295,14 @@ mix deps.get
 mix assets.build      # npm install + esbuild the bundles
 mix dev               # playground on http://localhost:4020
 mix precommit         # format, compile --warnings-as-errors, both test suites
+mix assets.test.browser   # the browser suite, in a real Chromium
 ```
+
+The browser suite is small on purpose. Everything below the component — the
+canvas, the popup DOM, the tile URLs the browser actually requests — lives where
+ExUnit and `node --test` cannot look, and both rendering bugs this library has
+shipped were in there. It stands guard over those paths and nothing else. Each
+scenario has been watched to fail with its bug reintroduced.
 
 The playground (`dev/demo_live.ex`) is the reference for the intended
 experience: a list of maps, buttons that add / move / recolour / remove markers,
