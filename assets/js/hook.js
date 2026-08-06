@@ -21,9 +21,10 @@ export const Rover = {
     this.map = new RoverMap(this.canvasEl, this.config, (event, payload) =>
       this.emit(event, payload)
     )
-    // Shapes first: they sit under the markers, and fitting sees both anyway.
-    this.map.setShapes(parse(this.shapesJson, [], "data-rover-shapes"))
-    this.map.setMarkers(parse(this.markersJson, [], "data-rover-markers"))
+    this.map.setContent({
+      shapes: parse(this.shapesJson, [], "data-rover-shapes"),
+      markers: parse(this.markersJson, [], "data-rover-markers"),
+    })
     this.popups = new Popups(this.el, this.map)
   },
 
@@ -37,16 +38,24 @@ export const Rover = {
       this.map.setConfig(this.config)
     }
 
+    // Gathered, then applied together: an update touching both layers must fit
+    // once over the union, not once per layer.
+    const content = {}
+
     const shapesJson = this.el.dataset.roverShapes
     if (shapesJson !== this.shapesJson) {
       this.shapesJson = shapesJson
-      this.map.setShapes(parse(shapesJson, [], "data-rover-shapes"))
+      content.shapes = parse(shapesJson, [], "data-rover-shapes")
     }
 
     const markersJson = this.el.dataset.roverMarkers
     if (markersJson !== this.markersJson) {
       this.markersJson = markersJson
-      this.map.setMarkers(parse(markersJson, [], "data-rover-markers"))
+      content.markers = parse(markersJson, [], "data-rover-markers")
+    }
+
+    if (content.shapes !== undefined || content.markers !== undefined) {
+      this.map.setContent(content)
     }
 
     if (this.popups) this.popups.refresh()

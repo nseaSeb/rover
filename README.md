@@ -172,7 +172,7 @@ A slot, rendered once per marker and shown on click with no server round-trip:
 <.map id="clients" markers={@clients}>
   <:popup :let={marker}>
     <h3>{marker.label}</h3>
-    <p>{marker.data.address}</p>
+    <p>{marker.data && marker.data.address}</p>
     <button data-rover-popup-close>Close</button>
   </:popup>
 </.map>

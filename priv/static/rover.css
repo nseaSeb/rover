@@ -413,6 +413,14 @@
   background: inherit;
   box-shadow: 2px 2px 4px rgb(0 0 0 / 0.08);
 }
+.rover-popup--below {
+  transform: translate(-50%, 0);
+}
+.rover-popup--below::after {
+  top: -0.3125rem;
+  bottom: auto;
+  box-shadow: -2px -2px 4px rgb(0 0 0 / 0.08);
+}
 .rover-popup [data-rover-popup-close] {
   cursor: pointer;
 }
@@ -445,5 +453,8 @@
   }
   .rover-popup::after {
     box-shadow: 2px 2px 4px rgb(0 0 0 / 0.25);
+  }
+  .rover-popup--below::after {
+    box-shadow: -2px -2px 4px rgb(0 0 0 / 0.25);
   }
 }

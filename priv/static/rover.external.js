@@ -1,31 +1,6 @@
-// js/coords.js
-import { fromLonLat, toLonLat } from "ol/proj.js";
-function project(lat, lon) {
-  return fromLonLat([lon, lat]);
-}
-function unproject(coordinate) {
-  const [lon, lat] = toLonLat(coordinate);
-  return { lat: round(lat), lon: round(lon) };
-}
-function extentToBbox(extent) {
-  const [minX, minY, maxX, maxY] = extent;
-  const southWest = unproject([minX, minY]);
-  const northEast = unproject([maxX, maxY]);
-  const bbox = {
-    south: southWest.lat,
-    west: southWest.lon,
-    north: northEast.lat,
-    east: northEast.lon
-  };
-  if (bbox.west > bbox.east) bbox.crosses_antimeridian = true;
-  return bbox;
-}
-function round(value) {
-  return Math.round(value * 1e7) / 1e7;
-}
-
 // js/popups.js
 var OFFSET_PX = 44;
+var BELOW_OFFSET_PX = 8;
 var Popups = class {
   constructor(rootEl, roverMap) {
     this.root = rootEl;
@@ -62,16 +37,28 @@ var Popups = class {
   position() {
     if (this.openId === null) return;
     const node = this.nodeFor(this.openId);
-    const marker = this.roverMap.markerLayer.markerById(this.openId);
-    if (!node || !marker) return this.close();
-    const pixel = this.roverMap.map.getPixelFromCoordinate(project(marker.lat, marker.lon));
+    const feature = this.roverMap.markerLayer.featureById(this.openId);
+    if (!node || !feature) return this.close();
+    const pixel = this.roverMap.map.getPixelFromCoordinate(feature.getGeometry().getCoordinates());
     if (!pixel) return;
-    node.style.left = `${Math.round(pixel[0])}px`;
-    node.style.top = `${Math.round(pixel[1]) - OFFSET_PX}px`;
+    const [x, y] = pixel;
+    const below = y - OFFSET_PX - node.offsetHeight < 0;
+    node.classList.toggle("rover-popup--below", below);
+    node.style.left = `${Math.round(x)}px`;
+    node.style.top = `${Math.round(below ? y + BELOW_OFFSET_PX : y - OFFSET_PX)}px`;
   }
-  // Called after LiveView patches the element: the open marker may be gone, or
-  // its coordinates may have changed underneath the popup.
+  /**
+   * Called after LiveView patches the element.
+   *
+   * `hidden` is a static attribute in the HEEx template, so morphdom restores it
+   * on every patch that re-renders the comprehension — an open popup silently
+   * disappears while this class still believes it is open. Re-assert it.
+   */
   refresh() {
+    if (this.openId === null) return;
+    const node = this.nodeFor(this.openId);
+    if (!node) return this.close();
+    node.hidden = false;
     this.position();
   }
   nodeFor(id) {
@@ -101,6 +88,32 @@ import Zoom from "ol/control/Zoom.js";
 import Translate from "ol/interaction/Translate.js";
 import { defaults as defaultInteractions } from "ol/interaction/defaults.js";
 import { createEmpty, extend } from "ol/extent.js";
+
+// js/coords.js
+import { fromLonLat, toLonLat } from "ol/proj.js";
+function project(lat, lon) {
+  return fromLonLat([lon, lat]);
+}
+function unproject(coordinate) {
+  const [lon, lat] = toLonLat(coordinate);
+  return { lat: round(lat), lon: round(lon) };
+}
+function extentToBbox(extent) {
+  const [minX, minY, maxX, maxY] = extent;
+  const southWest = unproject([minX, minY]);
+  const northEast = unproject([maxX, maxY]);
+  const bbox = {
+    south: southWest.lat,
+    west: southWest.lon,
+    north: northEast.lat,
+    east: northEast.lon
+  };
+  if (bbox.west > bbox.east) bbox.crosses_antimeridian = true;
+  return bbox;
+}
+function round(value) {
+  return Math.round(value * 1e7) / 1e7;
+}
 
 // js/markers.js
 import Feature from "ol/Feature.js";
@@ -240,6 +253,10 @@ var MarkerLayer = class {
   markerById(id) {
     const entry = this.entries.get(String(id));
     return entry && entry.marker;
+  }
+  featureById(id) {
+    const entry = this.entries.get(String(id));
+    return entry && entry.feature;
   }
   /**
    * Drop the cached geometry hash for a feature the client moved on its own.
@@ -469,6 +486,20 @@ var RoverMap = class {
     this.shapeLayer.reconcile(shapes);
     this.maybeFit();
   }
+  /**
+   * Load both layers and fit once.
+   *
+   * Calling setShapes() then setMarkers() fits twice, and the second fit is a
+   * no-op: the first one already set `hasFitted`, so with the default
+   * `fit: "once"` the markers never entered the initial framing at all. Anything
+   * outside the shapes' bounding box was simply off-screen, for good. The mount
+   * path and any update touching both layers go through here instead.
+   */
+  setContent({ markers, shapes }) {
+    if (shapes !== void 0) this.shapeLayer.reconcile(shapes);
+    if (markers !== void 0) this.markerLayer.reconcile(markers);
+    this.maybeFit();
+  }
   setConfig(config) {
     const previous = this.config;
     const next = normalizeConfig(config);
@@ -488,12 +519,7 @@ var RoverMap = class {
     this.map.getView().animate({ center: project(center[0], center[1]), zoom, duration: ANIMATION_MS });
   }
   maybeFit() {
-    const initial = !this.hasFitted && this.config.derivedCenter;
-    const mode = this.config.fit;
-    if (!initial) {
-      if (!mode) return;
-      if (mode === "once" && this.hasFitted) return;
-    }
+    if (!shouldFit({ hasFitted: this.hasFitted, ...this.config })) return;
     const extent = this.contentExtent;
     if (!extent || !Number.isFinite(extent[0])) return;
     const duration = this.hasFitted ? ANIMATION_MS : 0;
@@ -503,11 +529,7 @@ var RoverMap = class {
     this.map.getView().fit(extent, {
       size: this.map.getSize(),
       padding: [padding, padding, padding, padding],
-      // A lone marker has a zero-width extent; fitting it literally would zoom to
-      // the maximum, so cap it at something a human would have chosen. A polygon
-      // has real width and should be fitted for what it is — capping it would
-      // leave a small parcel as a speck in the middle of a region.
-      maxZoom: isPunctual(extent) ? 16 : void 0,
+      maxZoom: fitMaxZoom(this.config, this.shapeLayer.entries.size > 0),
       duration
     });
   }
@@ -610,6 +632,7 @@ var RoverMap = class {
       if (this.config.interactive === false) return;
       const { marker, shape } = this.featureAt(event.pixel);
       const { lat, lon } = unproject(event.coordinate);
+      const events = this.config.events || {};
       if (marker) {
         this.emit("markerClick", {
           id: marker.id,
@@ -617,7 +640,7 @@ var RoverMap = class {
           lon: marker.lon,
           data: marker.data ?? null
         });
-      } else if (shape) {
+      } else if (shape && events.shapeClick) {
         this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null });
       } else {
         this.emit("mapClick", { lat, lon });
@@ -716,8 +739,15 @@ function resolveRetina(url) {
   const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
   return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "");
 }
-function isPunctual(extent) {
-  return extent[0] === extent[2] && extent[1] === extent[3];
+function shouldFit({ hasFitted, derivedCenter, fit }) {
+  if (!hasFitted && derivedCenter) return true;
+  if (!fit) return false;
+  if (fit === "once" && hasFitted) return false;
+  return true;
+}
+function fitMaxZoom(config, hasShapes) {
+  const tileMax = config.tiles && config.tiles.maxZoom || 19;
+  return hasShapes ? tileMax : Math.min(tileMax, 16);
 }
 function sameCenter(a, b) {
   return Boolean(a) && Boolean(b) && a[0] === b[0] && a[1] === b[1];
@@ -746,8 +776,10 @@ var Rover = {
       this.config,
       (event, payload) => this.emit(event, payload)
     );
-    this.map.setShapes(parse(this.shapesJson, [], "data-rover-shapes"));
-    this.map.setMarkers(parse(this.markersJson, [], "data-rover-markers"));
+    this.map.setContent({
+      shapes: parse(this.shapesJson, [], "data-rover-shapes"),
+      markers: parse(this.markersJson, [], "data-rover-markers")
+    });
     this.popups = new Popups(this.el, this.map);
   },
   updated() {
@@ -758,15 +790,19 @@ var Rover = {
       this.config = parse(configJson, this.config, "data-rover");
       this.map.setConfig(this.config);
     }
+    const content = {};
     const shapesJson = this.el.dataset.roverShapes;
     if (shapesJson !== this.shapesJson) {
       this.shapesJson = shapesJson;
-      this.map.setShapes(parse(shapesJson, [], "data-rover-shapes"));
+      content.shapes = parse(shapesJson, [], "data-rover-shapes");
     }
     const markersJson = this.el.dataset.roverMarkers;
     if (markersJson !== this.markersJson) {
       this.markersJson = markersJson;
-      this.map.setMarkers(parse(markersJson, [], "data-rover-markers"));
+      content.markers = parse(markersJson, [], "data-rover-markers");
+    }
+    if (content.shapes !== void 0 || content.markers !== void 0) {
+      this.map.setContent(content);
     }
     if (this.popups) this.popups.refresh();
   },

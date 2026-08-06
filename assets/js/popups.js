@@ -1,8 +1,11 @@
-import { project } from "./coords.js"
-
 // How far above the coordinate the popup floats: enough to clear a pin, which is
 // 36px tall and anchored at its tip.
 const OFFSET_PX = 44
+
+// When the balloon would be clipped by the container's top edge, it flips below
+// the pin instead. `.rover-map` hides its overflow — a clipped popup is not
+// partly visible, it is gone.
+const BELOW_OFFSET_PX = 8
 
 /**
  * Marker popups, positioned by hand rather than by an OpenLayers Overlay.
@@ -71,22 +74,40 @@ export class Popups {
     if (this.openId === null) return
 
     const node = this.nodeFor(this.openId)
-    const marker = this.roverMap.markerLayer.markerById(this.openId)
+    // The feature, not the marker: a drag moves the geometry on the client while
+    // the server's lat/lon stays put, and the popup should follow the pin the
+    // user is holding rather than hang back at the old coordinate.
+    const feature = this.roverMap.markerLayer.featureById(this.openId)
 
     // The marker was removed from under an open popup, or its slot no longer
     // renders. Either way there is nothing left to point at.
-    if (!node || !marker) return this.close()
+    if (!node || !feature) return this.close()
 
-    const pixel = this.roverMap.map.getPixelFromCoordinate(project(marker.lat, marker.lon))
+    const pixel = this.roverMap.map.getPixelFromCoordinate(feature.getGeometry().getCoordinates())
     if (!pixel) return
 
-    node.style.left = `${Math.round(pixel[0])}px`
-    node.style.top = `${Math.round(pixel[1]) - OFFSET_PX}px`
+    const [x, y] = pixel
+    const below = y - OFFSET_PX - node.offsetHeight < 0
+
+    node.classList.toggle("rover-popup--below", below)
+    node.style.left = `${Math.round(x)}px`
+    node.style.top = `${Math.round(below ? y + BELOW_OFFSET_PX : y - OFFSET_PX)}px`
   }
 
-  // Called after LiveView patches the element: the open marker may be gone, or
-  // its coordinates may have changed underneath the popup.
+  /**
+   * Called after LiveView patches the element.
+   *
+   * `hidden` is a static attribute in the HEEx template, so morphdom restores it
+   * on every patch that re-renders the comprehension — an open popup silently
+   * disappears while this class still believes it is open. Re-assert it.
+   */
   refresh() {
+    if (this.openId === null) return
+
+    const node = this.nodeFor(this.openId)
+    if (!node) return this.close()
+
+    node.hidden = false
     this.position()
   }
 

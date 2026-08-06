@@ -397,6 +397,32 @@ defmodule Rover.ComponentsTest do
     test "still falls back to the world with neither" do
       assert config(render_map([]))["center"] == [0.0, 0.0]
     end
+
+    test "geometry in the wrong projection does not take the render down" do
+      # ST_AsGeoJSON on an EPSG:3857 column returns metres. Deriving a centre is a
+      # convenience; raising over it would kill the whole LiveView at render time.
+      metres = %{"type" => "Point", "coordinates" => [537_000.0, 5_744_000.0]}
+
+      config = config(render_map(shapes: [%{id: "p", geometry: metres}]))
+
+      assert config["center"] == [0.0, 0.0]
+      assert [shape] = shapes(render_map(shapes: [%{id: "p", geometry: metres}]))
+      assert shape["geometry"] == metres
+    end
+
+    test "usable coordinates still frame when one shape is unusable" do
+      metres = %{"type" => "Point", "coordinates" => [537_000.0, 5_744_000.0]}
+      degrees = %{"type" => "Point", "coordinates" => [4.85, 45.75]}
+
+      config =
+        config(
+          render_map(shapes: [%{id: "bad", geometry: metres}, %{id: "ok", geometry: degrees}])
+        )
+
+      assert [lat, lon] = config["center"]
+      assert_in_delta lat, 45.75, 0.0001
+      assert_in_delta lon, 4.85, 0.0001
+    end
   end
 
   describe "emoji markers" do

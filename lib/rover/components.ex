@@ -190,10 +190,12 @@ defmodule Rover.Components do
         <.map id="clients" markers={@clients}>
           <:popup :let={marker}>
             <h3>{marker.label}</h3>
-            <p>{marker.data.address}</p>
+            <p>{marker.data && marker.data.address}</p>
             <button data-rover-popup-close>Close</button>
           </:popup>
         </.map>
+
+    `:data` is `nil` unless you set it, hence the guard.
 
     Any element carrying `data-rover-popup-close` closes it; so do a click on the
     map and the Escape key. Because every marker's popup is rendered up front,
@@ -303,7 +305,19 @@ defmodule Rover.Components do
   defp resolve_center(center, _markers, _shapes), do: Geo.coord!(center)
 
   defp content_coordinates(markers, shapes) do
-    Enum.map(markers, &{&1.lat, &1.lon}) ++ Enum.flat_map(shapes, &Shape.coordinates/1)
+    Enum.map(markers, &{&1.lat, &1.lon}) ++ shape_coordinates(shapes)
+  end
+
+  # Marker coordinates are validated on the way in, so they are known good.
+  # Geometry is not: it arrives from PostGIS, a cadastral API, a routing service,
+  # and `ST_AsGeoJSON` on an EPSG:3857 column returns metres. Deriving a centre is
+  # a convenience, so an unusable coordinate is skipped rather than allowed to
+  # raise — taking a whole LiveView down at render time over a framing hint is the
+  # wrong trade. The client is deliberately just as forgiving about reading it.
+  defp shape_coordinates(shapes) do
+    shapes
+    |> Enum.flat_map(&Shape.coordinates/1)
+    |> Enum.filter(&match?({:ok, _}, Geo.coord(&1)))
   end
 
   # Without an explicit center we fit to the content anyway, so this zoom is only

@@ -37,6 +37,34 @@ Everything the README called "the obvious next steps", minus clustering.
 - `on_shape_click`, with markers winning ties: a pin inside its own parcel outline
   answers the click.
 
+### Fixed
+
+- **Markers were excluded from the initial framing whenever shapes were present.**
+  The mount path loaded shapes, fitted, then loaded markers — and the second fit
+  declined, because the first had already happened and `fit` defaults to `:once`.
+  A map with both therefore framed the shapes alone, and any marker outside their
+  bounding box was off-screen for good. Both layers are now loaded before a single
+  fit. This was the release's headline combination, so it is worth being blunt: it
+  was broken.
+- The zoom cap that keeps a lone marker from filling the screen had been removed
+  for any non-degenerate extent, so two markers twenty metres apart zoomed past
+  what the basemap can render. The cap now follows the tile source's own ceiling,
+  and only marker-only extents stop earlier.
+- A click inside a shape no longer swallows `on_map_click` when `on_shape_click`
+  was never wired. Shapes are filled by default, so their whole interior is
+  hit-testable — a click-to-place-a-marker map with zone outlines silently stopped
+  working anywhere inside a zone.
+- An open popup survives a LiveView patch. `hidden` is static in the template, so
+  every re-render of the marker comprehension restored it and the popup vanished
+  while the client still believed it was open.
+- A popup follows the pin during a drag, instead of hanging back at the
+  coordinate the server last sent.
+- A popup near the top edge flips below its marker rather than being clipped away
+  by the container's hidden overflow.
+- Geometry in the wrong projection — `ST_AsGeoJSON` on an EPSG:3857 column returns
+  metres — no longer raises while deriving the map's centre. Framing is a
+  convenience; taking a LiveView down at render time over it was the wrong trade.
+
 ### Changed
 
 - `mix dev` takes `PORT`, and the playground now exercises shapes, emoji, popups

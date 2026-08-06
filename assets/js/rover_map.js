@@ -75,6 +75,21 @@ export class RoverMap {
     this.maybeFit()
   }
 
+  /**
+   * Load both layers and fit once.
+   *
+   * Calling setShapes() then setMarkers() fits twice, and the second fit is a
+   * no-op: the first one already set `hasFitted`, so with the default
+   * `fit: "once"` the markers never entered the initial framing at all. Anything
+   * outside the shapes' bounding box was simply off-screen, for good. The mount
+   * path and any update touching both layers go through here instead.
+   */
+  setContent({ markers, shapes }) {
+    if (shapes !== undefined) this.shapeLayer.reconcile(shapes)
+    if (markers !== undefined) this.markerLayer.reconcile(markers)
+    this.maybeFit()
+  }
+
   setConfig(config) {
     const previous = this.config
     const next = normalizeConfig(config)
@@ -105,16 +120,7 @@ export class RoverMap {
   }
 
   maybeFit() {
-    // With no center from the caller, "put my markers on screen" is the whole
-    // instruction, so the first frame is always fitted — the client is the only
-    // side that knows the viewport size. `fit` then governs *re*fitting.
-    const initial = !this.hasFitted && this.config.derivedCenter
-    const mode = this.config.fit
-
-    if (!initial) {
-      if (!mode) return
-      if (mode === "once" && this.hasFitted) return
-    }
+    if (!shouldFit({ hasFitted: this.hasFitted, ...this.config })) return
 
     const extent = this.contentExtent
     if (!extent || !Number.isFinite(extent[0])) return
@@ -129,11 +135,7 @@ export class RoverMap {
     this.map.getView().fit(extent, {
       size: this.map.getSize(),
       padding: [padding, padding, padding, padding],
-      // A lone marker has a zero-width extent; fitting it literally would zoom to
-      // the maximum, so cap it at something a human would have chosen. A polygon
-      // has real width and should be fitted for what it is — capping it would
-      // leave a small parcel as a speck in the middle of a region.
-      maxZoom: isPunctual(extent) ? 16 : undefined,
+      maxZoom: fitMaxZoom(this.config, this.shapeLayer.entries.size > 0),
       duration,
     })
   }
@@ -268,6 +270,8 @@ export class RoverMap {
       const { marker, shape } = this.featureAt(event.pixel)
       const { lat, lon } = unproject(event.coordinate)
 
+      const events = this.config.events || {}
+
       if (marker) {
         this.emit("markerClick", {
           id: marker.id,
@@ -275,9 +279,12 @@ export class RoverMap {
           lon: marker.lon,
           data: marker.data ?? null,
         })
-      } else if (shape) {
+      } else if (shape && events.shapeClick) {
         this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null })
       } else {
+        // A shape with no click handler is scenery, not a target. Filled polygons
+        // are hit-testable across their whole interior, so claiming the click here
+        // would silently swallow every mapClick inside any zone on the map.
         this.emit("mapClick", { lat, lon })
       }
     })
@@ -416,8 +423,34 @@ function resolveRetina(url) {
   return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "")
 }
 
-function isPunctual(extent) {
-  return extent[0] === extent[2] && extent[1] === extent[3]
+/**
+ * Should `maybeFit` fit, given the map's state and config?
+ *
+ * With no center from the caller, "put my content on screen" is the whole
+ * instruction, so the first frame is always fitted — only the client knows the
+ * viewport size. `fit` then governs *re*fitting.
+ */
+export function shouldFit({ hasFitted, derivedCenter, fit }) {
+  if (!hasFitted && derivedCenter) return true
+  if (!fit) return false
+  if (fit === "once" && hasFitted) return false
+
+  return true
+}
+
+/**
+ * How far a fit may zoom in.
+ *
+ * Two markers in the same yard have a real but tiny extent, and fitting it
+ * literally zooms past anything the basemap can render — a blurry over-zoomed
+ * tile. So never go beyond what the tiles have, and for a marker-only extent
+ * stop earlier still, at something a human would have chosen. A geometry is
+ * different: a small parcel should fill the frame, not sit in it as a speck.
+ */
+export function fitMaxZoom(config, hasShapes) {
+  const tileMax = (config.tiles && config.tiles.maxZoom) || 19
+
+  return hasShapes ? tileMax : Math.min(tileMax, 16)
 }
 
 function sameCenter(a, b) {

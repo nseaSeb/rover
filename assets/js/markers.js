@@ -97,6 +97,11 @@ export class MarkerLayer {
     return entry && entry.marker
   }
 
+  featureById(id) {
+    const entry = this.entries.get(String(id))
+    return entry && entry.feature
+  }
+
   /**
    * Drop the cached geometry hash for a feature the client moved on its own.
    *
