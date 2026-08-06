@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { normalizeConfig, shouldRecenter } from "../js/rover_map.js"
+import { fitMaxZoom, normalizeConfig, shouldFit, shouldRecenter } from "../js/rover_map.js"
 
 const config = (overrides) => normalizeConfig({ center: [45.75, 4.85], zoom: 12, ...overrides })
 
@@ -59,5 +59,86 @@ describe("normalizeConfig", () => {
     assert.deepEqual(normalized.center, [45.75, 4.85])
     assert.equal(normalized.zoom, 12)
     assert.equal(normalized.fit, "once")
+  })
+})
+
+describe("shouldFit", () => {
+  // The regression behind setContent(): the first fit sets hasFitted, and with the
+  // default fit: "once" every later call declines. Loading shapes and then markers
+  // as two separate calls therefore framed the shapes alone, and anything outside
+  // their bounding box was off-screen for good.
+  it("declines a second call once the initial fit has happened", () => {
+    const config = { derivedCenter: true, fit: "once" }
+
+    assert.equal(shouldFit({ hasFitted: false, ...config }), true)
+    assert.equal(shouldFit({ hasFitted: true, ...config }), false)
+  })
+
+  it("always fits the first frame when the centre was derived", () => {
+    assert.equal(shouldFit({ hasFitted: false, derivedCenter: true, fit: false }), true)
+  })
+
+  it("never fits when the caller chose the centre and asked for no fitting", () => {
+    assert.equal(shouldFit({ hasFitted: false, derivedCenter: undefined, fit: false }), false)
+  })
+
+  it("refits every time with fit: always", () => {
+    assert.equal(shouldFit({ hasFitted: true, derivedCenter: true, fit: "always" }), true)
+  })
+})
+
+describe("fitMaxZoom", () => {
+  it("stops a marker-only fit short of the basemap ceiling", () => {
+    // Two vans parked in the same yard have a real but tiny extent. Fitting it
+    // literally zooms past anything the tiles can render.
+    assert.equal(fitMaxZoom({ tiles: { maxZoom: 19 } }, false), 16)
+  })
+
+  it("lets a geometry fill the frame, but not past the tiles" , () => {
+    assert.equal(fitMaxZoom({ tiles: { maxZoom: 19 } }, true), 19)
+  })
+
+  it("respects a lower tile ceiling in both cases", () => {
+    assert.equal(fitMaxZoom({ tiles: { maxZoom: 14 } }, true), 14)
+    assert.equal(fitMaxZoom({ tiles: { maxZoom: 14 } }, false), 14)
+  })
+
+  it("falls back to 19 with no basemap" , () => {
+    assert.equal(fitMaxZoom({}, true), 19)
+    assert.equal(fitMaxZoom({}, false), 16)
+  })
+})
+
+describe("the union of both layers", () => {
+  it("covers a marker far outside the shapes", async () => {
+    // What setContent buys: the framing extent spans both layers. Before the fix
+    // the fit only ever saw whichever layer was loaded first.
+    const { MarkerLayer } = await import("../js/markers.js")
+    const { ShapeLayer } = await import("../js/shapes.js")
+    const { createEmpty, extend } = await import("ol/extent.js")
+
+    const markers = new MarkerLayer()
+    markers.reconcile([{ id: 1, lat: 48.85, lon: 2.35 }])
+
+    const shapes = new ShapeLayer()
+    shapes.reconcile([
+      {
+        id: "p",
+        rev: 1,
+        geometry: {
+          type: "Polygon",
+          coordinates: [[[4.83, 45.76], [4.84, 45.76], [4.84, 45.77], [4.83, 45.77], [4.83, 45.76]]],
+        },
+      },
+    ])
+
+    const union = createEmpty()
+    extend(union, shapes.extent)
+    extend(union, markers.extent)
+
+    // Paris is north-west of the Lyon parcel: the union must reach both.
+    assert.ok(union[0] < shapes.extent[0], "the union did not extend west to the marker")
+    assert.ok(union[3] > shapes.extent[3], "the union did not extend north to the marker")
+    assert.ok(union[2] >= shapes.extent[2], "the union lost the parcel's eastern edge")
   })
 })

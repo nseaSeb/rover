@@ -1,6 +1,33 @@
 defmodule Rover.ComponentsTest do
   use Rover.MapCase, async: true
 
+  defmodule PopupHost do
+    @moduledoc false
+    use Phoenix.Component
+
+    import Rover.Components
+
+    def render_popups(assigns) do
+      assigns = Map.new(assigns)
+
+      host(assigns)
+      |> Phoenix.HTML.Safe.to_iodata()
+      |> IO.iodata_to_binary()
+      |> LazyHTML.from_fragment()
+    end
+
+    def host(assigns) do
+      ~H"""
+      <.map id="clients" markers={@markers}>
+        <:popup :let={marker}>
+          <span class="popup-label">{marker.label}</span>
+          <button data-rover-popup-close>x</button>
+        </:popup>
+      </.map>
+      """
+    end
+  end
+
   @lyon [
     %{id: 1, lat: 45.76, lon: 4.83, label: "Atelier"},
     %{id: 2, lat: 45.74, lon: 4.86, label: "Dépôt"}
@@ -251,6 +278,200 @@ defmodule Rover.ComponentsTest do
 
     test "route to a live component when given a target" do
       assert config(render_map(target: 3, on_marker_click: "select"))["target"] == "3"
+    end
+  end
+
+  describe "shapes" do
+    @polygon %{
+      "type" => "Polygon",
+      "coordinates" => [
+        [[4.83, 45.76], [4.84, 45.76], [4.84, 45.77], [4.83, 45.77], [4.83, 45.76]]
+      ]
+    }
+
+    test "travel in their own attribute, so a marker change does not resend them" do
+      document = render_map(markers: @lyon, shapes: [%{id: "p", geometry: @polygon}])
+
+      assert is_binary(attribute(document, "data-rover-shapes"))
+      assert is_binary(attribute(document, "data-rover-markers"))
+      refute attribute(document, "data-rover-shapes") == attribute(document, "data-rover-markers")
+    end
+
+    test "default to an empty list" do
+      assert shapes(render_map([])) == []
+    end
+
+    test "are serialised with a revision the client can compare" do
+      [shape] = shapes(render_map(shapes: [%{id: "p", geometry: @polygon}]))
+
+      assert shape["id"] == "p"
+      assert shape["geometry"] == @polygon
+      assert shape["rev"] == :erlang.phash2(@polygon)
+    end
+
+    test "omit everything that was not set" do
+      [shape] = shapes(render_map(shapes: [%{id: "p", geometry: @polygon}]))
+
+      assert Map.keys(shape) |> Enum.sort() == ["geometry", "id", "rev"]
+    end
+
+    test "carry their styling" do
+      [shape] =
+        shapes(
+          render_map(
+            shapes: [
+              %{id: "p", geometry: @polygon, color: "#16a34a", width: 3, fill_opacity: 0.2}
+            ]
+          )
+        )
+
+      assert shape["color"] == "#16a34a"
+      assert shape["width"] == 3
+      assert shape["fill_opacity"] == 0.2
+    end
+
+    test "accept a field mapping for foreign schemas" do
+      [shape] =
+        shapes(
+          render_map(
+            shapes: [%{ref: "p", outline: @polygon}],
+            shape_fields: [id: :ref, geometry: :outline]
+          )
+        )
+
+      assert shape["id"] == "p"
+      assert shape["geometry"] == @polygon
+    end
+
+    test "an on_shape_click handler reaches the client" do
+      assert config(render_map(on_shape_click: "pick_parcel"))["events"]["shapeClick"] ==
+               "pick_parcel"
+    end
+
+    test "no shapeClick key when it was not asked for" do
+      refute Map.has_key?(config(render_map(markers: @lyon))["events"], "shapeClick")
+    end
+  end
+
+  describe "centering on shapes" do
+    @outline %{
+      "type" => "Polygon",
+      "coordinates" => [
+        [[4.80, 45.70], [4.90, 45.70], [4.90, 45.80], [4.80, 45.80], [4.80, 45.70]]
+      ]
+    }
+
+    test "a map with one shape and no marker still finds its centre" do
+      # The parcel page: a cadastral outline, no pin. This used to land on
+      # {0.0, 0.0} — the Gulf of Guinea — with the parcel nowhere in sight.
+      config = config(render_map(shapes: [%{id: "p", geometry: @outline}]))
+
+      assert [lat, lon] = config["center"]
+      assert_in_delta lat, 45.75, 0.0001
+      assert_in_delta lon, 4.85, 0.0001
+      assert config["derivedCenter"] == true
+    end
+
+    test "the derived centre spans markers and shapes together" do
+      config =
+        config(
+          render_map(
+            markers: [%{id: 1, lat: 48.85, lon: 2.35}],
+            shapes: [%{id: "p", geometry: @outline}]
+          )
+        )
+
+      assert [lat, lon] = config["center"]
+      assert_in_delta lat, (45.70 + 48.85) / 2, 0.0001
+      assert_in_delta lon, (2.35 + 4.90) / 2, 0.0001
+    end
+
+    test "an explicit centre still wins over both" do
+      config =
+        config(render_map(shapes: [%{id: "p", geometry: @outline}], center: {43.3, 5.4}))
+
+      assert config["center"] == [43.3, 5.4]
+      refute Map.has_key?(config, "derivedCenter")
+    end
+
+    test "still falls back to the world with neither" do
+      assert config(render_map([]))["center"] == [0.0, 0.0]
+    end
+
+    test "geometry in the wrong projection does not take the render down" do
+      # ST_AsGeoJSON on an EPSG:3857 column returns metres. Deriving a centre is a
+      # convenience; raising over it would kill the whole LiveView at render time.
+      metres = %{"type" => "Point", "coordinates" => [537_000.0, 5_744_000.0]}
+
+      config = config(render_map(shapes: [%{id: "p", geometry: metres}]))
+
+      assert config["center"] == [0.0, 0.0]
+      assert [shape] = shapes(render_map(shapes: [%{id: "p", geometry: metres}]))
+      assert shape["geometry"] == metres
+    end
+
+    test "usable coordinates still frame when one shape is unusable" do
+      metres = %{"type" => "Point", "coordinates" => [537_000.0, 5_744_000.0]}
+      degrees = %{"type" => "Point", "coordinates" => [4.85, 45.75]}
+
+      config =
+        config(
+          render_map(shapes: [%{id: "bad", geometry: metres}, %{id: "ok", geometry: degrees}])
+        )
+
+      assert [lat, lon] = config["center"]
+      assert_in_delta lat, 45.75, 0.0001
+      assert_in_delta lon, 4.85, 0.0001
+    end
+  end
+
+  describe "emoji markers" do
+    test "reach the client" do
+      [marker] = markers(render_map(markers: [%{id: 1, lat: 45.0, lon: 4.0, emoji: "🏠"}]))
+
+      assert marker["emoji"] == "🏠"
+    end
+
+    test "are absent unless set" do
+      [marker] = markers(render_map(markers: [%{id: 1, lat: 45.0, lon: 4.0}]))
+
+      refute Map.has_key?(marker, "emoji")
+    end
+  end
+
+  describe "the popup slot" do
+    test "renders nothing at all when no slot was given" do
+      assert popups(render_map(markers: @lyon)) == []
+    end
+
+    test "renders one hidden node per marker, keyed by marker id" do
+      document = PopupHost.render_popups(markers: @lyon)
+
+      assert popups(document) == ["1", "2"]
+
+      nodes = LazyHTML.query(document, "[data-rover-popup-for]")
+      # `hidden` is a boolean attribute, so its rendered value is the empty string.
+      assert LazyHTML.attribute(nodes, "hidden") == ["", ""]
+      assert LazyHTML.attribute(nodes, "class") == ["rover-popup", "rover-popup"]
+    end
+
+    test "the slot receives the normalised marker" do
+      document = PopupHost.render_popups(markers: @lyon)
+
+      assert LazyHTML.query(document, ".popup-label") |> LazyHTML.text() == "AtelierDépôt"
+    end
+
+    test "popups live outside the ignored canvas, where LiveView can patch them" do
+      # An ol/Overlay would reparent these under the canvas. That subtree is
+      # phx-update="ignore", and patching a node LiveView no longer controls is
+      # how this breaks in ways nobody can reproduce.
+      document = PopupHost.render_popups(markers: @lyon)
+
+      assert LazyHTML.query(document, ".rover-map__canvas [data-rover-popup-for]")
+             |> LazyHTML.attribute("data-rover-popup-for") == []
+
+      assert LazyHTML.query(document, ".rover-map > [data-rover-popup-for]")
+             |> LazyHTML.attribute("data-rover-popup-for") == ["1", "2"]
     end
   end
 

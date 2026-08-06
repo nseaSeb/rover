@@ -1,3 +1,4 @@
+import { Popups } from "./popups.js"
 import { RoverMap } from "./rover_map.js"
 
 /**
@@ -14,12 +15,17 @@ export const Rover = {
     this.canvasEl = this.el.querySelector(".rover-map__canvas") || this.el
     this.configJson = this.el.dataset.rover
     this.markersJson = this.el.dataset.roverMarkers
+    this.shapesJson = this.el.dataset.roverShapes
 
     this.config = parse(this.configJson, {}, "data-rover")
     this.map = new RoverMap(this.canvasEl, this.config, (event, payload) =>
       this.emit(event, payload)
     )
-    this.map.setMarkers(parse(this.markersJson, [], "data-rover-markers"))
+    this.map.setContent({
+      shapes: parse(this.shapesJson, [], "data-rover-shapes"),
+      markers: parse(this.markersJson, [], "data-rover-markers"),
+    })
+    this.popups = new Popups(this.el, this.map)
   },
 
   updated() {
@@ -32,15 +38,33 @@ export const Rover = {
       this.map.setConfig(this.config)
     }
 
+    // Gathered, then applied together: an update touching both layers must fit
+    // once over the union, not once per layer.
+    const content = {}
+
+    const shapesJson = this.el.dataset.roverShapes
+    if (shapesJson !== this.shapesJson) {
+      this.shapesJson = shapesJson
+      content.shapes = parse(shapesJson, [], "data-rover-shapes")
+    }
+
     const markersJson = this.el.dataset.roverMarkers
     if (markersJson !== this.markersJson) {
       this.markersJson = markersJson
-      this.map.setMarkers(parse(markersJson, [], "data-rover-markers"))
+      content.markers = parse(markersJson, [], "data-rover-markers")
     }
+
+    if (content.shapes !== undefined || content.markers !== undefined) {
+      this.map.setContent(content)
+    }
+
+    if (this.popups) this.popups.refresh()
   },
 
   destroyed() {
+    if (this.popups) this.popups.destroy()
     if (this.map) this.map.destroy()
+    this.popups = null
     this.map = null
   },
 

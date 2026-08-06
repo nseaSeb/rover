@@ -76,6 +76,7 @@ defmodule Rover.Components do
 
   alias Rover.Geo
   alias Rover.Marker
+  alias Rover.Shape
   alias Rover.Tiles
 
   @default_center {0.0, 0.0}
@@ -133,6 +134,14 @@ defmodule Rover.Components do
     default: [],
     doc: "Field mapping passed to `Rover.Marker.new!/2`, e.g. `[lat: :latitude]`."
 
+  attr :shapes, :list,
+    default: [],
+    doc: "Anything `Rover.Shape.new!/2` accepts. GeoJSON geometries — see `Rover.Shape`."
+
+  attr :shape_fields, :list,
+    default: [],
+    doc: "Field mapping passed to `Rover.Shape.new!/2`, e.g. `[geometry: :outline]`."
+
   attr :tiles, :any, default: :osm, doc: "A `Rover.Tiles` preset, `{:xyz, url}`, or `:none`."
 
   attr :fit, :any,
@@ -160,6 +169,7 @@ defmodule Rover.Components do
     """
 
   attr :on_marker_click, :string, default: nil
+  attr :on_shape_click, :string, default: nil
   attr :on_map_click, :string, default: nil
   attr :on_move_end, :string, default: nil
   attr :on_marker_drag_end, :string, default: nil
@@ -172,14 +182,38 @@ defmodule Rover.Components do
   attr :class, :any, default: nil, doc: "Extra classes on the map container."
   attr :rest, :global
 
+  slot :popup,
+    doc: """
+    Rendered once per marker and shown when that marker is clicked, with no server
+    round-trip. Receives the `Rover.Marker` via `:let`.
+
+        <.map id="clients" markers={@clients}>
+          <:popup :let={marker}>
+            <h3>{marker.label}</h3>
+            <p>{marker.data && marker.data.address}</p>
+            <button data-rover-popup-close>Close</button>
+          </:popup>
+        </.map>
+
+    `:data` is `nil` unless you set it, hence the guard.
+
+    Any element carrying `data-rover-popup-close` closes it; so do a click on the
+    map and the Escape key. Because every marker's popup is rendered up front,
+    this costs one DOM node per marker — fine for dozens, which is why clustering
+    rather than popups is the answer to hundreds.
+    """
+
   @spec map(map()) :: Phoenix.LiveView.Rendered.t()
   def map(assigns) do
     markers = Marker.new_all!(assigns.markers, assigns.marker_fields)
+    shapes = Shape.new_all!(assigns.shapes, assigns.shape_fields)
 
     assigns =
       assigns
       |> assign(:markers_json, encode_markers(markers))
-      |> assign(:config_json, encode_config(assigns, markers))
+      |> assign(:shapes_json, encode_shapes(shapes))
+      |> assign(:config_json, encode_config(assigns, markers, shapes))
+      |> assign(:popup_markers, if(assigns.popup == [], do: [], else: markers))
 
     ~H"""
     <div
@@ -189,9 +223,19 @@ defmodule Rover.Components do
       phx-hook="Rover"
       data-rover={@config_json}
       data-rover-markers={@markers_json}
+      data-rover-shapes={@shapes_json}
       {@rest}
     >
       <div id={"#{@id}-canvas"} class="rover-map__canvas" phx-update="ignore"></div>
+      <div
+        :for={marker <- @popup_markers}
+        id={"#{@id}-popup-#{marker.id}"}
+        class="rover-popup"
+        data-rover-popup-for={marker.id}
+        hidden
+      >
+        {render_slot(@popup, marker)}
+      </div>
     </div>
     """
   end
@@ -212,8 +256,14 @@ defmodule Rover.Components do
     |> Jason.encode!()
   end
 
-  defp encode_config(assigns, markers) do
-    {lat, lon} = resolve_center(assigns.center, markers)
+  defp encode_shapes(shapes) do
+    shapes
+    |> Enum.map(&Shape.dump/1)
+    |> Jason.encode!()
+  end
+
+  defp encode_config(assigns, markers, shapes) do
+    {lat, lon} = resolve_center(assigns.center, markers, shapes)
 
     %{
       center: [lat, lon],
@@ -221,7 +271,7 @@ defmodule Rover.Components do
       # instruction: it shifts whenever any marker moves. Tell the client, so it
       # does not re-animate the view on every marker update.
       derivedCenter: is_nil(assigns.center) || nil,
-      zoom: assigns.zoom || default_zoom(assigns.center, markers),
+      zoom: assigns.zoom || default_zoom(assigns.center),
       minZoom: assigns.min_zoom,
       maxZoom: assigns.max_zoom,
       tiles: encode_tiles(assigns.tiles),
@@ -233,6 +283,7 @@ defmodule Rover.Components do
       events:
         drop_nils(%{
           markerClick: assigns.on_marker_click,
+          shapeClick: assigns.on_shape_click,
           mapClick: assigns.on_map_click,
           moveEnd: assigns.on_move_end,
           markerDragEnd: assigns.on_marker_drag_end
@@ -242,21 +293,38 @@ defmodule Rover.Components do
     |> Jason.encode!()
   end
 
-  defp resolve_center(nil, []), do: @default_center
-
-  defp resolve_center(nil, markers) do
-    {south, west, north, east} = Geo.bbox(markers)
-    {(south + north) / 2, (west + east) / 2}
+  # A map with one parcel outline and no pin on it still has to know where to
+  # look, so the derived centre covers shapes as well as markers.
+  defp resolve_center(nil, markers, shapes) do
+    case Geo.bbox(content_coordinates(markers, shapes)) do
+      nil -> @default_center
+      {south, west, north, east} -> {(south + north) / 2, (west + east) / 2}
+    end
   end
 
-  defp resolve_center(center, _markers), do: Geo.coord!(center)
+  defp resolve_center(center, _markers, _shapes), do: Geo.coord!(center)
 
-  # Without an explicit center we fit to the markers anyway, so this zoom is only
+  defp content_coordinates(markers, shapes) do
+    Enum.map(markers, &{&1.lat, &1.lon}) ++ shape_coordinates(shapes)
+  end
+
+  # Marker coordinates are validated on the way in, so they are known good.
+  # Geometry is not: it arrives from PostGIS, a cadastral API, a routing service,
+  # and `ST_AsGeoJSON` on an EPSG:3857 column returns metres. Deriving a centre is
+  # a convenience, so an unusable coordinate is skipped rather than allowed to
+  # raise — taking a whole LiveView down at render time over a framing hint is the
+  # wrong trade. The client is deliberately just as forgiving about reading it.
+  defp shape_coordinates(shapes) do
+    shapes
+    |> Enum.flat_map(&Shape.coordinates/1)
+    |> Enum.filter(&match?({:ok, _}, Geo.coord(&1)))
+  end
+
+  # Without an explicit center we fit to the content anyway, so this zoom is only
   # the starting point of that animation. With a center and no zoom, "the world"
   # is never what anyone meant — a city-level zoom is the useful default.
-  defp default_zoom(nil, []), do: @default_zoom
-  defp default_zoom(nil, _markers), do: @default_zoom
-  defp default_zoom(_center, _markers), do: @centered_zoom
+  defp default_zoom(nil), do: @default_zoom
+  defp default_zoom(_center), do: @centered_zoom
 
   defp encode_tiles(tiles) do
     case Tiles.resolve!(tiles) do

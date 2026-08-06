@@ -5,6 +5,7 @@ export { Rover, RoverHooks } from "./hook.js"
 // hatch, not the road you are expected to take.
 export { RoverMap } from "./rover_map.js"
 export { MarkerLayer } from "./markers.js"
+export { ShapeLayer } from "./shapes.js"
 export { project, unproject, extentToBbox } from "./coords.js"
 
 import { RoverHooks } from "./hook.js"

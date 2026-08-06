@@ -17,9 +17,21 @@ the audience is other people's applications.
   (`mix assets.build`) in any commit that touches `assets/`.
 - The public vocabulary is `{latitude, longitude}`. The flip to OpenLayers'
   `[x, y]` happens only in `assets/js/coords.js`.
-- Markers are reconciled by `:id`. Any change that makes an update rebuild
-  unrelated features is a regression — `assets/test/markers.test.js` asserts
-  this by object identity.
+- **One documented exception:** `Rover.Shape` takes GeoJSON, which RFC 7946
+  defines as `[longitude, latitude]`. Shape data is never typed by hand — it comes
+  from `ST_AsGeoJSON`, a cadastral API, a routing service — so the standard wins
+  there and only there. Latitude-first still governs markers, centres and every
+  event payload.
+- Shape geometry is diffed by a server-computed `:rev`, never by hashing
+  coordinates on the client. A route is thousands of points; hashing it per update
+  is the cost the reconciler exists to avoid.
+- Markers and shapes are reconciled by `:id`. Any change that makes an update
+  rebuild unrelated features is a regression — `assets/test/markers.test.js` and
+  `assets/test/shapes.test.js` assert this by object identity.
+- Popups are deliberately **not** `ol/Overlay`. An Overlay reparents its node into
+  the map viewport, which lives inside `phx-update="ignore"`; LiveView would then
+  be patching markup it no longer controls. `assets/js/popups.js` positions
+  server-rendered nodes that never leave the outer element.
 
 ### Phoenix v1.8 guidelines
 

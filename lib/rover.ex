@@ -18,12 +18,16 @@ defmodule Rover do
   No `Feature`, no `VectorSource`, no `Style`. Assign a list, get a map. Assign a
   different list, and only the markers that changed are touched.
 
+  Geometries work the same way, from GeoJSON:
+
+      <.map id="parcel" shapes={@parcels} tiles={:ign_ortho} />
+
   ## Installation
 
   Add the dependency:
 
       def deps do
-        [{:rover, "~> 0.1"}]
+        [{:rover, "~> 0.2"}]
       end
 
   Register the hook in `assets/js/app.js`. Rover ships a prebuilt bundle with
@@ -47,9 +51,12 @@ defmodule Rover do
 
   ## Where to go next
 
-  * `Rover.Components` — the `<.map>` component, its attributes and its events.
+  * `Rover.Components` — the `<.map>` component, its attributes, its events and
+    the `<:popup>` slot.
   * `Rover.Marker` — what counts as a marker, and how to map your own schemas.
-  * `Rover.Tiles` — basemaps, and the attribution you are required to keep.
+  * `Rover.Shape` — GeoJSON outlines, routes and zones.
+  * `Rover.Tiles` — basemaps, including the French Géoportail, and the
+    attribution you are required to keep.
   * `Rover.Geo` — coordinates, bounding boxes, distances.
 
   ## Bring your own OpenLayers
