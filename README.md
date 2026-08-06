@@ -27,13 +27,29 @@ assign(socket,
 That is the whole thing. Assign a list of maps, get a map. Assign a different
 list, and Rover updates only the markers that actually changed.
 
-## Why not just use Leaflet?
+## Why not just write a hook?
 
-Leaflet is easy and OpenLayers is capable, and most Elixir apps end up picking
-easy. Rover is a bet that you should not have to choose: the ergonomics of a
-Leaflet wrapper, on top of the engine that handles projections, huge vector
-layers, WMS/WMTS, and the rest of the serious GIS surface — so the day your
-"three pins" turn into a cadastral overlay, you are not rewriting.
+Because you already can, and the first version is genuinely short. Three pins on
+a tile layer is a dozen lines of JavaScript and an afternoon.
+
+The afternoon after that is the one to think about. A `phx-hook` has no opinion
+about what happens when the list changes, so you write the reconciliation — and
+if you write the obvious version, clearing the layer and redrawing it, you also
+get the flicker, the interrupted pan and the popup that closes itself. Then the
+framing, because someone will open a map with one marker and another with two
+hundred. Then `updated()`, or you discover that changing the element's `id` is
+the only way to get new data in. Then the coordinate order, once, in the wrong
+direction. Then the attribution, which is a licence condition rather than a
+detail.
+
+None of that is hard. All of it is work you have done before, and Rover has done
+it here, with tests that assert the reconciliation by object identity so it stays
+done.
+
+The other half of the bet is the engine underneath. OpenLayers carries
+projections, huge vector layers, WMS/WMTS and the rest of the serious GIS
+surface — so the day your three pins turn into a cadastral overlay, the ceiling
+is somewhere else entirely.
 
 ## Installation
 
@@ -190,7 +206,7 @@ which is why clustering rather than popups is the answer to hundreds.
 
 ## Coordinates are always `{lat, lon}`
 
-The order you say out loud, and the order Leaflet uses. OpenLayers works in
+The order you say out loud. OpenLayers works in
 `[x, y]` — that is, `[lon, lat]` projected to Web Mercator — and Rover does that
 flip once, in JavaScript, where you never see it.
 
@@ -289,6 +305,35 @@ of static geometry. When it bites, the answer is an `ol/source/Vector` with a UR
 and a revision — not a bigger attribute.
 
 Issues and PRs welcome.
+
+## Coming from a Leaflet hook
+
+Most of the migration is deleting JavaScript. The mapping:
+
+| In your hook | In Rover |
+|---|---|
+| `L.map` + `setView` | `<.map center={{lat, lon}} zoom={12}>` |
+| `L.tileLayer(url, …)` | `tiles={:osm}` or `{:xyz, url, attributions: …}` |
+| `L.marker` + `L.divIcon` with an emoji | a marker's `:emoji` |
+| `L.marker` + an image icon | a marker's `:icon` |
+| `bindPopup(html)` | the `<:popup>` slot — and HEEx escapes it for you |
+| `bindTooltip` / `title` | a marker's `:tooltip` |
+| `L.geoJSON(geometry, style)` | `shapes` with `:color`, `:width`, `:fill_opacity` |
+| `featureGroup().getBounds()` + `fitBounds` | automatic, over markers and shapes together |
+| `handleEvent` + `push_event` to feed the map | `assign/3`; the data rides on attributes |
+| a versioned element `id` to force a remount | not needed — Rover has an `updated()` |
+
+Three things that catch people:
+
+1. **Every marker needs a stable `:id`.** Hook code usually builds anonymous
+   marker maps, because Leaflet has no use for an identity. Rover diffs on it, so
+   without one you get remove-and-add instead of an update — the flicker you were
+   trying to leave behind. Ids are almost always right there in the record you
+   are mapping over.
+2. **`height` is an inline style, and beats your class.** If you size maps with
+   `class="h-96"` or a flex parent, pass `height={nil}`.
+3. **Stroke opacity has no named field.** Leaflet's `opacity: 0.8` on a line
+   becomes `color: "rgba(37, 99, 235, 0.8)"`; `:fill_opacity` covers the fill.
 
 ## Licence
 

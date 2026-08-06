@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-08-06
+
+### Fixed
+
+- **`height={nil}` is now legal, and actually works.** `attr :height, :string`
+  rejected the `nil` its own documentation recommended — a compile warning, so an
+  error in any project building with `--warnings-as-errors`. It is `:any` now, like
+  `:class`. The attribute is also genuinely omitted rather than rendered as
+  `style=""`, because an empty inline style still beats a class in the cascade: a
+  map sized by `class="h-96"` or by a flex parent could not be sized at all.
+  A `style` you pass yourself now takes precedence over `height`.
+
+### Changed
+
+- The README's opening argument no longer rests on a comparison with another
+  library. It answers the question a Phoenix developer actually faces — "why not
+  just write a hook?" — and Leaflet's name has moved to a **Coming from a Leaflet
+  hook** section, where it is a migration table rather than a benchmark. That
+  section also names the three things that catch people: markers need a stable
+  `:id`, `height` beats your class, and stroke opacity goes through `rgba()`.
+
 ## [0.2.0] - 2026-08-06
 
 Everything the README called "the obvious next steps", minus clustering.
@@ -148,5 +169,6 @@ them.
   back as strings and will not match.
 - `fit` governs *re*fitting; the initial framing is separate.
 
+[0.2.1]: https://github.com/nseaSeb/rover/releases/tag/v0.2.1
 [0.2.0]: https://github.com/nseaSeb/rover/releases/tag/v0.2.0
 [0.1.0]: https://github.com/nseaSeb/rover/releases/tag/v0.1.0
