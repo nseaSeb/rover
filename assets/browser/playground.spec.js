@@ -88,6 +88,33 @@ async function emptyPixel(page) {
   return pixel
 }
 
+/**
+ * A pixel carrying a shape and no marker, on the given map.
+ *
+ * The centre of a shape's extent is not good enough: markers win hit-test ties, and
+ * on a 10rem map showing the same content the pins cover much of the geometry. Ask
+ * the map which pixels are actually the shape's.
+ */
+async function shapePixel(page, selector) {
+  const pixel = await page.evaluate((sel) => {
+    const rover = document.querySelector(sel)._rover
+    const [width, height] = rover.map.getSize()
+
+    for (let x = 4; x < width - 4; x += 4) {
+      for (let y = 4; y < height - 4; y += 4) {
+        const { marker, shape } = rover.featureAt([x, y])
+        if (shape && !marker) return { x, y }
+      }
+    }
+
+    return null
+  }, selector)
+
+  if (!pixel) throw new Error(`no shape-only pixel on ${selector}`)
+
+  return pixel
+}
+
 /** Wait until the hook has mounted and handed us the map. */
 async function mapReady(page) {
   await page.waitForFunction(
@@ -160,7 +187,7 @@ test.describe("the playground", () => {
     await page.goto("/")
     await mapReady(page)
 
-    const popup = page.locator('[data-rover-popup-for="1"]')
+    const popup = page.locator(`${MAP} [data-rover-popup-for="marker:1"]`)
     await expect(popup).toBeHidden()
 
     const pixel = await markerPixel(page, 1)
@@ -176,6 +203,98 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("opens a shape popup where the shape was clicked", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    // The parcel alone, so there is a large filled polygon to aim at.
+    await page.goto("/?shapes=parcel")
+    await mapReady(page)
+
+    const popup = page.locator(`${MAP} [data-rover-popup-for="shape:parcel"]`)
+    await expect(popup).toBeHidden()
+
+    const inside = await shapePixel(page, MAP)
+
+    await page.locator(CANVAS).click({ position: inside })
+    await expect(popup).toBeVisible()
+    await expect(popup).toContainText("AB 214")
+
+    // Anchored near the click, not at some far-off centroid.
+    const anchored = await page.evaluate(() => {
+      const node = document.querySelector('#clients [data-rover-popup-for="shape:parcel"]')
+      return { left: parseFloat(node.style.left), top: parseFloat(node.style.top) }
+    })
+
+    expect(Math.abs(anchored.left - inside.x)).toBeLessThan(4)
+    expect(anchored.top).toBeLessThan(inside.y)
+
+    await page.locator(CANVAS).click({ position: await emptyPixel(page) })
+    await expect(popup).toBeHidden()
+
+    expect(problems).toEqual([])
+  })
+
+  test("a marker and a shape sharing an id open their own popups", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    // Marker 1 and no shape called 1 in the demo, but the selectors must still be
+    // distinct — a bare id would have both nodes answering to one query.
+    const markerPopup = page.locator(`${MAP} [data-rover-popup-for="marker:1"]`)
+    const shapePopup = page.locator(`${MAP} [data-rover-popup-for="shape:parcel"]`)
+
+    await page.locator(CANVAS).click({ position: await markerPixel(page, 1) })
+    await expect(markerPopup).toBeVisible()
+    await expect(shapePopup).toBeHidden()
+
+    expect(problems).toEqual([])
+  })
+
+  test("opens a shape popup with no server handler wired", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    // The second map has a shape popup and no on_* attributes whatsoever. A shape
+    // click keyed on the configured event alone would never reach it, and the popup
+    // would simply never open — marker popups need no server, and neither should
+    // these.
+    const popup = page.locator('#mini [data-rover-popup-for="shape:parcel"]')
+    await expect(popup).toBeHidden()
+
+    const inside = await shapePixel(page, "#mini")
+
+    await page.locator("#mini-canvas").click({ position: inside })
+    await expect(popup).toBeVisible()
+    await expect(popup).toContainText("no handler wired")
+
+    expect(problems).toEqual([])
+  })
+
+  test("shows a shape tooltip on hover", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/?shapes=parcel")
+    await mapReady(page)
+
+    const inside = await shapePixel(page, MAP)
+
+    await page.locator(CANVAS).hover({ position: inside })
+
+    const tooltip = page.locator(`${MAP} .rover-tooltip`)
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText("Parcel AB 214")
+
+    expect(problems).toEqual([])
+  })
+
   test("keeps an open popup open across a LiveView patch", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)
@@ -183,7 +302,7 @@ test.describe("the playground", () => {
     await page.goto("/")
     await mapReady(page)
 
-    const popup = page.locator('[data-rover-popup-for="1"]')
+    const popup = page.locator(`${MAP} [data-rover-popup-for="marker:1"]`)
     await page.locator(CANVAS).click({ position: await markerPixel(page, 1) })
     await expect(popup).toBeVisible()
 

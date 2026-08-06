@@ -46,6 +46,7 @@ defmodule Rover.Shape do
   | `:fill_color` | string | Fill colour. Defaults to `:color`. |
   | `:fill_opacity` | float | `0.0`–`1.0`. Applied to the fill only. |
   | `:label` | string | Text drawn at the centre of the geometry. |
+  | `:tooltip` | string | Shown on hover, at the pointer. Defaults to `:label`. |
   | `:rev` | term | Revision. See below. |
   | `:data` | map | Echoed back verbatim in shape events. |
 
@@ -76,6 +77,7 @@ defmodule Rover.Shape do
           fill_color: String.t() | nil,
           fill_opacity: float() | nil,
           label: String.t() | nil,
+          tooltip: String.t() | nil,
           rev: term(),
           data: map() | nil
         }
@@ -89,6 +91,7 @@ defmodule Rover.Shape do
     :fill_color,
     :fill_opacity,
     :label,
+    :tooltip,
     :rev,
     :data
   ]
@@ -101,6 +104,7 @@ defmodule Rover.Shape do
     fill_color: [:fill_color, "fill_color", "fillColor"],
     fill_opacity: [:fill_opacity, "fill_opacity", "fillOpacity"],
     label: [:label, :name, :title, "label", "name", "title"],
+    tooltip: [:tooltip, "tooltip"],
     rev: [:rev, "rev"],
     data: [:data, "data"]
   ]
@@ -149,6 +153,7 @@ defmodule Rover.Shape do
       fill_color: source |> extract(:fill_color, opts) |> to_string_or_nil(),
       fill_opacity: extract(source, :fill_opacity, opts),
       label: source |> extract(:label, opts) |> to_string_or_nil(),
+      tooltip: source |> extract(:tooltip, opts) |> to_string_or_nil(),
       rev: extract(source, :rev, opts) || default_rev(geometry),
       data: extract(source, :data, opts)
     }

@@ -288,12 +288,16 @@ export class RoverMap {
       if (event.dragging) return this.hideTooltip()
 
       const { marker, markerFeature, shape } = this.featureAt(event.pixel)
-      const clickableShape = shape && (this.config.events || {}).shapeClick
+      const clickableShape = shape && this.wants("shapeClick")
 
       this.map.getTargetElement().style.cursor = marker || clickableShape ? "pointer" : ""
 
       if (marker) {
         this.showTooltip(marker, markerFeature.getGeometry().getCoordinates())
+      } else if (shape && (shape.tooltip || shape.label)) {
+        // Anchored at the pointer: a route's tooltip jumping to its centroid would
+        // point at nothing the user is looking at.
+        this.showTooltip(shape, event.coordinate)
       } else {
         this.hideTooltip()
       }
@@ -307,8 +311,6 @@ export class RoverMap {
       const { marker, shape } = this.featureAt(event.pixel)
       const { lat, lon } = unproject(event.coordinate)
 
-      const events = this.config.events || {}
-
       if (marker) {
         this.emit("markerClick", {
           id: marker.id,
@@ -316,7 +318,7 @@ export class RoverMap {
           lon: marker.lon,
           data: marker.data ?? null,
         })
-      } else if (shape && events.shapeClick) {
+      } else if (shape && this.wants("shapeClick")) {
         this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null })
       } else {
         // A shape with no click handler is scenery, not a target. Filled polygons
@@ -385,6 +387,10 @@ export class RoverMap {
   on(name, fn) {
     this.listeners[name] = this.listeners[name] || []
     this.listeners[name].push(fn)
+  }
+
+  wants(name) {
+    return wantsEvent(this.config, this.listeners, name)
   }
 
   // -- lifecycle ------------------------------------------------------------
@@ -467,6 +473,23 @@ function resolveRetina(url) {
  * instruction, so the first frame is always fitted — only the client knows the
  * viewport size. `fit` then governs *re*fitting.
  */
+/**
+ * Does anything care about this event — the server, or a client-side subscriber?
+ *
+ * Both matter, and for different reasons. A shape with no handler and no popup is
+ * scenery: it must not claim the click, or a filled polygon swallows every
+ * `on_map_click` across its whole interior. A shape with a popup and no handler is
+ * interactive, and the server has no part in it.
+ *
+ * Pure, and exported, because the scenery case is the one the browser suite cannot
+ * reach without a third map on the playground.
+ */
+export function wantsEvent(config, listeners, name) {
+  const subscribers = (listeners || {})[name]
+
+  return Boolean(((config || {}).events || {})[name]) || Boolean(subscribers && subscribers.length)
+}
+
 export function shouldFit({ hasFitted, derivedCenter, fit }) {
   if (!hasFitted && derivedCenter) return true
   if (!fit) return false

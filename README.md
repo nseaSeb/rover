@@ -158,7 +158,8 @@ assign(socket,
 
 A bare geometry, a `Feature` or a `FeatureCollection`; atom or string keys; or an
 undecoded JSON string, so `ST_AsGeoJSON` output goes straight in. Fields:
-`:color`, `:width`, `:fill_color`, `:fill_opacity`, `:label`, `:rev`, `:data`.
+`:color`, `:width`, `:fill_color`, `:fill_opacity`, `:label`, `:tooltip`, `:rev`,
+`:data`.
 
 Shapes are **the one place Rover is not latitude-first** — GeoJSON is defined as
 `[longitude, latitude]` and the standard wins, because geometry is never typed by
@@ -193,6 +194,22 @@ A slot, rendered once per marker and shown on click with no server round-trip:
   </:popup>
 </.map>
 ```
+
+Shapes get their own slot, and open where the geometry was clicked rather than at
+its centroid — pointing at the middle of a long route would point at nothing the
+user did:
+
+```heex
+<:shape_popup :let={shape}>
+  <h3>{shape.label}</h3>
+  <p>{shape.data && shape.data.area} ha</p>
+</:shape_popup>
+```
+
+Both work with or without `on_marker_click` / `on_shape_click`: the click is
+claimed when either the server or a popup wants it, and by neither when the shape
+is scenery — a filled outline with no handler and no popup must not swallow
+`on_map_click` across its whole interior.
 
 Closed by `data-rover-popup-close`, by clicking the map, or by Escape. Because the
 markup comes from HEEx it is escaped by construction — no interpolating customer
