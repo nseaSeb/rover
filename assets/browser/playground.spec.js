@@ -295,6 +295,81 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("renders a heat field, and rebuilds it only when the revision changes", async ({
+    page,
+  }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    const heat = () =>
+      page.evaluate((selector) => {
+        const layer = document.querySelector(selector)._rover.heatmapLayer
+        return {
+          count: layer.source.getFeatures().length,
+          rev: layer.rev,
+          radius: layer.layer.getRadius(),
+          blur: layer.layer.getBlur(),
+          visible: layer.layer.getVisible(),
+        }
+      }, MAP)
+
+    expect((await heat()).count).toBe(0)
+
+    await page.getByRole("button", { name: /^Heatmap:/ }).click()
+    await expect(page.locator(".log")).toContainText("heatmap on")
+
+    const on = await heat()
+    expect(on.count).toBe(180)
+    // The style has to reach the layer, not just the payload.
+    expect(on.radius).toBe(14)
+    expect(on.blur).toBe(22)
+    expect(on.visible).toBe(true)
+
+    // An unrelated update must not rebuild the field. Comparing the revision proves
+    // nothing — it would be the same string either way — so tag a feature and see
+    // whether it survives. A rebuild replaces every feature and loses the tag.
+    await page.evaluate((selector) => {
+      const features = document.querySelector(selector)._rover.heatmapLayer.source.getFeatures()
+      features[0].set("__probe", "tagged", true)
+    }, MAP)
+
+    await page.getByRole("button", { name: "Move the first one" }).click()
+    await expect(page.locator(".log")).toContainText("moved marker 1")
+
+    const survived = await page.evaluate((selector) => {
+      const features = document.querySelector(selector)._rover.heatmapLayer.source.getFeatures()
+      return features.length > 0 && features[0].get("__probe")
+    }, MAP)
+
+    expect(survived, "the heat field was rebuilt for nothing").toBe("tagged")
+    expect((await heat()).count).toBe(180)
+
+    // A style-only change is the case the layer's revision check exists for: the
+    // payload changes, so the hook does call reconcile, and the new radius must be
+    // applied without throwing away the points.
+    await page.getByRole("button", { name: /^Heat radius:/ }).click()
+    await expect(page.locator(".log")).toContainText("style only")
+
+    const restyled = await heat()
+    expect(restyled.radius, "the new radius was not applied").toBe(20)
+
+    const stillTagged = await page.evaluate((selector) => {
+      const features = document.querySelector(selector)._rover.heatmapLayer.source.getFeatures()
+      return features.length > 0 && features[0].get("__probe")
+    }, MAP)
+
+    expect(stillTagged, "restyling rebuilt the whole field").toBe("tagged")
+
+    await page.getByRole("button", { name: /^Heatmap:/ }).click()
+    await expect(page.locator(".log")).toContainText("heatmap off")
+    expect((await heat()).count).toBe(0)
+
+    expect(problems).toEqual([])
+  })
+
   test("keeps an open popup open across a LiveView patch", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)

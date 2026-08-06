@@ -75,6 +75,7 @@ defmodule Rover.Components do
   use Phoenix.Component
 
   alias Rover.Geo
+  alias Rover.Heatmap
   alias Rover.Marker
   alias Rover.Shape
   alias Rover.Tiles
@@ -141,6 +142,21 @@ defmodule Rover.Components do
   attr :shape_fields, :list,
     default: [],
     doc: "Field mapping passed to `Rover.Shape.new!/2`, e.g. `[geometry: :outline]`."
+
+  attr :heatmap, :list,
+    default: [],
+    doc: """
+    Points for a density field — see `Rover.Heatmap`. No `:id` needed: a heatmap is
+    an aggregate, so it is diffed by revision rather than feature by feature.
+    """
+
+  attr :heatmap_fields, :list,
+    default: [],
+    doc: "Field mapping for the heatmap, e.g. `[weight: fn r -> r.orders / 40 end]`."
+
+  attr :heatmap_style, :list,
+    default: [],
+    doc: "Any of `:radius`, `:blur`, `:opacity`, `:gradient`. See `Rover.Heatmap.style!/1`."
 
   attr :tiles, :any, default: :osm, doc: "A `Rover.Tiles` preset, `{:xyz, url}`, or `:none`."
 
@@ -236,12 +252,14 @@ defmodule Rover.Components do
   def map(assigns) do
     markers = Marker.new_all!(assigns.markers, assigns.marker_fields)
     shapes = Shape.new_all!(assigns.shapes, assigns.shape_fields)
+    heat = Heatmap.new_all!(assigns.heatmap, assigns.heatmap_fields)
 
     assigns =
       assigns
       |> assign(:markers_json, encode_markers(markers))
       |> assign(:shapes_json, encode_shapes(shapes))
-      |> assign(:config_json, encode_config(assigns, markers, shapes))
+      |> assign(:heatmap_json, encode_heatmap(heat, assigns.heatmap_style))
+      |> assign(:config_json, encode_config(assigns, markers, shapes, heat))
       |> assign(:popup_markers, if(assigns.popup == [], do: [], else: markers))
       |> assign(:popup_shapes, if(assigns.shape_popup == [], do: [], else: shapes))
 
@@ -253,6 +271,7 @@ defmodule Rover.Components do
       data-rover={@config_json}
       data-rover-markers={@markers_json}
       data-rover-shapes={@shapes_json}
+      data-rover-heatmap={@heatmap_json}
       {@rest}
       {height_style(@height)}
     >
@@ -311,8 +330,16 @@ defmodule Rover.Components do
     |> Jason.encode!()
   end
 
-  defp encode_config(assigns, markers, shapes) do
-    {lat, lon} = resolve_center(assigns.center, markers, shapes)
+  # Nothing at all when there is no heat field, so the attribute is absent rather
+  # than an empty payload every map has to carry.
+  defp encode_heatmap([], _style), do: nil
+
+  defp encode_heatmap(points, style) do
+    Jason.encode!(%{points: points, rev: Heatmap.rev(points), style: Heatmap.style!(style)})
+  end
+
+  defp encode_config(assigns, markers, shapes, heat) do
+    {lat, lon} = resolve_center(assigns.center, markers, shapes, heat)
 
     %{
       center: [lat, lon],
@@ -344,17 +371,19 @@ defmodule Rover.Components do
 
   # A map with one parcel outline and no pin on it still has to know where to
   # look, so the derived centre covers shapes as well as markers.
-  defp resolve_center(nil, markers, shapes) do
-    case Geo.bbox(content_coordinates(markers, shapes)) do
+  defp resolve_center(nil, markers, shapes, heat) do
+    case Geo.bbox(content_coordinates(markers, shapes, heat)) do
       nil -> @default_center
       {south, west, north, east} -> {(south + north) / 2, (west + east) / 2}
     end
   end
 
-  defp resolve_center(center, _markers, _shapes), do: Geo.coord!(center)
+  defp resolve_center(center, _markers, _shapes, _heat), do: Geo.coord!(center)
 
-  defp content_coordinates(markers, shapes) do
-    Enum.map(markers, &{&1.lat, &1.lon}) ++ shape_coordinates(shapes)
+  defp content_coordinates(markers, shapes, heat) do
+    Enum.map(markers, &{&1.lat, &1.lon}) ++
+      Enum.map(heat, &{&1.lat, &1.lon}) ++
+      shape_coordinates(shapes)
   end
 
   # Marker coordinates are validated on the way in, so they are known good.

@@ -55,6 +55,7 @@ defmodule Rover do
     the `<:popup>` slot.
   * `Rover.Marker` — what counts as a marker, and how to map your own schemas.
   * `Rover.Shape` — GeoJSON outlines, routes and zones.
+  * `Rover.Heatmap` — density as a heat field rather than as pins.
   * `Rover.Tiles` — basemaps, including the French Géoportail, and the
     attribution you are required to keep.
   * `Rover.Geo` — coordinates, bounding boxes, distances.

@@ -16,12 +16,14 @@ export const Rover = {
     this.configJson = this.el.dataset.rover
     this.markersJson = this.el.dataset.roverMarkers
     this.shapesJson = this.el.dataset.roverShapes
+    this.heatmapJson = this.el.dataset.roverHeatmap
 
     this.config = parse(this.configJson, {}, "data-rover")
     this.map = new RoverMap(this.canvasEl, this.config, (event, payload) =>
       this.emit(event, payload)
     )
     this.map.setContent({
+      heatmap: parse(this.heatmapJson, null, "data-rover-heatmap"),
       shapes: parse(this.shapesJson, [], "data-rover-shapes"),
       markers: parse(this.markersJson, [], "data-rover-markers"),
     })
@@ -65,6 +67,12 @@ export const Rover = {
     // once over the union, not once per layer.
     const content = {}
 
+    const heatmapJson = this.el.dataset.roverHeatmap
+    if (heatmapJson !== this.heatmapJson) {
+      this.heatmapJson = heatmapJson
+      content.heatmap = parse(heatmapJson, null, "data-rover-heatmap")
+    }
+
     const shapesJson = this.el.dataset.roverShapes
     if (shapesJson !== this.shapesJson) {
       this.shapesJson = shapesJson
@@ -77,7 +85,11 @@ export const Rover = {
       content.markers = parse(markersJson, [], "data-rover-markers")
     }
 
-    if (content.shapes !== undefined || content.markers !== undefined) {
+    if (
+      content.heatmap !== undefined ||
+      content.shapes !== undefined ||
+      content.markers !== undefined
+    ) {
       this.map.setContent(content)
     }
 

@@ -201,6 +201,20 @@ defmodule Rover.Marker do
   end
 
   defp read(source, fun) when is_function(fun, 1), do: fun.(source)
+  # A function of any other arity can only be a mistake, and the mistake is easy to
+  # make: `mix format` rewrites `&(&1.orders / 40)` as `& &1.orders/40`, which Elixir
+  # parses as a capture of arity 40. Falling through to `Map.get(source, fun)` would
+  # return nil and quietly substitute the default — a wrong map with no error.
+  defp read(_source, fun) when is_function(fun) do
+    raise ArgumentError, """
+    field accessor must be a 1-arity function, got one of arity #{:erlang.fun_info(fun)[:arity]}.
+
+    If you wrote a capture containing a division, wrap it or use fn:
+
+        fn row -> row.orders / 40 end
+    """
+  end
+
   defp read(source, key), do: Map.get(source, key)
 
   defp fetch_any(source, keys) do
