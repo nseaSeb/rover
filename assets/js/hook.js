@@ -35,6 +35,20 @@ export const Rover = {
     //
     //     document.getElementById("clients")._rover.map.getView().getZoom()
     this.el._rover = this.map
+
+    // push_event reaches every hook on the page, so each map answers only to the
+    // id it was given. Without this, two maps in one LiveView would both fly.
+    this.handleEvent("rover:fly_to", (payload) => {
+      if (this.mine(payload)) this.map.flyTo(payload)
+    })
+
+    this.handleEvent("rover:fit_to", (payload) => {
+      if (this.mine(payload)) this.map.fitTo(payload)
+    })
+  },
+
+  mine(payload) {
+    return payload && payload.id === this.el.id
   },
 
   updated() {
