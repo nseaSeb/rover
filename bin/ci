@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Runs the same checks as .github/workflows/ci.yml, in a container, against
+# your live working tree — a way to know CI will pass before you push. First
+# run builds the toolchain image (a minute or two); after that Docker's build
+# cache makes re-runs pay only for what mix/npm actually need to redo.
+#
+# SKIP_BROWSER=1 bin/ci skips the slow Playwright suite while iterating.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+IMAGE=rover-ci
+
+docker build -t "$IMAGE" -f Dockerfile .
+
+DOCKER_TTY_FLAGS=""
+[ -t 0 ] && DOCKER_TTY_FLAGS="$DOCKER_TTY_FLAGS -i"
+[ -t 1 ] && DOCKER_TTY_FLAGS="$DOCKER_TTY_FLAGS -t"
+
+# Word-splitting is intentional: flags are single tokens, never quoted.
+# shellcheck disable=SC2086
+docker run --rm $DOCKER_TTY_FLAGS \
+  -v "$PWD":/app \
+  -v rover_ci_deps:/app/deps \
+  -v rover_ci_build:/app/_build \
+  -v rover_ci_node_modules:/app/assets/node_modules \
+  -v rover_ci_playwright:/root/.cache/ms-playwright \
+  -e SKIP_BROWSER \
+  -w /app \
+  "$IMAGE" bash docker/checks.sh
