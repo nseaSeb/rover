@@ -230,6 +230,83 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("flies to a one-shot destination without making it state", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    const centre = () =>
+      page.evaluate((selector) => {
+        const rover = document.querySelector(selector)._rover
+        const [x, y] = rover.map.getView().getCenter()
+        return { x, y, zoom: rover.map.getView().getZoom() }
+      }, MAP)
+
+    const before = await centre()
+
+    // Paris, from a map framed on Lyon. Nothing is assigned, so this is the whole
+    // round trip: push_event, the right map answering, the view animating.
+    await page.getByRole("button", { name: "Fly to Paris" }).click()
+    await expect(page.locator(".log")).toContainText("flew to Paris")
+    await page.waitForTimeout(900)
+
+    const after = await centre()
+
+    expect(after.x, "the view did not move").not.toBeCloseTo(before.x, 0)
+    expect(after.zoom).toBeCloseTo(12, 0)
+
+    // The other map on the page shares the markers but was not addressed. A command
+    // that reaches every hook and is not filtered by id moves both.
+    const mini = await page.evaluate(
+      () => document.getElementById("mini")._rover.map.getView().getCenter()[0]
+    )
+
+    expect(mini, "the second map flew too").toBeCloseTo(before.x, 0)
+
+    // And it survives the next unrelated re-render: a command must not be undone
+    // by a config attribute that never changed.
+    await page.getByRole("button", { name: "Recolour the parcel" }).click()
+    await expect(page.locator(".log")).toContainText("recoloured")
+    await page.waitForTimeout(600)
+
+    const later = await centre()
+    expect(later.x, "an unrelated update pulled the view back").toBeCloseTo(after.x, 0)
+
+    expect(problems).toEqual([])
+  })
+
+  test("fits to a subset on command, honouring max_zoom", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    const zoom = () =>
+      page.evaluate(
+        (selector) => document.querySelector(selector)._rover.map.getView().getZoom(),
+        MAP
+      )
+
+    const before = await zoom()
+
+    // One marker with max_zoom: 17 lands on exactly 17 — an assertion that cannot
+    // be satisfied by doing nothing, which a `>=` against the previous zoom quietly
+    // was.
+    await page.getByRole("button", { name: "Fit the first client" }).click()
+    await expect(page.locator(".log")).toContainText("fitted to marker")
+    await page.waitForTimeout(900)
+
+    const after = await zoom()
+
+    expect(after, `zoom ${before} -> ${after}`).toBeCloseTo(17, 0)
+    expect(after).not.toBeCloseTo(before, 0)
+
+    expect(problems).toEqual([])
+  })
+
   test("does not yank the view when a marker moves", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)

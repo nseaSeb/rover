@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`Rover.fly_to/4` and `Rover.fit_to/4`** — imperative view control, for when the
+  view is a gesture rather than state. `center` and `zoom` are attributes, so using
+  them for "the user clicked a row, take me there" costs you the automatic framing
+  and forces the view into your assigns. These are commands: nothing is assigned,
+  no attribute changes, and the map keeps its declarative framing for everything
+  else. `Rover.bbox/1` is public alongside them, and takes markers, shapes, plain
+  coordinates or a box.
 - **A browser suite.** Five Playwright scenarios against the `mix dev` playground,
   guarding the paths where every rendering bug this library has shipped actually
   lived: the tile URLs the browser requests, the popup DOM, and the view after an

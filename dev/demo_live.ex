@@ -96,6 +96,8 @@ defmodule RoverDev.DemoLive do
       <button phx-click="cycle_shapes">Shapes: {shape_label(@shapes)}</button>
       <button phx-click="cycle_tiles">Tiles: {@tiles}</button>
       <button phx-click="reset">Reset</button>
+      <button phx-click="fly_paris">Fly to Paris</button>
+      <button phx-click="fit_first">Fit the first client</button>
     </div>
 
     <.map
@@ -118,6 +120,19 @@ defmodule RoverDev.DemoLive do
         <button data-rover-popup-close>Close</button>
       </:popup>
     </.map>
+
+    <p class="subtitle">
+      A second map, sharing the same markers. Commands name their target, so flying
+      the one above must leave this one where it is.
+    </p>
+
+    <.map
+      id="mini"
+      markers={@clients}
+      tiles={:carto_light}
+      height="10rem"
+      controls={[:attribution]}
+    />
 
     <div class="log">
       <%= if @log do %>
@@ -238,6 +253,24 @@ defmodule RoverDev.DemoLive do
      socket
      |> assign(clients: @clients, shapes: shapes(:both), next_id: 4)
      |> log("reset")}
+  end
+
+  # `fly_to` and `fit_to` are commands, not state: nothing below assigns a centre
+  # or a zoom, and the map keeps its declarative framing for everything else.
+  def handle_event("fly_paris", _params, socket) do
+    {:noreply,
+     socket
+     |> Rover.fly_to("clients", {48.8566, 2.3522}, zoom: 12)
+     |> log("flew to Paris — no assign, no attribute change")}
+  end
+
+  def handle_event("fit_first", _params, socket) do
+    first = List.first(socket.assigns.clients)
+
+    {:noreply,
+     socket
+     |> Rover.fit_to("clients", [first], max_zoom: 17)
+     |> log("fitted to marker #{first.id} alone, at zoom 17")}
   end
 
   def handle_event("marker_clicked", %{"id" => id, "lat" => lat, "lon" => lon}, socket) do

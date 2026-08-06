@@ -204,6 +204,34 @@ patching markup it no longer owns. Rover leaves the nodes where HEEx put them an
 positions them itself. The cost is one DOM node per marker — fine for dozens,
 which is why clustering rather than popups is the answer to hundreds.
 
+## Moving the view without owning it
+
+`center` and `zoom` are attributes, which is right when the view *is* a property of
+what you are rendering. It is the wrong tool for "the user clicked a row, take me
+there": passing `center` costs you the automatic framing, so you trade the default
+behaviour for one gesture and hold the view in assigns from then on.
+
+For that, send a command instead:
+
+```elixir
+def handle_event("select_client", %{"id" => id}, socket) do
+  client = Enum.find(socket.assigns.clients, &(&1.id == id))
+
+  {:noreply, Rover.fly_to(socket, "clients", {client.lat, client.lon}, zoom: 15)}
+end
+```
+
+Nothing is assigned, no attribute changes, and the map keeps its declarative
+framing for everything else. `Rover.fit_to/4` is the "show me these" counterpart
+and takes markers, shapes, coordinates or a `{south, west, north, east}` box:
+
+```elixir
+{:noreply, Rover.fit_to(socket, "fleet", vehicles_on_shift, max_zoom: 15)}
+```
+
+Both name the map's DOM id, because a LiveView can hold several maps and an event
+reaches all of them.
+
 ## Coordinates are always `{lat, lon}`
 
 The order you say out loud. OpenLayers works in

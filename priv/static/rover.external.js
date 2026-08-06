@@ -518,6 +518,38 @@ var RoverMap = class {
     this.beQuiet(ANIMATION_MS);
     this.map.getView().animate({ center: project(center[0], center[1]), zoom, duration: ANIMATION_MS });
   }
+  /**
+   * A one-shot move, from `Rover.fly_to/4`.
+   *
+   * Deliberately does not touch `config` or `hasFitted`: the view has been moved,
+   * but nothing about what the server is rendering has changed, so the next update
+   * must not undo this and must not think a fit is owed.
+   */
+  flyTo({ center, zoom, duration }) {
+    const ms = duration ?? ANIMATION_MS;
+    this.beQuiet(ms);
+    this.map.getView().animate({
+      center: project(center[0], center[1]),
+      // `undefined` leaves the zoom alone, which is what omitting :zoom means.
+      zoom: typeof zoom === "number" ? zoom : void 0,
+      duration: ms
+    });
+  }
+  /** A one-shot fit, from `Rover.fit_to/4`. */
+  fitTo({ bbox, padding, maxZoom, duration }) {
+    const [south, west, north, east] = bbox;
+    const [minX, minY] = project(south, west);
+    const [maxX, maxY] = project(north, east);
+    const ms = duration ?? ANIMATION_MS;
+    const pad = padding ?? 48;
+    this.beQuiet(ms);
+    this.map.getView().fit([minX, minY, maxX, maxY], {
+      size: this.map.getSize(),
+      padding: [pad, pad, pad, pad],
+      maxZoom,
+      duration: ms
+    });
+  }
   maybeFit() {
     if (!shouldFit({ hasFitted: this.hasFitted, ...this.config })) return;
     const extent = this.contentExtent;
@@ -782,6 +814,15 @@ var Rover = {
     });
     this.popups = new Popups(this.el, this.map);
     this.el._rover = this.map;
+    this.handleEvent("rover:fly_to", (payload) => {
+      if (this.mine(payload)) this.map.flyTo(payload);
+    });
+    this.handleEvent("rover:fit_to", (payload) => {
+      if (this.mine(payload)) this.map.fitTo(payload);
+    });
+  },
+  mine(payload) {
+    return payload && payload.id === this.el.id;
   },
   updated() {
     if (!this.map) return;
