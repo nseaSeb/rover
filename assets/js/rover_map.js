@@ -13,6 +13,7 @@ import { defaults as defaultInteractions } from "ol/interaction/defaults.js"
 import { createEmpty, extend } from "ol/extent.js"
 
 import { extentToBbox, project, unproject } from "./coords.js"
+import { HeatmapLayer } from "./heatmap.js"
 import { MarkerLayer } from "./markers.js"
 import { ShapeLayer } from "./shapes.js"
 
@@ -40,12 +41,18 @@ export class RoverMap {
 
     this.markerLayer = new MarkerLayer()
     this.shapeLayer = new ShapeLayer()
+    this.heatmapLayer = new HeatmapLayer()
     this.tileLayer = new TileLayer({ zIndex: 0 })
     this.applyTiles(this.config.tiles)
 
     this.map = new Map({
       target: element,
-      layers: [this.tileLayer, this.shapeLayer.layer, this.markerLayer.layer],
+      layers: [
+        this.tileLayer,
+        this.heatmapLayer.layer,
+        this.shapeLayer.layer,
+        this.markerLayer.layer,
+      ],
       controls: buildControls(this.config),
       interactions: buildInteractions(this.config),
       view: new View({
@@ -84,7 +91,13 @@ export class RoverMap {
    * outside the shapes' bounding box was simply off-screen, for good. The mount
    * path and any update touching both layers go through here instead.
    */
-  setContent({ markers, shapes }) {
+  setHeatmap(heatmap) {
+    this.heatmapLayer.reconcile(heatmap)
+    this.maybeFit()
+  }
+
+  setContent({ markers, shapes, heatmap }) {
+    if (heatmap !== undefined) this.heatmapLayer.reconcile(heatmap)
     if (shapes !== undefined) this.shapeLayer.reconcile(shapes)
     if (markers !== undefined) this.markerLayer.reconcile(markers)
     this.maybeFit()
@@ -177,9 +190,14 @@ export class RoverMap {
     })
   }
 
-  // Markers and shapes together: a parcel outline with no pin on it still frames.
+  // Every layer that carries content: a heat field alone, or a parcel outline with
+  // no pin on it, still frames.
   get contentExtent() {
-    const extents = [this.shapeLayer.extent, this.markerLayer.extent].filter(Boolean)
+    const extents = [
+      this.heatmapLayer.extent,
+      this.shapeLayer.extent,
+      this.markerLayer.extent,
+    ].filter(Boolean)
 
     if (extents.length === 0) return null
     if (extents.length === 1) return extents[0]
@@ -408,6 +426,7 @@ export class RoverMap {
     if (this.resizeObserver) this.resizeObserver.disconnect()
     this.markerLayer.dispose()
     this.shapeLayer.dispose()
+    this.heatmapLayer.dispose()
     this.map.setTarget(undefined)
   }
 }

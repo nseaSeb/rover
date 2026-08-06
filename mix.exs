@@ -109,7 +109,7 @@ defmodule Rover.MixProject do
       filter_modules: ~r/^Elixir\.Rover(\.|$)/,
       groups_for_modules: [
         Components: [Rover.Components],
-        Data: [Rover.Marker, Rover.Shape, Rover.Geo, Rover.Tiles]
+        Data: [Rover.Marker, Rover.Shape, Rover.Heatmap, Rover.Geo, Rover.Tiles]
       ]
     ]
   end

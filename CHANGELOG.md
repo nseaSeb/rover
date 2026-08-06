@@ -8,6 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`Rover.Heatmap` and the `heatmap` attribute** — density as a heat field. No
+  `:id` required, unlike markers and shapes: a heatmap is an aggregate, so per-point
+  identity buys nothing. Diffed by revision instead, which also means a style-only
+  change restyles the layer without rebuilding the field. Tunable with
+  `heatmap_style`: `:radius`, `:blur`, `:opacity`, `:gradient`.
 - **A `<:shape_popup>` slot**, anchored where the geometry was clicked rather than at
   its centroid. Popup keys are now namespaced (`marker:1`, `shape:1`), because a
   marker and a shape may legitimately share an id and two nodes answering one
@@ -38,6 +43,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Field accessors of the wrong arity now raise instead of being read as a map key
+  and silently substituting the default. `mix format` rewrites
+  `&(&1.orders / 40)` as `& &1.orders/40`, which Elixir parses as an arity-40
+  capture — so the mistake is easy to make and used to produce a quietly wrong map.
+  Applies to `Rover.Marker`, `Rover.Shape` and `Rover.Heatmap`.
 - **Live reload never worked in the playground.** The endpoint declared
   `plug Phoenix.LiveReloader` but not the socket it connects to, so the browser
   retried a 404 forever while the esbuild watcher rebuilt bundles nobody loaded.

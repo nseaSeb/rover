@@ -57,6 +57,8 @@ defmodule RoverDev.DemoLive do
        clients: @clients,
        shapes: shapes(:both),
        tiles: :ign_plan,
+       heat: false,
+       heat_radius: 14,
        next_id: 4,
        log: nil
      )}
@@ -98,12 +100,16 @@ defmodule RoverDev.DemoLive do
       <button phx-click="reset">Reset</button>
       <button phx-click="fly_paris">Fly to Paris</button>
       <button phx-click="fit_first">Fit the first client</button>
+      <button phx-click="toggle_heat">Heatmap: {if @heat, do: "on", else: "off"}</button>
+      <button phx-click="cycle_heat_radius">Heat radius: {@heat_radius}</button>
     </div>
 
     <.map
       id="clients"
       markers={@clients}
       shapes={@shapes}
+      heatmap={if @heat, do: heat_points(), else: []}
+      heatmap_style={[radius: @heat_radius, blur: 22, opacity: 0.85]}
       tiles={@tiles}
       height="28rem"
       controls={[:zoom, :attribution, :scale_line]}
@@ -248,6 +254,24 @@ defmodule RoverDev.DemoLive do
      |> log("shapes: #{next} — with no markers left the map would still frame the geometry")}
   end
 
+  def handle_event("toggle_heat", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(heat: !socket.assigns.heat)
+     |> log("heatmap #{if socket.assigns.heat, do: "off", else: "on"}")}
+  end
+
+  # A style-only change: the payload's `style` moves while `rev` does not, so the
+  # client must restyle the layer without rebuilding its 180 features.
+  def handle_event("cycle_heat_radius", _params, socket) do
+    next = if socket.assigns.heat_radius >= 26, do: 8, else: socket.assigns.heat_radius + 6
+
+    {:noreply,
+     socket
+     |> assign(heat_radius: next)
+     |> log("heat radius #{next} — style only, the points are untouched")}
+  end
+
   def handle_event("cycle_tiles", _params, socket) do
     next =
       case socket.assigns.tiles do
@@ -346,6 +370,21 @@ defmodule RoverDev.DemoLive do
       tooltip: "Delivery route — 5 stops",
       data: %{stops: 5}
     }
+  end
+
+  # A deterministic cloud around Lyon: a heat field needs a crowd, and a demo needs
+  # the same crowd every time.
+  defp heat_points do
+    for i <- 1..180 do
+      angle = i * 0.618 * 2 * :math.pi()
+      radius = :math.sqrt(i / 180) * 0.03
+
+      %{
+        lat: 45.762 + radius * :math.cos(angle),
+        lon: 4.836 + radius * :math.sin(angle) * 1.4,
+        weight: 0.25 + 0.75 * (1 - i / 180)
+      }
+    end
   end
 
   defp shape_detail(%{data: %{section: section}}), do: "section #{section}"

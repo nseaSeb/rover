@@ -139,11 +139,68 @@ import Translate from "ol/interaction/Translate.js";
 import { defaults as defaultInteractions } from "ol/interaction/defaults.js";
 import { createEmpty, extend } from "ol/extent.js";
 
-// js/markers.js
+// js/heatmap.js
 import Feature from "ol/Feature.js";
 import Point from "ol/geom/Point.js";
-import VectorLayer from "ol/layer/Vector.js";
+import HeatmapLayerOl from "ol/layer/Heatmap.js";
 import VectorSource from "ol/source/Vector.js";
+var HeatmapLayer = class {
+  constructor() {
+    this.source = new VectorSource({ wrapX: false });
+    this.layer = new HeatmapLayerOl({
+      source: this.source,
+      // Under the shapes and the markers: a heat field is background, and covering
+      // a parcel outline with it would defeat both.
+      zIndex: 2,
+      weight: (feature) => feature.get("weight")
+    });
+    this.rev = null;
+    this.count = 0;
+  }
+  // A null payload means the map has no heat field at all — the attribute is absent
+  // rather than an empty object, so that every map without one carries nothing.
+  reconcile(payload) {
+    const { points = [], rev = null, style } = payload || {};
+    this.applyStyle(style);
+    const next = String(rev);
+    if (next === this.rev) return;
+    this.rev = next;
+    this.source.clear();
+    this.count = points.length;
+    if (points.length > 0) {
+      this.source.addFeatures(
+        points.map((point) => {
+          const feature = new Feature({ geometry: new Point(project(point.lat, point.lon)) });
+          feature.set("weight", point.weight ?? 1, true);
+          return feature;
+        })
+      );
+    }
+  }
+  applyStyle(style) {
+    if (!style) return;
+    if (typeof style.radius === "number") this.layer.setRadius(style.radius);
+    if (typeof style.blur === "number") this.layer.setBlur(style.blur);
+    if (typeof style.opacity === "number") this.layer.setOpacity(style.opacity);
+    if (Array.isArray(style.gradient) && style.gradient.length > 1) {
+      this.layer.setGradient(style.gradient);
+    }
+  }
+  get extent() {
+    return this.count > 0 ? this.source.getExtent() : null;
+  }
+  dispose() {
+    this.source.clear();
+    this.count = 0;
+    this.rev = null;
+  }
+};
+
+// js/markers.js
+import Feature2 from "ol/Feature.js";
+import Point2 from "ol/geom/Point.js";
+import VectorLayer from "ol/layer/Vector.js";
+import VectorSource2 from "ol/source/Vector.js";
 
 // js/styles.js
 import Style from "ol/style/Style.js";
@@ -220,7 +277,7 @@ function pinDataUri(color) {
 var ROVER_KEY = "rover";
 var MarkerLayer = class {
   constructor() {
-    this.source = new VectorSource({ wrapX: false });
+    this.source = new VectorSource2({ wrapX: false });
     this.layer = new VectorLayer({
       source: this.source,
       // Markers are the thing the user came for: keep them above every other
@@ -264,7 +321,7 @@ var MarkerLayer = class {
     if (added.length > 0) this.source.addFeatures(added);
   }
   build(key, marker, geometryHash, appearanceHash) {
-    const feature = new Feature({ geometry: new Point(project(marker.lat, marker.lon)) });
+    const feature = new Feature2({ geometry: new Point2(project(marker.lat, marker.lon)) });
     feature.setId(key);
     feature.setStyle(styleFor(marker));
     feature.setProperties({ [ROVER_KEY]: marker }, true);
@@ -319,7 +376,7 @@ function appearanceOf(marker) {
 // js/shapes.js
 import GeoJSON from "ol/format/GeoJSON.js";
 import VectorLayer2 from "ol/layer/Vector.js";
-import VectorSource2 from "ol/source/Vector.js";
+import VectorSource3 from "ol/source/Vector.js";
 import Fill2 from "ol/style/Fill.js";
 import Stroke2 from "ol/style/Stroke.js";
 import Style2 from "ol/style/Style.js";
@@ -336,7 +393,7 @@ var format = new GeoJSON({
 });
 var ShapeLayer = class {
   constructor() {
-    this.source = new VectorSource2({ wrapX: false });
+    this.source = new VectorSource3({ wrapX: false });
     this.layer = new VectorLayer2({
       source: this.source,
       // Above the tiles, below the markers: an outline should never swallow the
@@ -481,11 +538,17 @@ var RoverMap = class {
     this.listeners = {};
     this.markerLayer = new MarkerLayer();
     this.shapeLayer = new ShapeLayer();
+    this.heatmapLayer = new HeatmapLayer();
     this.tileLayer = new TileLayer({ zIndex: 0 });
     this.applyTiles(this.config.tiles);
     this.map = new Map2({
       target: element,
-      layers: [this.tileLayer, this.shapeLayer.layer, this.markerLayer.layer],
+      layers: [
+        this.tileLayer,
+        this.heatmapLayer.layer,
+        this.shapeLayer.layer,
+        this.markerLayer.layer
+      ],
       controls: buildControls(this.config),
       interactions: buildInteractions(this.config),
       view: new View({
@@ -519,7 +582,12 @@ var RoverMap = class {
    * outside the shapes' bounding box was simply off-screen, for good. The mount
    * path and any update touching both layers go through here instead.
    */
-  setContent({ markers, shapes }) {
+  setHeatmap(heatmap) {
+    this.heatmapLayer.reconcile(heatmap);
+    this.maybeFit();
+  }
+  setContent({ markers, shapes, heatmap }) {
+    if (heatmap !== void 0) this.heatmapLayer.reconcile(heatmap);
     if (shapes !== void 0) this.shapeLayer.reconcile(shapes);
     if (markers !== void 0) this.markerLayer.reconcile(markers);
     this.maybeFit();
@@ -589,9 +657,14 @@ var RoverMap = class {
       duration
     });
   }
-  // Markers and shapes together: a parcel outline with no pin on it still frames.
+  // Every layer that carries content: a heat field alone, or a parcel outline with
+  // no pin on it, still frames.
   get contentExtent() {
-    const extents = [this.shapeLayer.extent, this.markerLayer.extent].filter(Boolean);
+    const extents = [
+      this.heatmapLayer.extent,
+      this.shapeLayer.extent,
+      this.markerLayer.extent
+    ].filter(Boolean);
     if (extents.length === 0) return null;
     if (extents.length === 1) return extents[0];
     const union = createEmpty();
@@ -766,6 +839,7 @@ var RoverMap = class {
     if (this.resizeObserver) this.resizeObserver.disconnect();
     this.markerLayer.dispose();
     this.shapeLayer.dispose();
+    this.heatmapLayer.dispose();
     this.map.setTarget(void 0);
   }
 };
@@ -834,6 +908,7 @@ var Rover = {
     this.configJson = this.el.dataset.rover;
     this.markersJson = this.el.dataset.roverMarkers;
     this.shapesJson = this.el.dataset.roverShapes;
+    this.heatmapJson = this.el.dataset.roverHeatmap;
     this.config = parse(this.configJson, {}, "data-rover");
     this.map = new RoverMap(
       this.canvasEl,
@@ -841,6 +916,7 @@ var Rover = {
       (event, payload) => this.emit(event, payload)
     );
     this.map.setContent({
+      heatmap: parse(this.heatmapJson, null, "data-rover-heatmap"),
       shapes: parse(this.shapesJson, [], "data-rover-shapes"),
       markers: parse(this.markersJson, [], "data-rover-markers")
     });
@@ -865,6 +941,11 @@ var Rover = {
       this.map.setConfig(this.config);
     }
     const content = {};
+    const heatmapJson = this.el.dataset.roverHeatmap;
+    if (heatmapJson !== this.heatmapJson) {
+      this.heatmapJson = heatmapJson;
+      content.heatmap = parse(heatmapJson, null, "data-rover-heatmap");
+    }
     const shapesJson = this.el.dataset.roverShapes;
     if (shapesJson !== this.shapesJson) {
       this.shapesJson = shapesJson;
@@ -875,7 +956,7 @@ var Rover = {
       this.markersJson = markersJson;
       content.markers = parse(markersJson, [], "data-rover-markers");
     }
-    if (content.shapes !== void 0 || content.markers !== void 0) {
+    if (content.heatmap !== void 0 || content.shapes !== void 0 || content.markers !== void 0) {
       this.map.setContent(content);
     }
     if (this.popups) this.popups.refresh();
@@ -910,6 +991,7 @@ function parse(json, fallback, attribute) {
 // js/index.js
 var index_default = RoverHooks;
 export {
+  HeatmapLayer,
   MarkerLayer,
   Rover,
   RoverHooks,

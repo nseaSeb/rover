@@ -181,6 +181,27 @@ better:
 
 Same id and same `:rev` means the client leaves that feature alone.
 
+## Heatmaps
+
+Five hundred markers are a wall of overlapping icons. A heat field answers a
+different question — *where is there a lot of this?*
+
+```heex
+<.map id="deliveries" heatmap={@rows} heatmap_style={[radius: 12, blur: 20]} />
+```
+
+A point needs only a coordinate; `:weight` is relative, 0 to 1, and defaults to 1:
+
+```elixir
+%{lat: 45.75, lon: 4.85}
+%{lat: 45.75, lon: 4.85, weight: 0.4}
+```
+
+No `:id` here, unlike markers and shapes. A heatmap is an aggregate — no individual
+point is visible in the result — so per-point identity would be ceremony that buys
+nothing. It is diffed by revision instead, like shapes, which also means a
+style-only change restyles the layer without rebuilding the field.
+
 ## Popups
 
 A slot, rendered once per marker and shown on click with no server round-trip:

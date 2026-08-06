@@ -395,6 +395,62 @@ defmodule Rover.ComponentsTest do
     end
   end
 
+  describe "the heatmap" do
+    @points [%{lat: 45.76, lon: 4.83}, %{lat: 45.74, lon: 4.86, weight: 0.5}]
+
+    test "is absent entirely when there is none" do
+      assert heatmap(render_map(markers: @lyon)) == nil
+      assert attribute(render_map(markers: @lyon), "data-rover-heatmap") == nil
+    end
+
+    test "travels with a revision the client compares" do
+      payload = heatmap(render_map(heatmap: @points))
+
+      assert length(payload["points"]) == 2
+      assert is_integer(payload["rev"])
+      assert payload["style"] == %{"radius" => 8, "blur" => 15, "opacity" => 1}
+    end
+
+    test "the revision is stable across renders of the same points" do
+      assert heatmap(render_map(heatmap: @points))["rev"] ==
+               heatmap(render_map(heatmap: @points))["rev"]
+    end
+
+    test "the revision moves when a weight moves" do
+      other = [%{lat: 45.76, lon: 4.83}, %{lat: 45.74, lon: 4.86, weight: 0.9}]
+
+      refute heatmap(render_map(heatmap: @points))["rev"] ==
+               heatmap(render_map(heatmap: other))["rev"]
+    end
+
+    test "carries its style" do
+      style = heatmap(render_map(heatmap: @points, heatmap_style: [radius: 14, blur: 4]))["style"]
+
+      assert style["radius"] == 14
+      assert style["blur"] == 4
+    end
+
+    test "accepts a field mapping for the weight" do
+      rows = [%{lat: 45.0, lon: 4.0, orders: 10}]
+
+      [point] =
+        heatmap(render_map(heatmap: rows, heatmap_fields: [weight: fn r -> r.orders / 20 end]))[
+          "points"
+        ]
+
+      assert point["weight"] == 0.5
+    end
+
+    test "frames a map that has nothing but a heat field" do
+      config = config(render_map(heatmap: @points))
+
+      assert [lat, lon] = config["center"]
+      assert_in_delta lat, 45.75, 0.0001
+      assert_in_delta lon, 4.845, 0.0001
+      assert config["derivedCenter"] == true
+    end
+  end
+
   describe "centering on shapes" do
     @outline %{
       "type" => "Polygon",

@@ -40,6 +40,16 @@ defmodule Rover.MapCase do
   def shapes(document), do: decode(document, "data-rover-shapes")
 
   @doc """
+  The decoded `data-rover-heatmap` payload, or nil when the attribute is absent.
+  """
+  def heatmap(document) do
+    case attribute(document, "data-rover-heatmap") do
+      nil -> nil
+      json -> Jason.decode!(json)
+    end
+  end
+
+  @doc """
   The popup nodes of a rendered map, in document order.
   """
   def popups(document) do

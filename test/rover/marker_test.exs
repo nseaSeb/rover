@@ -76,6 +76,12 @@ defmodule Rover.MarkerTest do
       assert marker.label == "client 3"
     end
 
+    test "rejects a field accessor of the wrong arity instead of reading nil" do
+      assert_raise ArgumentError, ~r/1-arity function, got one of arity 2/, fn ->
+        Marker.new!(%{id: 1, lat: 45.0, lon: 4.0}, label: fn _a, _b -> "x" end)
+      end
+    end
+
     test "stringifies labels that are not binaries" do
       assert Marker.new!(%{id: 1, lat: 45.0, lon: 4.0, label: 42}).label == "42"
     end
