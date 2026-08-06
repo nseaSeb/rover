@@ -62,6 +62,61 @@ describe("MarkerLayer clustering", () => {
     assert.equal(layer.clusterSource.getSource(), layer.source)
   })
 
+  it("detaches a clusterer it is done with", () => {
+    // ol/source/Cluster subscribes to the source it wraps, and dropping the
+    // reference does not unsubscribe. Every toggle used to leave another live
+    // clusterer re-clustering the whole set on every reconcile, in a source nothing
+    // draws.
+    const layer = new MarkerLayer()
+    layer.reconcile([at(1, 45.75, 4.85)])
+
+    layer.setClustering({ distance: 40 })
+    const first = layer.clusterSource
+    layer.setClustering({ distance: 80 })
+
+    assert.notEqual(layer.clusterSource, first)
+    assert.equal(first.getSource(), null, "the discarded clusterer is still subscribed")
+
+    layer.setClustering(null)
+    assert.equal(layer.clusterSource, null)
+  })
+
+  it("detaches on dispose too", () => {
+    const layer = new MarkerLayer()
+    layer.setClustering({})
+    const source = layer.clusterSource
+
+    layer.dispose()
+
+    assert.equal(source.getSource(), null)
+    assert.equal(layer.clusterSource, null)
+  })
+
+  it("keeps wrapX off, like every other source here", () => {
+    // VectorSource defaults wrapX to true and Cluster does not inherit it from the
+    // source it wraps, so the circles would repeat across world copies.
+    const layer = new MarkerLayer()
+    layer.setClustering({})
+
+    assert.equal(layer.clusterSource.getWrapX(), false)
+  })
+
+  it("refuses to drag anything while clustering", () => {
+    // What is under the pointer is a cluster feature, even for a group of one, and
+    // Translate would move the throwaway Point that Cluster allocated: the marker's
+    // own geometry untouched, the event reporting a feature that is not the marker,
+    // and the next recompute snapping the pin back.
+    const layer = new MarkerLayer()
+    layer.reconcile([at(1, 45.75, 4.85, { draggable: true })])
+
+    assert.equal(layer.isDraggable(features(layer)[0]), true)
+
+    layer.setClustering({ distance: 40 })
+    layer.clusterSource.loadFeatures([-2e7, -2e7, 2e7, 2e7], 1, "EPSG:3857")
+
+    assert.equal(layer.isDraggable(rendered(layer)[0]), false)
+  })
+
   describe("membersOf", () => {
     it("reads a bare marker feature", () => {
       const layer = new MarkerLayer()

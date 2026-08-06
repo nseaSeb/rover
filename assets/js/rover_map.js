@@ -388,9 +388,19 @@ export class RoverMap {
   /**
    * Frame the members of a cluster, so a click drills into it.
    *
-   * The members' extent is often a single point — everything in the group sits at
-   * the same place at this zoom — so the fit is capped, and a degenerate extent
-   * simply zooms in a couple of levels instead of to the maximum.
+   * Two traps here, both of which turn the drill-in into the dead end it exists to
+   * prevent.
+   *
+   * `View#fit` treats `maxZoom` as a resolution *floor*, so it clamps in both
+   * directions: passing the marker-only cap of 16 while sitting at zoom 18 zooms
+   * *out* to 16, where the members are closer together in pixels than before and
+   * still one group. The cap here is therefore the basemap's own ceiling, and the
+   * result is refused outright if it would move the view backwards.
+   *
+   * The members' extent is often a single point, because everything in the group is
+   * at the same place. That branch steps in by two levels — again bounded by the
+   * basemap, not by the view's default ceiling of 28, which would land on a blurry
+   * over-zoom.
    */
   zoomToCluster(clusterFeature) {
     const members = clusterFeature.get("features") || []
@@ -400,12 +410,17 @@ export class RoverMap {
     members.forEach((member) => extend(extent, member.getGeometry().getExtent()))
 
     const view = this.map.getView()
+    const current = view.getZoom() ?? 0
+    const ceiling = fitMaxZoom(this.config, true)
+
+    if (current >= ceiling) return
+
     this.beQuiet(ANIMATION_MS)
 
     if (extent[0] === extent[2] && extent[1] === extent[3]) {
       view.animate({
         center: [extent[0], extent[1]],
-        zoom: Math.min((view.getZoom() ?? 0) + 2, view.getMaxZoom()),
+        zoom: Math.min(current + 2, ceiling),
         duration: ANIMATION_MS,
       })
       return
@@ -415,7 +430,7 @@ export class RoverMap {
     view.fit(extent, {
       size: this.map.getSize(),
       padding: [padding, padding, padding, padding],
-      maxZoom: fitMaxZoom(this.config, false),
+      maxZoom: ceiling,
       duration: ANIMATION_MS,
     })
   }

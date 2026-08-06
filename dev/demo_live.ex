@@ -106,7 +106,8 @@ defmodule RoverDev.DemoLive do
       <button phx-click="toggle_heat">Heatmap: {if @heat, do: "on", else: "off"}</button>
       <button phx-click="cycle_heat_radius">Heat radius: {@heat_radius}</button>
       <button phx-click="toggle_crowd">Crowd: {if @crowd, do: "240 markers", else: "off"}</button>
-      <button phx-click="toggle_cluster">Cluster: {if @cluster, do: "on", else: "off"}</button>
+      <button phx-click="toggle_cluster">Cluster: {cluster_label(@cluster)}</button>
+      <button phx-click="yard">Two in a yard</button>
     </div>
 
     <.map
@@ -289,11 +290,39 @@ defmodule RoverDev.DemoLive do
      |> log("heat radius #{next} — style only, the points are untouched")}
   end
 
+  # Three states rather than two, because `zoom_on_click: false` behaves differently
+  # in a way worth both demonstrating and testing: the view does not move, so nothing
+  # recomputes, and dismissing an open popup has to be explicit.
   def handle_event("toggle_cluster", _params, socket) do
+    next =
+      case socket.assigns.cluster do
+        false -> true
+        true -> [zoom_on_click: false]
+        _ -> false
+      end
+
     {:noreply,
      socket
-     |> assign(cluster: !socket.assigns.cluster)
-     |> log("clustering #{if socket.assigns.cluster, do: "off", else: "on"}")}
+     |> assign(cluster: next)
+     |> log("clustering #{cluster_label(next)}")}
+  end
+
+  # Two vans about eleven metres apart, clustered, seen from zoom 18. The resolution
+  # there is ~0.42 m/px at this latitude, so they sit ~26px apart — inside the default
+  # clustering distance of 40 — and form a group while the view is already past the
+  # marker-only zoom cap of 16. That is the only way to reach the case where drilling
+  # in used to zoom *out*. Twenty metres, the first guess, is 48px and does not group.
+  def handle_event("yard", _params, socket) do
+    yard = [
+      %{id: "van-a", lat: 45.7640, lon: 4.8357, emoji: "🚚", label: "Van A"},
+      %{id: "van-b", lat: 45.76410, lon: 4.8357, emoji: "🚚", label: "Van B"}
+    ]
+
+    {:noreply,
+     socket
+     |> assign(clients: yard, crowd: false, cluster: true, shapes: [])
+     |> Rover.fly_to("clients", {45.76405, 4.8357}, zoom: 18, duration: 0)
+     |> log("two vans in a yard at zoom 18, clustered")}
   end
 
   def handle_event("toggle_crowd", _params, socket) do
@@ -447,6 +476,10 @@ defmodule RoverDev.DemoLive do
   defp shape_detail(%{data: %{section: section}}), do: "section #{section}"
   defp shape_detail(%{data: %{stops: stops}}), do: "#{stops} stops"
   defp shape_detail(_shape), do: "no detail"
+
+  defp cluster_label(false), do: "off"
+  defp cluster_label(true), do: "on"
+  defp cluster_label(_opts), do: "on, no zoom"
 
   defp shape_label(shapes) do
     case Enum.map(shapes, & &1.id) |> Enum.sort() do

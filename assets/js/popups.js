@@ -48,6 +48,10 @@ export class Popups {
     roverMap.on("shapeClick", ({ id, lat, lon }) =>
       this.open("shape", id, project(lat, lon))
     )
+    // Any click that is not on this popup dismisses it — including one that lands on
+    // a group, which claims the click and would otherwise leave the popup anchored
+    // to a marker the view has just moved away from.
+    roverMap.on("clusterClick", () => this.close())
     roverMap.on("mapClick", () => this.close())
 
     this.onPostrender = () => this.position()

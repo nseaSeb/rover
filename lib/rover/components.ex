@@ -33,6 +33,8 @@ defmodule Rover.Components do
   | Attribute | Payload |
   |---|---|
   | `on_marker_click` | `%{"id" => id, "lat" => lat, "lon" => lon, "data" => data}` |
+  | `on_cluster_click` | `%{"count" => n, "ids" => [id, …], "lat" => lat, "lon" => lon}` |
+  | `on_shape_click` | `%{"id" => id, "lat" => lat, "lon" => lon, "data" => data}` |
   | `on_map_click` | `%{"lat" => lat, "lon" => lon}` |
   | `on_move_end` | `%{"center" => [lat, lon], "zoom" => zoom, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
   | `on_marker_drag_end` | `%{"id" => id, "lat" => lat, "lon" => lon}` |
@@ -162,7 +164,13 @@ defmodule Rover.Components do
     pointer is a group rather than a pin.
     """
 
-  attr :on_cluster_click, :string, default: nil
+  attr :on_cluster_click, :string,
+    default: nil,
+    doc: """
+    Receives `%{"count" => n, "ids" => [id, …], "lat" => lat, "lon" => lon}` when a
+    group is clicked. Note `"ids"` and `"count"` rather than a single `"id"` — a
+    group is not a marker.
+    """
 
   attr :heatmap, :list,
     default: [],
@@ -456,6 +464,14 @@ defmodule Rover.Components do
   defp encode_cluster(true), do: encode_cluster([])
 
   defp encode_cluster(opts) when is_list(opts) do
+    Keyword.keyword?(opts) ||
+      raise ArgumentError, """
+      invalid cluster: #{inspect(opts)}.
+
+      Expected `true`, `false`, or a keyword list — `cluster={[distance: 60]}`, not
+      `cluster={[:distance]}`.
+      """
+
     Enum.each(opts, fn {key, _value} ->
       key in @cluster_options ||
         raise ArgumentError, """

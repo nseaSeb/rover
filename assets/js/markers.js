@@ -48,8 +48,9 @@ export class MarkerLayer {
    * are untouched, so toggling this mid-session costs nothing and loses nothing.
    */
   setClustering(options) {
+    this.releaseClusterSource()
+
     if (!options) {
-      this.clusterSource = null
       this.layer.setSource(this.source)
       // Back to per-feature styles, which each marker already carries.
       this.layer.setStyle(undefined)
@@ -60,6 +61,10 @@ export class MarkerLayer {
       source: this.source,
       distance: options.distance ?? 40,
       minDistance: options.minDistance ?? 20,
+      // Every other source here is built with wrapX: false; Cluster does not
+      // inherit it from the source it wraps, and VectorSource defaults to true —
+      // which would repeat the circles across world copies.
+      wrapX: false,
     })
 
     this.layer.setSource(this.clusterSource)
@@ -71,6 +76,22 @@ export class MarkerLayer {
 
   get clustering() {
     return Boolean(this.clusterSource)
+  }
+
+  /**
+   * Detach a clusterer we are done with.
+   *
+   * `ol/source/Cluster` subscribes to the source it wraps in its constructor, and
+   * dropping the reference does not unsubscribe. Without this, every toggle of
+   * `cluster` leaves another live clusterer re-clustering the whole marker set on
+   * every reconcile, in a source nothing draws — five toggles cost five extra full
+   * passes per update, for the life of the LiveView.
+   */
+  releaseClusterSource() {
+    if (!this.clusterSource) return
+
+    this.clusterSource.setSource(null)
+    this.clusterSource = null
   }
 
   styleForRendered(feature) {
@@ -221,6 +242,13 @@ export class MarkerLayer {
   }
 
   isDraggable(feature) {
+    // Nothing is draggable while clustering. What is under the pointer is a cluster
+    // feature, even for a group of one, and `Translate` would move the throwaway
+    // Point that Cluster allocated: the marker's own geometry would be untouched,
+    // the drag event would report coordinates for a feature that is not the marker,
+    // and the next recompute would snap the pin back.
+    if (this.clusterSource) return false
+
     const marker = this.markerFor(feature)
     return Boolean(marker && marker.draggable)
   }
@@ -230,9 +258,9 @@ export class MarkerLayer {
   }
 
   dispose() {
+    this.releaseClusterSource()
     this.source.clear()
     this.entries.clear()
-    this.clusterSource = null
   }
 }
 

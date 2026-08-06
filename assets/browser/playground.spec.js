@@ -122,21 +122,50 @@ async function shapePixel(page, selector) {
  * in the source, not only the visible ones, so a group's centre is often off-screen
  * and unclickable. Scanning for one the map itself reports guarantees both.
  */
-async function clusterPixel(page, selector) {
+async function clusterPixel(page, selector, avoid = null) {
+  const pixel = await page.evaluate(
+    ([sel, keepClear]) => {
+      const rover = document.querySelector(sel)._rover
+      const [width, height] = rover.map.getSize()
+      const far = (x, y) =>
+        !keepClear || Math.hypot(x - keepClear.x, y - keepClear.y) > keepClear.radius
+
+      for (let x = 50; x < width - 50; x += 8) {
+        for (let y = 50; y < height - 50; y += 8) {
+          if (far(x, y) && rover.featureAt([x, y]).cluster) return { x, y }
+        }
+      }
+
+      return null
+    },
+    [selector, avoid]
+  )
+
+  if (!pixel) throw new Error(`no clickable cluster on ${selector}`)
+
+  return pixel
+}
+
+/**
+ * A pixel carrying a group of exactly one marker — which is drawn as its own pin and
+ * is the only kind of grouped marker that can still open a popup.
+ */
+async function soloPixel(page, selector) {
   const pixel = await page.evaluate((sel) => {
     const rover = document.querySelector(sel)._rover
     const [width, height] = rover.map.getSize()
 
-    for (let x = 50; x < width - 50; x += 8) {
-      for (let y = 50; y < height - 50; y += 8) {
-        if (rover.featureAt([x, y]).cluster) return { x, y }
+    for (let x = 50; x < width - 50; x += 6) {
+      for (let y = 50; y < height - 50; y += 6) {
+        const hit = rover.featureAt([x, y])
+        if (hit.marker && !hit.cluster) return { x, y, id: hit.marker.id }
       }
     }
 
     return null
   }, selector)
 
-  if (!pixel) throw new Error(`no clickable cluster on ${selector}`)
+  if (!pixel) throw new Error(`no lone marker on ${selector}`)
 
   return pixel
 }
@@ -576,9 +605,87 @@ test.describe("the playground", () => {
     await expect(page.locator(".cluster-log")).toContainText("cluster of")
     await page.waitForTimeout(700)
 
-    expect((await state()).zoom, "the click did not zoom into the group").toBeGreaterThan(
-      grouped.zoom
+    const drilled = (await state()).zoom
+    expect(drilled, "the click did not zoom into the group").toBeGreaterThan(grouped.zoom)
+
+    expect(problems).toEqual([])
+  })
+
+  test("drilling into a group never zooms out", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    // Two markers ~20m apart, clustered, seen from zoom 18: ~33px apart, inside the
+    // default clustering distance, with the view already past the marker-only cap of
+    // 16. `View#fit` treats maxZoom as a resolution *floor*, so passing that cap here
+    // used to animate 18 → 16, where the pair is closer in pixels than before and
+    // stays one group. Clicks then did nothing at all — the dead end zoom_on_click
+    // exists to prevent.
+    await page.getByRole("button", { name: "Two in a yard" }).click()
+    await expect(page.locator(".log")).toContainText("two vans in a yard")
+    await page.waitForTimeout(500)
+
+    const zoom = () =>
+      page.evaluate(
+        (selector) => document.querySelector(selector)._rover.map.getView().getZoom(),
+        MAP
+      )
+
+    const before = await zoom()
+    expect(before, "the yard setup did not reach zoom 18").toBeCloseTo(18, 0)
+
+    // No conditional: if the two vans are not grouped, the setup is wrong and this
+    // test must say so rather than skip itself.
+    const group = await clusterPixel(page, MAP)
+
+    await page.locator(CANVAS).click({ position: group })
+    await page.waitForTimeout(800)
+
+    const after = await zoom()
+    expect(after, `zoom went backwards from ${before} to ${after}`).toBeGreaterThanOrEqual(
+      before - 0.01
     )
+
+    expect(problems).toEqual([])
+  })
+
+  test("a click on a group dismisses an open popup", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    await page.getByRole("button", { name: /^Crowd:/ }).click()
+    await expect(page.getByRole("button", { name: "Crowd: 240 markers" })).toBeVisible()
+    // Twice, to reach `zoom_on_click: false`. With the zoom, the drill-in makes the
+    // clusters recompute and the popup closes as a side effect — which masks whether
+    // dismissing it was ever deliberate. Without the zoom, nothing moves, and the
+    // explicit dismissal is the only thing that can close it.
+    await page.getByRole("button", { name: /^Cluster:/ }).click()
+    await page.getByRole("button", { name: /^Cluster:/ }).click()
+    await expect(page.getByRole("button", { name: "Cluster: on, no zoom" })).toBeVisible()
+
+    // A marker alone in its group is drawn as its own pin, so it still has a popup.
+    const solo = await soloPixel(page, MAP)
+    await page.locator(CANVAS).click({ position: { x: solo.x, y: solo.y } })
+
+    const popup = page.locator(`${MAP} [data-rover-popup-for="marker:${solo.id}"]`)
+    await expect(popup).toBeVisible()
+
+    // Clicking a group claims the click. Without dismissing the popup it would stay
+    // anchored to a marker while the view animates somewhere else entirely.
+    //
+    // Well clear of the open popup: it sits above its marker with pointer events, so
+    // a group underneath it is unclickable and the test would time out rather than
+    // fail for a reason worth reading.
+    const group = await clusterPixel(page, MAP, { x: solo.x, y: solo.y, radius: 220 })
+
+    await page.locator(CANVAS).click({ position: group })
+    await expect(popup).toBeHidden()
 
     expect(problems).toEqual([])
   })

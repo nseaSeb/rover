@@ -38,7 +38,6 @@ var Popups = class {
       "shapeClick",
       ({ id, lat, lon }) => this.open("shape", id, project(lat, lon))
     );
-    roverMap.on("clusterClick", () => this.close());
     roverMap.on("mapClick", () => this.close());
     this.onPostrender = () => this.position();
     roverMap.map.on("postrender", this.onPostrender);
@@ -331,8 +330,8 @@ var MarkerLayer = class {
    * are untouched, so toggling this mid-session costs nothing and loses nothing.
    */
   setClustering(options) {
-    this.releaseClusterSource();
     if (!options) {
+      this.clusterSource = null;
       this.layer.setSource(this.source);
       this.layer.setStyle(void 0);
       return;
@@ -340,31 +339,13 @@ var MarkerLayer = class {
     this.clusterSource = new Cluster({
       source: this.source,
       distance: options.distance ?? 40,
-      minDistance: options.minDistance ?? 20,
-      // Every other source here is built with wrapX: false; Cluster does not
-      // inherit it from the source it wraps, and VectorSource defaults to true —
-      // which would repeat the circles across world copies.
-      wrapX: false
+      minDistance: options.minDistance ?? 20
     });
     this.layer.setSource(this.clusterSource);
     this.layer.setStyle((feature) => this.styleForRendered(feature));
   }
   get clustering() {
     return Boolean(this.clusterSource);
-  }
-  /**
-   * Detach a clusterer we are done with.
-   *
-   * `ol/source/Cluster` subscribes to the source it wraps in its constructor, and
-   * dropping the reference does not unsubscribe. Without this, every toggle of
-   * `cluster` leaves another live clusterer re-clustering the whole marker set on
-   * every reconcile, in a source nothing draws — five toggles cost five extra full
-   * passes per update, for the life of the LiveView.
-   */
-  releaseClusterSource() {
-    if (!this.clusterSource) return;
-    this.clusterSource.setSource(null);
-    this.clusterSource = null;
   }
   styleForRendered(feature) {
     const members = feature.get("features");
@@ -480,7 +461,6 @@ var MarkerLayer = class {
     if (entry) entry.geometryHash = null;
   }
   isDraggable(feature) {
-    if (this.clusterSource) return false;
     const marker = this.markerFor(feature);
     return Boolean(marker && marker.draggable);
   }
@@ -488,9 +468,9 @@ var MarkerLayer = class {
     return this.entries.size > 0 ? this.source.getExtent() : null;
   }
   dispose() {
-    this.releaseClusterSource();
     this.source.clear();
     this.entries.clear();
+    this.clusterSource = null;
   }
 };
 function appearanceOf(marker) {
@@ -938,19 +918,9 @@ var RoverMap = class {
   /**
    * Frame the members of a cluster, so a click drills into it.
    *
-   * Two traps here, both of which turn the drill-in into the dead end it exists to
-   * prevent.
-   *
-   * `View#fit` treats `maxZoom` as a resolution *floor*, so it clamps in both
-   * directions: passing the marker-only cap of 16 while sitting at zoom 18 zooms
-   * *out* to 16, where the members are closer together in pixels than before and
-   * still one group. The cap here is therefore the basemap's own ceiling, and the
-   * result is refused outright if it would move the view backwards.
-   *
-   * The members' extent is often a single point, because everything in the group is
-   * at the same place. That branch steps in by two levels — again bounded by the
-   * basemap, not by the view's default ceiling of 28, which would land on a blurry
-   * over-zoom.
+   * The members' extent is often a single point — everything in the group sits at
+   * the same place at this zoom — so the fit is capped, and a degenerate extent
+   * simply zooms in a couple of levels instead of to the maximum.
    */
   zoomToCluster(clusterFeature) {
     const members = clusterFeature.get("features") || [];
@@ -958,14 +928,11 @@ var RoverMap = class {
     const extent = createEmpty();
     members.forEach((member) => extend(extent, member.getGeometry().getExtent()));
     const view = this.map.getView();
-    const current = view.getZoom() ?? 0;
-    const ceiling = fitMaxZoom(this.config, true);
-    if (current >= ceiling) return;
     this.beQuiet(ANIMATION_MS);
     if (extent[0] === extent[2] && extent[1] === extent[3]) {
       view.animate({
         center: [extent[0], extent[1]],
-        zoom: Math.min(current + 2, ceiling),
+        zoom: Math.min((view.getZoom() ?? 0) + 2, view.getMaxZoom()),
         duration: ANIMATION_MS
       });
       return;
@@ -974,7 +941,7 @@ var RoverMap = class {
     view.fit(extent, {
       size: this.map.getSize(),
       padding: [padding, padding, padding, padding],
-      maxZoom: ceiling,
+      maxZoom: fitMaxZoom(this.config, false),
       duration: ANIMATION_MS
     });
   }

@@ -133,6 +133,7 @@ end
 | Attribute | Payload |
 |---|---|
 | `on_marker_click` | `%{"id" =>, "lat" =>, "lon" =>, "data" =>}` |
+| `on_cluster_click` | `%{"count" =>, "ids" => [id, …], "lat" =>, "lon" =>}` |
 | `on_shape_click` | `%{"id" =>, "lat" =>, "lon" =>, "data" =>}` |
 | `on_map_click` | `%{"lat" =>, "lon" =>}` |
 | `on_move_end` | `%{"center" => [lat, lon], "zoom" =>, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
@@ -203,7 +204,7 @@ Two consequences worth knowing:
 
 * **A grouped marker has no popup.** Its pin is drawn at the group's centre, so a
   popup would point at empty space. An open popup closes when its marker joins a
-  group, and returns when you zoom back in.
+  group; it does not reopen by itself when you zoom back in.
 * **`:draggable` markers cannot be dragged while grouped**, because what is under
   the pointer is a group rather than a pin.
 

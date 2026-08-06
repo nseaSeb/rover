@@ -50,6 +50,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Clustering, from review, before it ever shipped:
+  - Every discarded `ol/source/Cluster` stayed subscribed to the marker source, so
+    each toggle of `cluster` left another live clusterer re-clustering the whole set
+    on every update, in a source nothing draws.
+  - Clicking a group above zoom 16 **zoomed out**. `View#fit` treats `maxZoom` as a
+    resolution floor, so it clamps both ways: the drill-in now uses the basemap's own
+    ceiling and refuses to move the view backwards at all.
+  - A `:draggable` marker alone in a group was still draggable, and the drag moved the
+    throwaway feature `Cluster` allocates — the marker's own geometry untouched, the
+    event reporting coordinates for something that is not the marker, and the pin
+    snapping back on the next recompute. Nothing is draggable while clustering, which
+    is what the documentation already claimed.
+  - The `Cluster` wrapper dropped `wrapX: false`, so groups repeated across world
+    copies.
+  - A cluster click did not dismiss an open popup, which mattered with
+    `zoom_on_click: false` where nothing else moves.
+  - A non-keyword list — `cluster={[:distance]}` — raised a match error instead of the
+    friendly message every other option in the component produces.
+  - `on_cluster_click` was in neither event table and had no docs, so the only place
+    its payload was written down was the playground.
 - Field accessors of the wrong arity now raise instead of being read as a map key
   and silently substituting the default. `mix format` rewrites
   `&(&1.orders / 40)` as `& &1.orders/40`, which Elixir parses as an arity-40

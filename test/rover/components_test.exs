@@ -436,6 +436,17 @@ defmodule Rover.ComponentsTest do
       end
     end
 
+    test "a list that is not a keyword list gets the same friendly error" do
+      # It used to reach `Enum.each(opts, fn {key, _} -> ...)` and die with a match
+      # error instead of the message every other encoder here produces.
+      for bad <- [[:distance], [:distance, 40], [{:distance, 40}, :zoom_on_click]] do
+        error = assert_raise ArgumentError, fn -> render_map(markers: @lyon, cluster: bad) end
+
+        assert error.message =~ "invalid cluster"
+        assert error.message =~ "keyword list"
+      end
+    end
+
     test "an on_cluster_click handler reaches the client" do
       events = config(render_map(markers: @lyon, on_cluster_click: "drill_in"))["events"]
 
