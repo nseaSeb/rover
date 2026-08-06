@@ -1,10 +1,11 @@
 import Feature from "ol/Feature.js"
 import Point from "ol/geom/Point.js"
 import VectorLayer from "ol/layer/Vector.js"
+import Cluster from "ol/source/Cluster.js"
 import VectorSource from "ol/source/Vector.js"
 
 import { project } from "./coords.js"
-import { styleFor } from "./styles.js"
+import { clusterStyle, styleFor } from "./styles.js"
 
 const ROVER_KEY = "rover"
 
@@ -17,6 +18,13 @@ const ROVER_KEY = "rover"
  * updates one geometry — the other 499 features, and their cached styles, are
  * left exactly as they were. Nothing flickers, nothing is reallocated, and an
  * in-flight animation or an open tooltip survives the update.
+ *
+ * Clustering does not change any of that, which is the whole reason it is
+ * affordable. `ol/source/Cluster` *wraps* a source rather than replacing it: the
+ * markers stay in `this.source`, reconciled exactly as before, and the cluster
+ * source derives grouped features from them for rendering only. What clustering
+ * does change is what is on screen — so the click path, the popup anchor and the
+ * layer style all have to cope with a feature that is a group rather than a pin.
  */
 export class MarkerLayer {
   constructor() {
@@ -30,6 +38,67 @@ export class MarkerLayer {
       updateWhileInteracting: true,
     })
     this.entries = new Map()
+    this.clusterSource = null
+  }
+
+  /**
+   * Turn grouping on or off.
+   *
+   * Only the layer's source changes. The markers, their styles and the entry map
+   * are untouched, so toggling this mid-session costs nothing and loses nothing.
+   */
+  setClustering(options) {
+    if (!options) {
+      this.clusterSource = null
+      this.layer.setSource(this.source)
+      // Back to per-feature styles, which each marker already carries.
+      this.layer.setStyle(undefined)
+      return
+    }
+
+    this.clusterSource = new Cluster({
+      source: this.source,
+      distance: options.distance ?? 40,
+      minDistance: options.minDistance ?? 20,
+    })
+
+    this.layer.setSource(this.clusterSource)
+    // A cluster feature is not a marker and has no style of its own, so the layer
+    // has to decide: the member's own pin when it is alone, a counted circle when
+    // it is not.
+    this.layer.setStyle((feature) => this.styleForRendered(feature))
+  }
+
+  get clustering() {
+    return Boolean(this.clusterSource)
+  }
+
+  styleForRendered(feature) {
+    const members = feature.get("features")
+    if (!members) return undefined
+
+    if (members.length === 1) {
+      const marker = members[0].get(ROVER_KEY)
+      return marker ? styleFor(marker) : undefined
+    }
+
+    return clusterStyle(members.length)
+  }
+
+  /**
+   * The markers behind a rendered feature: one when it is a pin or a lone cluster,
+   * several when it is a group.
+   */
+  membersOf(feature) {
+    if (!feature) return []
+
+    const members = feature.get("features")
+    if (!members) {
+      const marker = feature.get(ROVER_KEY)
+      return marker ? [marker] : []
+    }
+
+    return members.map((member) => member.get(ROVER_KEY)).filter(Boolean)
   }
 
   reconcile(markers) {
@@ -88,8 +157,24 @@ export class MarkerLayer {
     return feature
   }
 
+  /**
+   * The single marker a rendered feature stands for, or null.
+   *
+   * A group of twelve is not a marker: it has no id to report and no popup to open,
+   * so callers must handle it as a cluster instead of being handed one arbitrary
+   * member.
+   */
   markerFor(feature) {
-    return feature && feature.get(ROVER_KEY)
+    const members = this.membersOf(feature)
+
+    return members.length === 1 ? members[0] : null
+  }
+
+  /** The markers of a rendered feature when it is a group of more than one. */
+  clusterFor(feature) {
+    const members = this.membersOf(feature)
+
+    return members.length > 1 ? members : null
   }
 
   markerById(id) {
@@ -97,9 +182,29 @@ export class MarkerLayer {
     return entry && entry.marker
   }
 
+  /**
+   * The feature currently *on screen* for a marker — which is not always the
+   * feature the reconciler built.
+   *
+   * When clustering, a marker is drawn as part of a group whose geometry sits at the
+   * members' centroid. Anchoring a popup to the marker's own coordinate would point
+   * it away from the pin the user clicked. So a marker that has been grouped with
+   * others has no rendered feature of its own, and callers treat that as "nothing to
+   * point at" — which closes the popup.
+   */
   featureById(id) {
     const entry = this.entries.get(String(id))
-    return entry && entry.feature
+    if (!entry) return null
+    if (!this.clusterSource) return entry.feature
+
+    return (
+      this.clusterSource
+        .getFeatures()
+        .find((cluster) => {
+          const members = cluster.get("features")
+          return members && members.length === 1 && members[0] === entry.feature
+        }) || null
+    )
   }
 
   /**
@@ -127,6 +232,7 @@ export class MarkerLayer {
   dispose() {
     this.source.clear()
     this.entries.clear()
+    this.clusterSource = null
   }
 }
 

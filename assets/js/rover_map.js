@@ -64,6 +64,8 @@ export class RoverMap {
       }),
     })
 
+    this.markerLayer.setClustering(this.config.cluster)
+
     this.setupTooltip()
     this.setupDragging()
     this.setupEvents()
@@ -121,6 +123,8 @@ export class RoverMap {
     }
 
     if (previous.interactive !== next.interactive) this.applyInteractions(next)
+
+    if (changed(previous.cluster, next.cluster)) this.markerLayer.setClustering(next.cluster)
 
     const view = this.map.getView()
     if (previous.minZoom !== next.minZoom) view.setMinZoom(next.minZoom ?? 0)
@@ -305,12 +309,15 @@ export class RoverMap {
       if (this.config.interactive === false) return
       if (event.dragging) return this.hideTooltip()
 
-      const { marker, markerFeature, shape } = this.featureAt(event.pixel)
+      const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel)
       const clickableShape = shape && this.wants("shapeClick")
 
-      this.map.getTargetElement().style.cursor = marker || clickableShape ? "pointer" : ""
+      this.map.getTargetElement().style.cursor =
+        marker || cluster || clickableShape ? "pointer" : ""
 
-      if (marker) {
+      if (cluster) {
+        this.hideTooltip()
+      } else if (marker) {
         this.showTooltip(marker, markerFeature.getGeometry().getCoordinates())
       } else if (shape && (shape.tooltip || shape.label)) {
         // Anchored at the pointer: a route's tooltip jumping to its centroid would
@@ -326,10 +333,24 @@ export class RoverMap {
     this.map.on("singleclick", (event) => {
       if (this.config.interactive === false) return
 
-      const { marker, shape } = this.featureAt(event.pixel)
+      const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel)
       const { lat, lon } = unproject(event.coordinate)
 
-      if (marker) {
+      if (cluster) {
+        this.emit("clusterClick", {
+          count: cluster.length,
+          ids: cluster.map((member) => member.id),
+          lat,
+          lon,
+        })
+
+        // Zooming into a group is what a click on one means, unless the application
+        // says otherwise. Without it a cluster is a dead end: you can see that
+        // twelve things are there and have no way to reach them.
+        if (this.config.cluster && this.config.cluster.zoomOnClick !== false) {
+          this.zoomToCluster(markerFeature)
+        }
+      } else if (marker) {
         this.emit("markerClick", {
           id: marker.id,
           lat: marker.lat,
@@ -364,6 +385,41 @@ export class RoverMap {
   // they are drawn on top, and a pin sitting inside its own parcel outline should
   // answer the click. forEachFeatureAtPixel iterates topmost-first, so stopping
   // as soon as a marker is found is enough to enforce that.
+  /**
+   * Frame the members of a cluster, so a click drills into it.
+   *
+   * The members' extent is often a single point — everything in the group sits at
+   * the same place at this zoom — so the fit is capped, and a degenerate extent
+   * simply zooms in a couple of levels instead of to the maximum.
+   */
+  zoomToCluster(clusterFeature) {
+    const members = clusterFeature.get("features") || []
+    if (members.length === 0) return
+
+    const extent = createEmpty()
+    members.forEach((member) => extend(extent, member.getGeometry().getExtent()))
+
+    const view = this.map.getView()
+    this.beQuiet(ANIMATION_MS)
+
+    if (extent[0] === extent[2] && extent[1] === extent[3]) {
+      view.animate({
+        center: [extent[0], extent[1]],
+        zoom: Math.min((view.getZoom() ?? 0) + 2, view.getMaxZoom()),
+        duration: ANIMATION_MS,
+      })
+      return
+    }
+
+    const padding = this.config.fitPadding ?? 48
+    view.fit(extent, {
+      size: this.map.getSize(),
+      padding: [padding, padding, padding, padding],
+      maxZoom: fitMaxZoom(this.config, false),
+      duration: ANIMATION_MS,
+    })
+  }
+
   featureAt(pixel) {
     let marker = null
     let shape = null
@@ -388,6 +444,7 @@ export class RoverMap {
 
     return {
       marker: this.markerLayer.markerFor(marker),
+      cluster: this.markerLayer.clusterFor(marker),
       markerFeature: marker,
       shape: this.shapeLayer.shapeFor(shape),
       shapeFeature: shape,

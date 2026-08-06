@@ -200,10 +200,12 @@ var HeatmapLayer = class {
 import Feature2 from "ol/Feature.js";
 import Point2 from "ol/geom/Point.js";
 import VectorLayer from "ol/layer/Vector.js";
+import Cluster from "ol/source/Cluster.js";
 import VectorSource2 from "ol/source/Vector.js";
 
 // js/styles.js
 import Style from "ol/style/Style.js";
+import Circle from "ol/style/Circle.js";
 import Icon from "ol/style/Icon.js";
 import Text from "ol/style/Text.js";
 import Fill from "ol/style/Fill.js";
@@ -272,6 +274,38 @@ function pinDataUri(color) {
 </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
+var clusterCache = /* @__PURE__ */ new Map();
+var CLUSTER_COLOR = "#2563eb";
+function clusterStyle(count) {
+  let style = clusterCache.get(count);
+  if (!style) {
+    const radius = Math.min(28, 12 + Math.log2(count) * 3);
+    style = new Style({
+      image: new Circle({
+        radius,
+        fill: new Fill({ color: withAlpha(CLUSTER_COLOR, 0.85) }),
+        stroke: new Stroke({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
+      }),
+      text: new Text({
+        text: String(count),
+        font: "600 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
+        fill: new Fill({ color: "#ffffff" })
+      })
+    });
+    if (clusterCache.size >= CACHE_LIMIT) clusterCache.delete(clusterCache.keys().next().value);
+    clusterCache.set(count, style);
+  }
+  return style;
+}
+function withAlpha(hex, alpha) {
+  const digits = hex.slice(1);
+  return [
+    parseInt(digits.slice(0, 2), 16),
+    parseInt(digits.slice(2, 4), 16),
+    parseInt(digits.slice(4, 6), 16),
+    alpha
+  ];
+}
 
 // js/markers.js
 var ROVER_KEY = "rover";
@@ -287,6 +321,53 @@ var MarkerLayer = class {
       updateWhileInteracting: true
     });
     this.entries = /* @__PURE__ */ new Map();
+    this.clusterSource = null;
+  }
+  /**
+   * Turn grouping on or off.
+   *
+   * Only the layer's source changes. The markers, their styles and the entry map
+   * are untouched, so toggling this mid-session costs nothing and loses nothing.
+   */
+  setClustering(options) {
+    if (!options) {
+      this.clusterSource = null;
+      this.layer.setSource(this.source);
+      this.layer.setStyle(void 0);
+      return;
+    }
+    this.clusterSource = new Cluster({
+      source: this.source,
+      distance: options.distance ?? 40,
+      minDistance: options.minDistance ?? 20
+    });
+    this.layer.setSource(this.clusterSource);
+    this.layer.setStyle((feature) => this.styleForRendered(feature));
+  }
+  get clustering() {
+    return Boolean(this.clusterSource);
+  }
+  styleForRendered(feature) {
+    const members = feature.get("features");
+    if (!members) return void 0;
+    if (members.length === 1) {
+      const marker = members[0].get(ROVER_KEY);
+      return marker ? styleFor(marker) : void 0;
+    }
+    return clusterStyle(members.length);
+  }
+  /**
+   * The markers behind a rendered feature: one when it is a pin or a lone cluster,
+   * several when it is a group.
+   */
+  membersOf(feature) {
+    if (!feature) return [];
+    const members = feature.get("features");
+    if (!members) {
+      const marker = feature.get(ROVER_KEY);
+      return marker ? [marker] : [];
+    }
+    return members.map((member) => member.get(ROVER_KEY)).filter(Boolean);
   }
   reconcile(markers) {
     const seen = /* @__PURE__ */ new Set();
@@ -328,16 +409,44 @@ var MarkerLayer = class {
     this.entries.set(key, { feature, marker, geometryHash, appearanceHash });
     return feature;
   }
+  /**
+   * The single marker a rendered feature stands for, or null.
+   *
+   * A group of twelve is not a marker: it has no id to report and no popup to open,
+   * so callers must handle it as a cluster instead of being handed one arbitrary
+   * member.
+   */
   markerFor(feature) {
-    return feature && feature.get(ROVER_KEY);
+    const members = this.membersOf(feature);
+    return members.length === 1 ? members[0] : null;
+  }
+  /** The markers of a rendered feature when it is a group of more than one. */
+  clusterFor(feature) {
+    const members = this.membersOf(feature);
+    return members.length > 1 ? members : null;
   }
   markerById(id) {
     const entry = this.entries.get(String(id));
     return entry && entry.marker;
   }
+  /**
+   * The feature currently *on screen* for a marker — which is not always the
+   * feature the reconciler built.
+   *
+   * When clustering, a marker is drawn as part of a group whose geometry sits at the
+   * members' centroid. Anchoring a popup to the marker's own coordinate would point
+   * it away from the pin the user clicked. So a marker that has been grouped with
+   * others has no rendered feature of its own, and callers treat that as "nothing to
+   * point at" — which closes the popup.
+   */
   featureById(id) {
     const entry = this.entries.get(String(id));
-    return entry && entry.feature;
+    if (!entry) return null;
+    if (!this.clusterSource) return entry.feature;
+    return this.clusterSource.getFeatures().find((cluster) => {
+      const members = cluster.get("features");
+      return members && members.length === 1 && members[0] === entry.feature;
+    }) || null;
   }
   /**
    * Drop the cached geometry hash for a feature the client moved on its own.
@@ -361,6 +470,7 @@ var MarkerLayer = class {
   dispose() {
     this.source.clear();
     this.entries.clear();
+    this.clusterSource = null;
   }
 };
 function appearanceOf(marker) {
@@ -559,6 +669,7 @@ var RoverMap = class {
         constrainResolution: true
       })
     });
+    this.markerLayer.setClustering(this.config.cluster);
     this.setupTooltip();
     this.setupDragging();
     this.setupEvents();
@@ -602,6 +713,7 @@ var RoverMap = class {
       this.applyControls(next);
     }
     if (previous.interactive !== next.interactive) this.applyInteractions(next);
+    if (changed(previous.cluster, next.cluster)) this.markerLayer.setClustering(next.cluster);
     const view = this.map.getView();
     if (previous.minZoom !== next.minZoom) view.setMinZoom(next.minZoom ?? 0);
     if (previous.maxZoom !== next.maxZoom) view.setMaxZoom(next.maxZoom ?? 28);
@@ -747,10 +859,12 @@ var RoverMap = class {
     this.map.on("pointermove", (event) => {
       if (this.config.interactive === false) return;
       if (event.dragging) return this.hideTooltip();
-      const { marker, markerFeature, shape } = this.featureAt(event.pixel);
+      const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel);
       const clickableShape = shape && this.wants("shapeClick");
-      this.map.getTargetElement().style.cursor = marker || clickableShape ? "pointer" : "";
-      if (marker) {
+      this.map.getTargetElement().style.cursor = marker || cluster || clickableShape ? "pointer" : "";
+      if (cluster) {
+        this.hideTooltip();
+      } else if (marker) {
         this.showTooltip(marker, markerFeature.getGeometry().getCoordinates());
       } else if (shape && (shape.tooltip || shape.label)) {
         this.showTooltip(shape, event.coordinate);
@@ -761,9 +875,19 @@ var RoverMap = class {
     this.map.getViewport().addEventListener("pointerleave", () => this.hideTooltip());
     this.map.on("singleclick", (event) => {
       if (this.config.interactive === false) return;
-      const { marker, shape } = this.featureAt(event.pixel);
+      const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel);
       const { lat, lon } = unproject(event.coordinate);
-      if (marker) {
+      if (cluster) {
+        this.emit("clusterClick", {
+          count: cluster.length,
+          ids: cluster.map((member) => member.id),
+          lat,
+          lon
+        });
+        if (this.config.cluster && this.config.cluster.zoomOnClick !== false) {
+          this.zoomToCluster(markerFeature);
+        }
+      } else if (marker) {
         this.emit("markerClick", {
           id: marker.id,
           lat: marker.lat,
@@ -791,6 +915,36 @@ var RoverMap = class {
   // they are drawn on top, and a pin sitting inside its own parcel outline should
   // answer the click. forEachFeatureAtPixel iterates topmost-first, so stopping
   // as soon as a marker is found is enough to enforce that.
+  /**
+   * Frame the members of a cluster, so a click drills into it.
+   *
+   * The members' extent is often a single point — everything in the group sits at
+   * the same place at this zoom — so the fit is capped, and a degenerate extent
+   * simply zooms in a couple of levels instead of to the maximum.
+   */
+  zoomToCluster(clusterFeature) {
+    const members = clusterFeature.get("features") || [];
+    if (members.length === 0) return;
+    const extent = createEmpty();
+    members.forEach((member) => extend(extent, member.getGeometry().getExtent()));
+    const view = this.map.getView();
+    this.beQuiet(ANIMATION_MS);
+    if (extent[0] === extent[2] && extent[1] === extent[3]) {
+      view.animate({
+        center: [extent[0], extent[1]],
+        zoom: Math.min((view.getZoom() ?? 0) + 2, view.getMaxZoom()),
+        duration: ANIMATION_MS
+      });
+      return;
+    }
+    const padding = this.config.fitPadding ?? 48;
+    view.fit(extent, {
+      size: this.map.getSize(),
+      padding: [padding, padding, padding, padding],
+      maxZoom: fitMaxZoom(this.config, false),
+      duration: ANIMATION_MS
+    });
+  }
   featureAt(pixel) {
     let marker = null;
     let shape = null;
@@ -811,6 +965,7 @@ var RoverMap = class {
     );
     return {
       marker: this.markerLayer.markerFor(marker),
+      cluster: this.markerLayer.clusterFor(marker),
       markerFeature: marker,
       shape: this.shapeLayer.shapeFor(shape),
       shapeFeature: shape

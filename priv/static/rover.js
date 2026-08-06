@@ -38940,6 +38940,208 @@ var VectorLayer = class extends BaseVector_default {
 };
 var Vector_default2 = VectorLayer;
 
+// node_modules/ol/source/Cluster.js
+var Cluster = class extends Vector_default {
+  /**
+   * @param {Options<FeatureType>} [options] Cluster options.
+   */
+  constructor(options) {
+    options = options || {};
+    super({
+      attributions: options.attributions,
+      wrapX: options.wrapX
+    });
+    this.resolution = void 0;
+    this.distance = options.distance !== void 0 ? options.distance : 20;
+    this.minDistance = options.minDistance || 0;
+    this.interpolationRatio = 0;
+    this.features = [];
+    this.geometryFunction = options.geometryFunction || function(feature) {
+      const geometry = (
+        /** @type {Point} */
+        feature.getGeometry()
+      );
+      assert(
+        !geometry || geometry.getType() === "Point",
+        "The default `geometryFunction` can only handle `Point` or null geometries"
+      );
+      return geometry;
+    };
+    this.createCustomCluster_ = options.createCluster;
+    this.source = null;
+    this.boundRefresh_ = this.refresh.bind(this);
+    this.updateDistance(this.distance, this.minDistance);
+    this.setSource(options.source || null);
+  }
+  /**
+   * Remove all features from the source.
+   * @param {boolean} [fast] Skip dispatching of {@link module:ol/source/VectorEventType~VectorEventType#removefeature} events.
+   * @api
+   * @override
+   */
+  clear(fast) {
+    this.features.length = 0;
+    super.clear(fast);
+  }
+  /**
+   * Get the distance in pixels between clusters.
+   * @return {number} Distance.
+   * @api
+   */
+  getDistance() {
+    return this.distance;
+  }
+  /**
+   * Get a reference to the wrapped source.
+   * @return {VectorSource<FeatureType>|null} Source.
+   * @api
+   */
+  getSource() {
+    return this.source;
+  }
+  /**
+   * @param {import("../extent.js").Extent} extent Extent.
+   * @param {number} resolution Resolution.
+   * @param {import("../proj/Projection.js").default} projection Projection.
+   * @override
+   */
+  loadFeatures(extent, resolution, projection) {
+    this.source?.loadFeatures(extent, resolution, projection);
+    if (resolution !== this.resolution) {
+      this.resolution = resolution;
+      this.refresh();
+    }
+  }
+  /**
+   * Set the distance within which features will be clusterd together.
+   * @param {number} distance The distance in pixels.
+   * @api
+   */
+  setDistance(distance) {
+    this.updateDistance(distance, this.minDistance);
+  }
+  /**
+   * Set the minimum distance between clusters. Will be capped at the
+   * configured distance.
+   * @param {number} minDistance The minimum distance in pixels.
+   * @api
+   */
+  setMinDistance(minDistance) {
+    this.updateDistance(this.distance, minDistance);
+  }
+  /**
+   * The configured minimum distance between clusters.
+   * @return {number} The minimum distance in pixels.
+   * @api
+   */
+  getMinDistance() {
+    return this.minDistance;
+  }
+  /**
+   * Replace the wrapped source.
+   * @param {VectorSource<FeatureType>|null} source The new source for this instance.
+   * @api
+   */
+  setSource(source) {
+    if (this.source) {
+      this.source.removeEventListener(EventType_default.CHANGE, this.boundRefresh_);
+    }
+    this.source = source;
+    if (source) {
+      source.addEventListener(EventType_default.CHANGE, this.boundRefresh_);
+    }
+    this.refresh();
+  }
+  /**
+   * Handle the source changing.
+   * @override
+   */
+  refresh() {
+    this.clear();
+    this.cluster();
+    this.addFeatures(this.features);
+  }
+  /**
+   * Update the distances and refresh the source if necessary.
+   * @param {number} distance The new distance.
+   * @param {number} minDistance The new minimum distance.
+   */
+  updateDistance(distance, minDistance) {
+    const ratio = distance === 0 ? 0 : Math.min(minDistance, distance) / distance;
+    const changed2 = distance !== this.distance || this.interpolationRatio !== ratio;
+    this.distance = distance;
+    this.minDistance = minDistance;
+    this.interpolationRatio = ratio;
+    if (changed2) {
+      this.refresh();
+    }
+  }
+  /**
+   * @protected
+   */
+  cluster() {
+    if (this.resolution === void 0 || !this.source) {
+      return;
+    }
+    const extent = createEmpty();
+    const mapDistance = this.distance * this.resolution;
+    const features = this.source.getFeatures();
+    const clustered = {};
+    for (let i = 0, ii = features.length; i < ii; i++) {
+      const feature = features[i];
+      if (!(getUid(feature) in clustered)) {
+        const geometry = this.geometryFunction(feature);
+        if (geometry) {
+          const coordinates2 = geometry.getCoordinates();
+          createOrUpdateFromCoordinate(coordinates2, extent);
+          buffer(extent, mapDistance, extent);
+          const neighbors = this.source.getFeaturesInExtent(extent).filter(function(neighbor) {
+            const uid = getUid(neighbor);
+            if (uid in clustered) {
+              return false;
+            }
+            clustered[uid] = true;
+            return true;
+          });
+          this.features.push(this.createCluster(neighbors, extent));
+        }
+      }
+    }
+  }
+  /**
+   * @param {Array<FeatureType>} features Features
+   * @param {import("../extent.js").Extent} extent The searched extent for these features.
+   * @return {Feature} The cluster feature.
+   * @protected
+   */
+  createCluster(features, extent) {
+    const centroid2 = [0, 0];
+    for (let i = features.length - 1; i >= 0; --i) {
+      const geometry2 = this.geometryFunction(features[i]);
+      if (geometry2) {
+        add(centroid2, geometry2.getCoordinates());
+      } else {
+        features.splice(i, 1);
+      }
+    }
+    scale(centroid2, 1 / features.length);
+    const searchCenter = getCenter(extent);
+    const ratio = this.interpolationRatio;
+    const geometry = new Point_default([
+      centroid2[0] * (1 - ratio) + searchCenter[0] * ratio,
+      centroid2[1] * (1 - ratio) + searchCenter[1] * ratio
+    ]);
+    if (this.createCustomCluster_) {
+      return this.createCustomCluster_(geometry, features);
+    }
+    return new Feature_default({
+      geometry,
+      features
+    });
+  }
+};
+var Cluster_default = Cluster;
+
 // js/styles.js
 var DEFAULT_COLOR = "#e11d48";
 var cache3 = /* @__PURE__ */ new Map();
@@ -39005,6 +39207,38 @@ function pinDataUri(color) {
 </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
+var clusterCache = /* @__PURE__ */ new Map();
+var CLUSTER_COLOR = "#2563eb";
+function clusterStyle(count) {
+  let style = clusterCache.get(count);
+  if (!style) {
+    const radius = Math.min(28, 12 + Math.log2(count) * 3);
+    style = new Style_default({
+      image: new Circle_default({
+        radius,
+        fill: new Fill_default({ color: withAlpha2(CLUSTER_COLOR, 0.85) }),
+        stroke: new Stroke_default({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
+      }),
+      text: new Text_default({
+        text: String(count),
+        font: "600 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
+        fill: new Fill_default({ color: "#ffffff" })
+      })
+    });
+    if (clusterCache.size >= CACHE_LIMIT) clusterCache.delete(clusterCache.keys().next().value);
+    clusterCache.set(count, style);
+  }
+  return style;
+}
+function withAlpha2(hex, alpha) {
+  const digits = hex.slice(1);
+  return [
+    parseInt(digits.slice(0, 2), 16),
+    parseInt(digits.slice(2, 4), 16),
+    parseInt(digits.slice(4, 6), 16),
+    alpha
+  ];
+}
 
 // js/markers.js
 var ROVER_KEY = "rover";
@@ -39020,6 +39254,53 @@ var MarkerLayer = class {
       updateWhileInteracting: true
     });
     this.entries = /* @__PURE__ */ new Map();
+    this.clusterSource = null;
+  }
+  /**
+   * Turn grouping on or off.
+   *
+   * Only the layer's source changes. The markers, their styles and the entry map
+   * are untouched, so toggling this mid-session costs nothing and loses nothing.
+   */
+  setClustering(options) {
+    if (!options) {
+      this.clusterSource = null;
+      this.layer.setSource(this.source);
+      this.layer.setStyle(void 0);
+      return;
+    }
+    this.clusterSource = new Cluster_default({
+      source: this.source,
+      distance: options.distance ?? 40,
+      minDistance: options.minDistance ?? 20
+    });
+    this.layer.setSource(this.clusterSource);
+    this.layer.setStyle((feature) => this.styleForRendered(feature));
+  }
+  get clustering() {
+    return Boolean(this.clusterSource);
+  }
+  styleForRendered(feature) {
+    const members = feature.get("features");
+    if (!members) return void 0;
+    if (members.length === 1) {
+      const marker = members[0].get(ROVER_KEY);
+      return marker ? styleFor(marker) : void 0;
+    }
+    return clusterStyle(members.length);
+  }
+  /**
+   * The markers behind a rendered feature: one when it is a pin or a lone cluster,
+   * several when it is a group.
+   */
+  membersOf(feature) {
+    if (!feature) return [];
+    const members = feature.get("features");
+    if (!members) {
+      const marker = feature.get(ROVER_KEY);
+      return marker ? [marker] : [];
+    }
+    return members.map((member) => member.get(ROVER_KEY)).filter(Boolean);
   }
   reconcile(markers) {
     const seen = /* @__PURE__ */ new Set();
@@ -39061,16 +39342,44 @@ var MarkerLayer = class {
     this.entries.set(key, { feature, marker, geometryHash, appearanceHash });
     return feature;
   }
+  /**
+   * The single marker a rendered feature stands for, or null.
+   *
+   * A group of twelve is not a marker: it has no id to report and no popup to open,
+   * so callers must handle it as a cluster instead of being handed one arbitrary
+   * member.
+   */
   markerFor(feature) {
-    return feature && feature.get(ROVER_KEY);
+    const members = this.membersOf(feature);
+    return members.length === 1 ? members[0] : null;
+  }
+  /** The markers of a rendered feature when it is a group of more than one. */
+  clusterFor(feature) {
+    const members = this.membersOf(feature);
+    return members.length > 1 ? members : null;
   }
   markerById(id) {
     const entry = this.entries.get(String(id));
     return entry && entry.marker;
   }
+  /**
+   * The feature currently *on screen* for a marker — which is not always the
+   * feature the reconciler built.
+   *
+   * When clustering, a marker is drawn as part of a group whose geometry sits at the
+   * members' centroid. Anchoring a popup to the marker's own coordinate would point
+   * it away from the pin the user clicked. So a marker that has been grouped with
+   * others has no rendered feature of its own, and callers treat that as "nothing to
+   * point at" — which closes the popup.
+   */
   featureById(id) {
     const entry = this.entries.get(String(id));
-    return entry && entry.feature;
+    if (!entry) return null;
+    if (!this.clusterSource) return entry.feature;
+    return this.clusterSource.getFeatures().find((cluster) => {
+      const members = cluster.get("features");
+      return members && members.length === 1 && members[0] === entry.feature;
+    }) || null;
   }
   /**
    * Drop the cached geometry hash for a feature the client moved on its own.
@@ -39094,6 +39403,7 @@ var MarkerLayer = class {
   dispose() {
     this.source.clear();
     this.entries.clear();
+    this.clusterSource = null;
   }
 };
 function appearanceOf(marker) {
@@ -40498,6 +40808,7 @@ var RoverMap = class {
         constrainResolution: true
       })
     });
+    this.markerLayer.setClustering(this.config.cluster);
     this.setupTooltip();
     this.setupDragging();
     this.setupEvents();
@@ -40541,6 +40852,7 @@ var RoverMap = class {
       this.applyControls(next);
     }
     if (previous.interactive !== next.interactive) this.applyInteractions(next);
+    if (changed(previous.cluster, next.cluster)) this.markerLayer.setClustering(next.cluster);
     const view = this.map.getView();
     if (previous.minZoom !== next.minZoom) view.setMinZoom(next.minZoom ?? 0);
     if (previous.maxZoom !== next.maxZoom) view.setMaxZoom(next.maxZoom ?? 28);
@@ -40686,10 +40998,12 @@ var RoverMap = class {
     this.map.on("pointermove", (event) => {
       if (this.config.interactive === false) return;
       if (event.dragging) return this.hideTooltip();
-      const { marker, markerFeature, shape } = this.featureAt(event.pixel);
+      const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel);
       const clickableShape = shape && this.wants("shapeClick");
-      this.map.getTargetElement().style.cursor = marker || clickableShape ? "pointer" : "";
-      if (marker) {
+      this.map.getTargetElement().style.cursor = marker || cluster || clickableShape ? "pointer" : "";
+      if (cluster) {
+        this.hideTooltip();
+      } else if (marker) {
         this.showTooltip(marker, markerFeature.getGeometry().getCoordinates());
       } else if (shape && (shape.tooltip || shape.label)) {
         this.showTooltip(shape, event.coordinate);
@@ -40700,9 +41014,19 @@ var RoverMap = class {
     this.map.getViewport().addEventListener("pointerleave", () => this.hideTooltip());
     this.map.on("singleclick", (event) => {
       if (this.config.interactive === false) return;
-      const { marker, shape } = this.featureAt(event.pixel);
+      const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel);
       const { lat, lon } = unproject(event.coordinate);
-      if (marker) {
+      if (cluster) {
+        this.emit("clusterClick", {
+          count: cluster.length,
+          ids: cluster.map((member) => member.id),
+          lat,
+          lon
+        });
+        if (this.config.cluster && this.config.cluster.zoomOnClick !== false) {
+          this.zoomToCluster(markerFeature);
+        }
+      } else if (marker) {
         this.emit("markerClick", {
           id: marker.id,
           lat: marker.lat,
@@ -40730,6 +41054,36 @@ var RoverMap = class {
   // they are drawn on top, and a pin sitting inside its own parcel outline should
   // answer the click. forEachFeatureAtPixel iterates topmost-first, so stopping
   // as soon as a marker is found is enough to enforce that.
+  /**
+   * Frame the members of a cluster, so a click drills into it.
+   *
+   * The members' extent is often a single point — everything in the group sits at
+   * the same place at this zoom — so the fit is capped, and a degenerate extent
+   * simply zooms in a couple of levels instead of to the maximum.
+   */
+  zoomToCluster(clusterFeature) {
+    const members = clusterFeature.get("features") || [];
+    if (members.length === 0) return;
+    const extent = createEmpty();
+    members.forEach((member) => extend(extent, member.getGeometry().getExtent()));
+    const view = this.map.getView();
+    this.beQuiet(ANIMATION_MS);
+    if (extent[0] === extent[2] && extent[1] === extent[3]) {
+      view.animate({
+        center: [extent[0], extent[1]],
+        zoom: Math.min((view.getZoom() ?? 0) + 2, view.getMaxZoom()),
+        duration: ANIMATION_MS
+      });
+      return;
+    }
+    const padding = this.config.fitPadding ?? 48;
+    view.fit(extent, {
+      size: this.map.getSize(),
+      padding: [padding, padding, padding, padding],
+      maxZoom: fitMaxZoom(this.config, false),
+      duration: ANIMATION_MS
+    });
+  }
   featureAt(pixel) {
     let marker = null;
     let shape = null;
@@ -40750,6 +41104,7 @@ var RoverMap = class {
     );
     return {
       marker: this.markerLayer.markerFor(marker),
+      cluster: this.markerLayer.clusterFor(marker),
       markerFeature: marker,
       shape: this.shapeLayer.shapeFor(shape),
       shapeFeature: shape

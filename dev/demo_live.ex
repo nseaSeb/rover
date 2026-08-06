@@ -59,6 +59,9 @@ defmodule RoverDev.DemoLive do
        tiles: :ign_plan,
        heat: false,
        heat_radius: 14,
+       cluster: false,
+       crowd: false,
+       cluster_log: nil,
        next_id: 4,
        log: nil
      )}
@@ -102,11 +105,14 @@ defmodule RoverDev.DemoLive do
       <button phx-click="fit_first">Fit the first client</button>
       <button phx-click="toggle_heat">Heatmap: {if @heat, do: "on", else: "off"}</button>
       <button phx-click="cycle_heat_radius">Heat radius: {@heat_radius}</button>
+      <button phx-click="toggle_crowd">Crowd: {if @crowd, do: "240 markers", else: "off"}</button>
+      <button phx-click="toggle_cluster">Cluster: {if @cluster, do: "on", else: "off"}</button>
     </div>
 
     <.map
       id="clients"
-      markers={@clients}
+      markers={if @crowd, do: @clients ++ crowd(), else: @clients}
+      cluster={@cluster}
       shapes={@shapes}
       heatmap={if @heat, do: heat_points(), else: []}
       heatmap_style={[radius: @heat_radius, blur: 22, opacity: 0.85]}
@@ -114,6 +120,7 @@ defmodule RoverDev.DemoLive do
       height="28rem"
       controls={[:zoom, :attribution, :scale_line]}
       on_marker_click="marker_clicked"
+      on_cluster_click="cluster_clicked"
       on_shape_click="shape_clicked"
       on_map_click="map_clicked"
       on_move_end="moved"
@@ -121,7 +128,9 @@ defmodule RoverDev.DemoLive do
     >
       <:popup :let={marker}>
         <strong>{marker.emoji} {marker.label}</strong>
-        <div>{marker.data.orders} orders</div>
+        <%!-- Guarded, because :data is nil unless set — and the crowd markers do not
+             set it. Exactly the trap the slot's documentation warns about. --%>
+        <div>{marker.data && "#{marker.data.orders} orders"}</div>
         <div>{fmt(marker.lat)}, {fmt(marker.lon)}</div>
         <button data-rover-popup-close>Close</button>
       </:popup>
@@ -151,6 +160,14 @@ defmodule RoverDev.DemoLive do
         <div>no handler wired</div>
       </:shape_popup>
     </.map>
+
+    <div class="cluster-log">
+      <%= if @cluster_log do %>
+        {@cluster_log}
+      <% else %>
+        <span>Cluster clicks land here.</span>
+      <% end %>
+    </div>
 
     <div class="log">
       <%= if @log do %>
@@ -272,6 +289,20 @@ defmodule RoverDev.DemoLive do
      |> log("heat radius #{next} — style only, the points are untouched")}
   end
 
+  def handle_event("toggle_cluster", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(cluster: !socket.assigns.cluster)
+     |> log("clustering #{if socket.assigns.cluster, do: "off", else: "on"}")}
+  end
+
+  def handle_event("toggle_crowd", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(crowd: !socket.assigns.crowd)
+     |> log("crowd #{if socket.assigns.crowd, do: "off", else: "on"} — 240 markers")}
+  end
+
   def handle_event("cycle_tiles", _params, socket) do
     next =
       case socket.assigns.tiles do
@@ -311,6 +342,15 @@ defmodule RoverDev.DemoLive do
 
   def handle_event("marker_clicked", %{"id" => id, "lat" => lat, "lon" => lon}, socket) do
     {:noreply, log(socket, "marker #{id} clicked at #{fmt(lat)}, #{fmt(lon)}")}
+  end
+
+  # Its own assign rather than the shared log: `on_move_end` writes to that whenever
+  # the view settles, and a test racing the two fails for no reason.
+  def handle_event("cluster_clicked", %{"count" => count, "ids" => ids}, socket) do
+    {:noreply,
+     assign(socket,
+       cluster_log: "cluster of #{count} — first ids #{inspect(Enum.take(ids, 4))}"
+     )}
   end
 
   def handle_event("shape_clicked", %{"id" => id, "lat" => lat, "lon" => lon}, socket) do
@@ -370,6 +410,23 @@ defmodule RoverDev.DemoLive do
       tooltip: "Delivery route — 5 stops",
       data: %{stops: 5}
     }
+  end
+
+  # A crowd dense enough that clustering is the only readable option — which is the
+  # condition it exists for. Deterministic, so the demo is the same every time.
+  defp crowd do
+    for i <- 1..240 do
+      angle = i * 2.399963
+      radius = :math.sqrt(i / 240) * 0.045
+
+      %{
+        id: "crowd-#{i}",
+        lat: 45.762 + radius * :math.cos(angle),
+        lon: 4.836 + radius * :math.sin(angle) * 1.4,
+        emoji: "📍",
+        label: "Crowd #{i}"
+      }
+    end
   end
 
   # A deterministic cloud around Lyon: a heat field needs a crowd, and a demo needs

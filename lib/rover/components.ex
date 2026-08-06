@@ -143,6 +143,27 @@ defmodule Rover.Components do
     default: [],
     doc: "Field mapping passed to `Rover.Shape.new!/2`, e.g. `[geometry: :outline]`."
 
+  attr :cluster, :any,
+    default: false,
+    doc: """
+    Groups nearby markers into counted circles, which is the answer to hundreds of
+    them. `true` for the defaults, or a keyword list:
+
+      * `:distance` — how close, in pixels, two markers must be to group. Default `40`.
+      * `:min_distance` — minimum gap between two groups, in pixels. Default `20`.
+      * `:zoom_on_click` — zoom into a group when it is clicked. Default `true`.
+
+    Clicking a group also sends `on_cluster_click`. A group of one is drawn as its
+    own marker, so nothing looks clustered until it actually is.
+
+    Two consequences worth knowing: a marker that has been grouped has no popup —
+    the popup would point at the group's centre rather than at the marker — and
+    `:draggable` markers cannot be dragged while grouped, because what is under the
+    pointer is a group rather than a pin.
+    """
+
+  attr :on_cluster_click, :string, default: nil
+
   attr :heatmap, :list,
     default: [],
     doc: """
@@ -353,12 +374,14 @@ defmodule Rover.Components do
       tiles: encode_tiles(assigns.tiles),
       fit: encode_fit(assigns.fit, assigns.center),
       fitPadding: assigns.fit_padding,
+      cluster: encode_cluster(assigns.cluster),
       controls: encode_controls(assigns.controls),
       interactive: assigns.interactive,
       target: encode_target(assigns.target),
       events:
         drop_nils(%{
           markerClick: assigns.on_marker_click,
+          clusterClick: assigns.on_cluster_click,
           shapeClick: assigns.on_shape_click,
           mapClick: assigns.on_map_click,
           moveEnd: assigns.on_move_end,
@@ -424,6 +447,37 @@ defmodule Rover.Components do
   defp encode_fit(other, _center) do
     raise ArgumentError,
           "invalid fit: #{inspect(other)}. Expected `:once`, `true`, `false` or `nil`."
+  end
+
+  @cluster_options [:distance, :min_distance, :zoom_on_click]
+
+  defp encode_cluster(false), do: nil
+  defp encode_cluster(nil), do: nil
+  defp encode_cluster(true), do: encode_cluster([])
+
+  defp encode_cluster(opts) when is_list(opts) do
+    Enum.each(opts, fn {key, _value} ->
+      key in @cluster_options ||
+        raise ArgumentError, """
+        unknown cluster option #{inspect(key)}.
+
+        Expected any of: #{Enum.map_join(@cluster_options, ", ", &inspect/1)}.
+        """
+    end)
+
+    %{
+      distance: Keyword.get(opts, :distance, 40),
+      minDistance: Keyword.get(opts, :min_distance, 20),
+      zoomOnClick: Keyword.get(opts, :zoom_on_click, true)
+    }
+  end
+
+  defp encode_cluster(other) do
+    raise ArgumentError, """
+    invalid cluster: #{inspect(other)}.
+
+    Expected `true`, `false`, or a keyword list of #{Enum.map_join(@cluster_options, ", ", &inspect/1)}.
+    """
   end
 
   @known_controls [:zoom, :attribution, :scale_line, :full_screen, :rotate]

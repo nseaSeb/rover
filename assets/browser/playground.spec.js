@@ -115,6 +115,32 @@ async function shapePixel(page, selector) {
   return pixel
 }
 
+/**
+ * A pixel carrying a cluster of more than one marker.
+ *
+ * Not the centroid of an arbitrary group: `ol/source/Cluster` groups every feature
+ * in the source, not only the visible ones, so a group's centre is often off-screen
+ * and unclickable. Scanning for one the map itself reports guarantees both.
+ */
+async function clusterPixel(page, selector) {
+  const pixel = await page.evaluate((sel) => {
+    const rover = document.querySelector(sel)._rover
+    const [width, height] = rover.map.getSize()
+
+    for (let x = 50; x < width - 50; x += 8) {
+      for (let y = 50; y < height - 50; y += 8) {
+        if (rover.featureAt([x, y]).cluster) return { x, y }
+      }
+    }
+
+    return null
+  }, selector)
+
+  if (!pixel) throw new Error(`no clickable cluster on ${selector}`)
+
+  return pixel
+}
+
 /** Wait until the hook has mounted and handed us the map. */
 async function mapReady(page) {
   await page.waitForFunction(
@@ -497,6 +523,86 @@ test.describe("the playground", () => {
 
     expect(after, `zoom ${before} -> ${after}`).toBeCloseTo(17, 0)
     expect(after).not.toBeCloseTo(before, 0)
+
+    expect(problems).toEqual([])
+  })
+
+  test("groups a crowd, and a click drills into a group", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    const state = () =>
+      page.evaluate((selector) => {
+        const layer = document.querySelector(selector)._rover.markerLayer
+        const rendered = layer.clusterSource
+          ? layer.clusterSource.getFeatures()
+          : layer.source.getFeatures()
+
+        return {
+          markers: layer.source.getFeatures().length,
+          rendered: rendered.length,
+          clustering: layer.clustering,
+          groups: rendered.filter((f) => (f.get("features") || []).length > 1).length,
+          zoom: document.querySelector(selector)._rover.map.getView().getZoom(),
+        }
+      }, MAP)
+
+    // Assert on the button's own label, not on the shared log: `on_move_end` writes
+    // to that whenever the view settles, and racing the two fails for no reason.
+    await page.getByRole("button", { name: /^Crowd:/ }).click()
+    await expect(page.getByRole("button", { name: "Crowd: 240 markers" })).toBeVisible()
+
+    const crowded = await state()
+    expect(crowded.markers).toBe(243)
+    expect(crowded.clustering).toBe(false)
+    expect(crowded.rendered).toBe(243)
+
+    await page.getByRole("button", { name: /^Cluster:/ }).click()
+    await expect(page.getByRole("button", { name: "Cluster: on" })).toBeVisible()
+
+    const grouped = await state()
+    expect(grouped.clustering).toBe(true)
+    expect(grouped.markers, "clustering rebuilt the markers").toBe(243)
+    // The point of the feature: far fewer things drawn than there are markers.
+    expect(grouped.rendered).toBeLessThan(crowded.rendered)
+    expect(grouped.groups).toBeGreaterThan(0)
+
+    // A click on a group must drill in, or a cluster is a dead end: you can see that
+    // twelve things are there with no way to reach them.
+    await page.locator(CANVAS).click({ position: await clusterPixel(page, MAP) })
+    await expect(page.locator(".cluster-log")).toContainText("cluster of")
+    await page.waitForTimeout(700)
+
+    expect((await state()).zoom, "the click did not zoom into the group").toBeGreaterThan(
+      grouped.zoom
+    )
+
+    expect(problems).toEqual([])
+  })
+
+  test("closes a popup when its marker becomes part of a group", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    const popup = page.locator(`${MAP} [data-rover-popup-for="marker:1"]`)
+
+    await page.locator(CANVAS).click({ position: await markerPixel(page, 1) })
+    await expect(popup).toBeVisible()
+
+    // Grouped, the marker has no rendered feature of its own — its pin is drawn at
+    // the group's centre. Leaving the popup open would point it at empty space.
+    await page.getByRole("button", { name: /^Crowd:/ }).click()
+    await expect(page.getByRole("button", { name: "Crowd: 240 markers" })).toBeVisible()
+    await page.getByRole("button", { name: /^Cluster:/ }).click()
+    await expect(page.getByRole("button", { name: "Cluster: on" })).toBeVisible()
+
+    await expect(popup).toBeHidden()
 
     expect(problems).toEqual([])
   })

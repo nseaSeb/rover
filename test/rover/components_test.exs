@@ -395,6 +395,58 @@ defmodule Rover.ComponentsTest do
     end
   end
 
+  describe "clustering" do
+    test "is off unless asked for" do
+      refute Map.has_key?(config(render_map(markers: @lyon)), "cluster")
+    end
+
+    test "true takes the defaults" do
+      cluster = config(render_map(markers: @lyon, cluster: true))["cluster"]
+
+      assert cluster == %{"distance" => 40, "minDistance" => 20, "zoomOnClick" => true}
+    end
+
+    test "takes each option, camelised for the client" do
+      cluster =
+        config(
+          render_map(
+            markers: @lyon,
+            cluster: [distance: 80, min_distance: 5, zoom_on_click: false]
+          )
+        )["cluster"]
+
+      assert cluster == %{"distance" => 80, "minDistance" => 5, "zoomOnClick" => false}
+    end
+
+    test "false is the same as absent" do
+      refute Map.has_key?(config(render_map(markers: @lyon, cluster: false)), "cluster")
+    end
+
+    test "rejects an unknown option, and names the ones it knows" do
+      error =
+        assert_raise ArgumentError, fn -> render_map(markers: @lyon, cluster: [radius: 3]) end
+
+      assert error.message =~ "unknown cluster option"
+      assert error.message =~ ":min_distance"
+    end
+
+    test "rejects anything that is not a boolean or a keyword list" do
+      assert_raise ArgumentError, ~r/invalid cluster/, fn ->
+        render_map(markers: @lyon, cluster: "yes")
+      end
+    end
+
+    test "an on_cluster_click handler reaches the client" do
+      events = config(render_map(markers: @lyon, on_cluster_click: "drill_in"))["events"]
+
+      assert events["clusterClick"] == "drill_in"
+    end
+
+    test "no clusterClick key when it was not asked for" do
+      refute Map.has_key?(config(render_map(markers: @lyon))["events"], "clusterClick")
+    end
+  end
+
   describe "the heatmap" do
     @points [%{lat: 45.76, lon: 4.83}, %{lat: 45.74, lon: 4.86, weight: 0.5}]
 

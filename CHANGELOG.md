@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Clustering** — `cluster={true}`, or a keyword list of `:distance`,
+  `:min_distance` and `:zoom_on_click`. A group of one is drawn as its own marker;
+  clicking a group zooms into it and sends `on_cluster_click` with the member ids.
+  Reconciliation is untouched, because `ol/source/Cluster` wraps the marker source
+  rather than replacing it — the markers are still diffed by id, only the drawing
+  changes. A grouped marker has no popup (its pin sits at the group's centre, so a
+  popup would point at empty space) and cannot be dragged.
 - **`Rover.Heatmap` and the `heatmap` attribute** — density as a heat field. No
   `:id` required, unlike markers and shapes: a heatmap is an aggregate, so per-point
   identity buys nothing. Diffed by revision instead, which also means a style-only
