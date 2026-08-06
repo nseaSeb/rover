@@ -4,9 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.1] - 2026-08-06
+## [Unreleased]
+
+### Added
+
+- **A browser suite.** Five Playwright scenarios against the `mix dev` playground,
+  guarding the paths where every rendering bug this library has shipped actually
+  lived: the tile URLs the browser requests, the popup DOM, and the view after an
+  update. Runs in CI, and via `mix assets.test.browser`. Deliberately out of
+  `mix precommit` — it needs a server and a browser.
+- The map instance is exposed on its own element as `el._rover`. The browser suite
+  needs it (a marker is drawn in a canvas and has no DOM node, so a coordinate has
+  to be turned into a pixel through the map itself), and it is the fastest way to
+  answer "why is my marker not there?" from a console.
+- `?shapes=parcel|route|none` on the playground picks the initial geometry, so the
+  framing bug's conditions can be reproduced on a fresh mount.
 
 ### Fixed
+
+- **Live reload never worked in the playground.** The endpoint declared
+  `plug Phoenix.LiveReloader` but not the socket it connects to, so the browser
+  retried a 404 forever while the esbuild watcher rebuilt bundles nobody loaded.
+  Found by the browser suite on its first run, by refusing to tolerate a console
+  error.
+- The playground had no PubSub, so the live-reload channel raised on every join.
 
 - **`height={nil}` is now legal, and actually works.** `attr :height, :string`
   rejected the `nil` its own documentation recommended — a compile warning, so an
@@ -169,6 +190,5 @@ them.
   back as strings and will not match.
 - `fit` governs *re*fitting; the initial framing is separate.
 
-[0.2.1]: https://github.com/nseaSeb/rover/releases/tag/v0.2.1
 [0.2.0]: https://github.com/nseaSeb/rover/releases/tag/v0.2.0
 [0.1.0]: https://github.com/nseaSeb/rover/releases/tag/v0.1.0

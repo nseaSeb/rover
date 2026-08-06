@@ -13,6 +13,8 @@ rover-*.tar
 # they are what Hex ships to library consumers.
 npm-debug.log
 /assets/node_modules/
+/assets/test-results/
+/assets/playwright-report/
 /dev/static/
 
 # OS

@@ -1,7 +1,7 @@
 defmodule Rover.MixProject do
   use Mix.Project
 
-  @version "0.2.1"
+  @version "0.3.0"
   @source_url "https://github.com/nseaSeb/rover"
 
   def project do
@@ -59,6 +59,9 @@ defmodule Rover.MixProject do
       dev: ["cmd npm --prefix assets install --no-audit --no-fund", "run --no-halt dev.exs"],
       "assets.build": ["cmd npm --prefix assets install", "cmd npm --prefix assets run build"],
       "assets.test": "cmd npm --prefix assets test",
+      # Boots `mix dev` through Playwright's webServer and drives a real browser.
+      # Deliberately out of `precommit`: too slow for every commit, its place is CI.
+      "assets.test.browser": "cmd npm --prefix assets run test:browser",
       precommit: [
         "format",
         "compile --warnings-as-errors",

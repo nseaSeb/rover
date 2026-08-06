@@ -62,6 +62,22 @@ defmodule RoverDev.DemoLive do
      )}
   end
 
+  # `?shapes=parcel|route|none` picks the initial geometry, which makes the
+  # playground scriptable. The browser suite needs it: with both shapes the route's
+  # bounding box happens to enclose all three markers, so a fit that saw only the
+  # shapes would still look correct. With the parcel alone, two markers fall
+  # outside — which is exactly the framing bug worth guarding against, and it can
+  # only be reproduced on a fresh mount.
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply, assign(socket, shapes: shapes(shape_mode(params)))}
+  end
+
+  defp shape_mode(%{"shapes" => "parcel"}), do: :parcel_only
+  defp shape_mode(%{"shapes" => "route"}), do: :route_only
+  defp shape_mode(%{"shapes" => "none"}), do: :none
+  defp shape_mode(_params), do: :both
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -135,7 +151,10 @@ defmodule RoverDev.DemoLive do
   def handle_event("move", _params, socket) do
     clients =
       case socket.assigns.clients do
-        [first | rest] -> [%{first | lat: first.lat + 0.006, lon: first.lon + 0.004} | rest]
+        # Far enough to redefine an edge of the bounding box, which is what makes
+        # the derived centre move at all — the centre is the box's centre, so
+        # nudging an interior marker changes nothing and demonstrates nothing.
+        [first | rest] -> [%{first | lat: first.lat + 0.020, lon: first.lon + 0.012} | rest]
         [] -> []
       end
 
