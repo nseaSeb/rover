@@ -10,9 +10,11 @@ import ScaleLine from "ol/control/ScaleLine.js"
 import Zoom from "ol/control/Zoom.js"
 import Translate from "ol/interaction/Translate.js"
 import { defaults as defaultInteractions } from "ol/interaction/defaults.js"
+import { createEmpty, extend } from "ol/extent.js"
 
 import { extentToBbox, project, unproject } from "./coords.js"
 import { MarkerLayer } from "./markers.js"
+import { ShapeLayer } from "./shapes.js"
 
 const HIT_TOLERANCE = 6
 const ANIMATION_MS = 350
@@ -31,14 +33,19 @@ export class RoverMap {
     // callback can only ever cost us one suppressed event, never wedge the map
     // into silence.
     this.quietUntil = 0
+    // Client-side subscribers, kept separate from `push`. A popup must open on a
+    // marker click even when the application never wired on_marker_click — the
+    // server has no part to play in it.
+    this.listeners = {}
 
     this.markerLayer = new MarkerLayer()
+    this.shapeLayer = new ShapeLayer()
     this.tileLayer = new TileLayer({ zIndex: 0 })
     this.applyTiles(this.config.tiles)
 
     this.map = new Map({
       target: element,
-      layers: [this.tileLayer, this.markerLayer.layer],
+      layers: [this.tileLayer, this.shapeLayer.layer, this.markerLayer.layer],
       controls: buildControls(this.config),
       interactions: buildInteractions(this.config),
       view: new View({
@@ -60,6 +67,11 @@ export class RoverMap {
 
   setMarkers(markers) {
     this.markerLayer.reconcile(markers)
+    this.maybeFit()
+  }
+
+  setShapes(shapes) {
+    this.shapeLayer.reconcile(shapes)
     this.maybeFit()
   }
 
@@ -104,7 +116,7 @@ export class RoverMap {
       if (mode === "once" && this.hasFitted) return
     }
 
-    const extent = this.markerLayer.extent
+    const extent = this.contentExtent
     if (!extent || !Number.isFinite(extent[0])) return
 
     // The very first fit happens as the map appears, so it should be instant;
@@ -117,11 +129,25 @@ export class RoverMap {
     this.map.getView().fit(extent, {
       size: this.map.getSize(),
       padding: [padding, padding, padding, padding],
-      // A single marker has a zero-width extent; fitting it literally would zoom
-      // to the maximum. Cap it at something a human would have chosen.
-      maxZoom: 16,
+      // A lone marker has a zero-width extent; fitting it literally would zoom to
+      // the maximum, so cap it at something a human would have chosen. A polygon
+      // has real width and should be fitted for what it is — capping it would
+      // leave a small parcel as a speck in the middle of a region.
+      maxZoom: isPunctual(extent) ? 16 : undefined,
       duration,
     })
+  }
+
+  // Markers and shapes together: a parcel outline with no pin on it still frames.
+  get contentExtent() {
+    const extents = [this.shapeLayer.extent, this.markerLayer.extent].filter(Boolean)
+
+    if (extents.length === 0) return null
+    if (extents.length === 1) return extents[0]
+
+    const union = createEmpty()
+    extents.forEach((extent) => extend(union, extent))
+    return union
   }
 
   beQuiet(duration) {
@@ -222,13 +248,13 @@ export class RoverMap {
       if (this.config.interactive === false) return
       if (event.dragging) return this.hideTooltip()
 
-      const feature = this.featureAt(event.pixel)
-      const marker = this.markerLayer.markerFor(feature)
+      const { marker, markerFeature, shape } = this.featureAt(event.pixel)
+      const clickableShape = shape && (this.config.events || {}).shapeClick
 
-      this.map.getTargetElement().style.cursor = marker ? "pointer" : ""
+      this.map.getTargetElement().style.cursor = marker || clickableShape ? "pointer" : ""
 
       if (marker) {
-        this.showTooltip(marker, feature.getGeometry().getCoordinates())
+        this.showTooltip(marker, markerFeature.getGeometry().getCoordinates())
       } else {
         this.hideTooltip()
       }
@@ -239,8 +265,8 @@ export class RoverMap {
     this.map.on("singleclick", (event) => {
       if (this.config.interactive === false) return
 
-      const feature = this.featureAt(event.pixel)
-      const marker = this.markerLayer.markerFor(feature)
+      const { marker, shape } = this.featureAt(event.pixel)
+      const { lat, lon } = unproject(event.coordinate)
 
       if (marker) {
         this.emit("markerClick", {
@@ -249,8 +275,9 @@ export class RoverMap {
           lon: marker.lon,
           data: marker.data ?? null,
         })
+      } else if (shape) {
+        this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null })
       } else {
-        const { lat, lon } = unproject(event.coordinate)
         this.emit("mapClick", { lat, lon })
       }
     })
@@ -269,16 +296,51 @@ export class RoverMap {
     })
   }
 
+  // Returns whichever of the two layers is under the pixel. Markers win ties:
+  // they are drawn on top, and a pin sitting inside its own parcel outline should
+  // answer the click. forEachFeatureAtPixel iterates topmost-first, so stopping
+  // as soon as a marker is found is enough to enforce that.
   featureAt(pixel) {
-    return this.map.forEachFeatureAtPixel(pixel, (feature) => feature, {
-      layerFilter: (layer) => layer === this.markerLayer.layer,
-      hitTolerance: HIT_TOLERANCE,
-    })
+    let marker = null
+    let shape = null
+
+    this.map.forEachFeatureAtPixel(
+      pixel,
+      (feature, layer) => {
+        if (layer === this.markerLayer.layer) {
+          marker = marker || feature
+        } else if (layer === this.shapeLayer.layer) {
+          shape = shape || feature
+        }
+
+        return Boolean(marker)
+      },
+      {
+        layerFilter: (layer) =>
+          layer === this.markerLayer.layer || layer === this.shapeLayer.layer,
+        hitTolerance: HIT_TOLERANCE,
+      }
+    )
+
+    return {
+      marker: this.markerLayer.markerFor(marker),
+      markerFeature: marker,
+      shape: this.shapeLayer.shapeFor(shape),
+      shapeFeature: shape,
+    }
   }
 
   emit(name, payload) {
     const event = (this.config.events || {})[name]
     if (event) this.push(event, payload)
+
+    const subscribers = this.listeners[name]
+    if (subscribers) subscribers.forEach((fn) => fn(payload))
+  }
+
+  on(name, fn) {
+    this.listeners[name] = this.listeners[name] || []
+    this.listeners[name].push(fn)
   }
 
   // -- lifecycle ------------------------------------------------------------
@@ -295,6 +357,7 @@ export class RoverMap {
   destroy() {
     if (this.resizeObserver) this.resizeObserver.disconnect()
     this.markerLayer.dispose()
+    this.shapeLayer.dispose()
     this.map.setTarget(undefined)
   }
 }
@@ -351,6 +414,10 @@ function buildInteractions(config) {
 function resolveRetina(url) {
   const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1
   return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "")
+}
+
+function isPunctual(extent) {
+  return extent[0] === extent[2] && extent[1] === extent[3]
 }
 
 function sameCenter(a, b) {

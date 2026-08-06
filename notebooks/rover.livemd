@@ -191,26 +191,39 @@ They are separate so that changing only your markers sends only your markers.
 import Phoenix.Component
 
 clients = [
-  %{id: 1, lat: 45.7640, lon: 4.8357, label: "Atelier", color: "#e11d48"},
-  %{id: 2, lat: 45.7484, lon: 4.8467, label: "Dépôt", color: "#0ea5e9"},
-  %{id: 3, lat: 45.7797, lon: 4.8000, label: "Chantier", color: "#16a34a", draggable: true}
+  %{id: 1, lat: 45.7640, lon: 4.8357, emoji: "🏠", label: "Atelier"},
+  %{id: 2, lat: 45.7484, lon: 4.8467, emoji: "🏭", label: "Dépôt"},
+  %{id: 3, lat: 45.7797, lon: 4.8000, emoji: "🌿", label: "Chantier", draggable: true}
 ]
+
+parcel = %{
+  "type" => "Polygon",
+  "coordinates" => [
+    [[4.828, 45.769], [4.836, 45.7695], [4.8365, 45.7745], [4.8285, 45.774], [4.828, 45.769]]
+  ]
+}
 
 render = fn assigns ->
   ~H"""
   <Rover.Components.map
     id="clients"
     markers={@clients}
-    tiles={:carto_light}
+    shapes={@shapes}
+    tiles={:ign_plan}
     fit={:once}
     on_marker_click="select_client"
+    on_shape_click="select_parcel"
   />
   """
   |> Phoenix.HTML.Safe.to_iodata()
   |> IO.iodata_to_binary()
 end
 
-html = render.(%{clients: clients})
+html =
+  render.(%{
+    clients: clients,
+    shapes: [%{id: "parcel", geometry: parcel, color: "#16a34a", fill_opacity: 0.2}]
+  })
 
 Kino.Text.new(html)
 ```
@@ -232,8 +245,9 @@ end
 
 config = Payload.extract(html, "data-rover")
 markers = Payload.extract(html, "data-rover-markers")
+shapes = Payload.extract(html, "data-rover-shapes")
 
-%{config: config, markers: markers}
+%{config: config, markers: markers, shapes: shapes}
 ```
 
 Things worth noticing in that config:
@@ -243,6 +257,10 @@ Things worth noticing in that config:
 * `zoom` is only the starting point of the fit animation here.
 * `events` contains only the handler you asked for. Nothing else is sent.
 * `tiles.attributions` travelled with the URL, so the client cannot forget it.
+* the shape carries a `rev` — the server hashed the geometry once, so the client
+  never has to. Change one coordinate and only that shape's `rev` moves.
+* markers and shapes are in **separate** attributes. A van that moved does not
+  re-serialise a parcel outline that did not.
 
 ## 5. A live map, driven by Rover's own bundle
 
@@ -263,10 +281,11 @@ defmodule RoverKino do
   @bundle File.read!(Path.join(@priv, "rover.min.js"))
   @stylesheet File.read!(Path.join(@priv, "rover.css"))
 
-  def new(config, markers, opts \\ []) do
+  def new(config, markers, shapes, opts \\ []) do
     Kino.JS.Live.new(__MODULE__, %{
       config: config,
       markers: markers,
+      shapes: shapes,
       height: Keyword.get(opts, :height, 420),
       events: Keyword.get(opts, :events)
     })
@@ -274,6 +293,9 @@ defmodule RoverKino do
 
   @doc "Push a new marker list, exactly as `assign(socket, :clients, …)` would."
   def set_markers(kino, markers), do: Kino.JS.Live.cast(kino, {:markers, markers})
+
+  @doc "Push a new shape list."
+  def set_shapes(kino, shapes), do: Kino.JS.Live.cast(kino, {:shapes, shapes})
 
   @doc "Push a new view."
   def set_config(kino, config), do: Kino.JS.Live.cast(kino, {:config, config})
@@ -286,6 +308,7 @@ defmodule RoverKino do
     payload = %{
       config: ctx.assigns.config,
       markers: ctx.assigns.markers,
+      shapes: ctx.assigns.shapes,
       height: ctx.assigns.height,
       bundle: @bundle,
       stylesheet: @stylesheet
@@ -298,6 +321,11 @@ defmodule RoverKino do
   def handle_cast({:markers, markers}, ctx) do
     broadcast_event(ctx, "markers", markers)
     {:noreply, assign(ctx, markers: markers)}
+  end
+
+  def handle_cast({:shapes, shapes}, ctx) do
+    broadcast_event(ctx, "shapes", shapes)
+    {:noreply, assign(ctx, shapes: shapes)}
   end
 
   def handle_cast({:config, config}, ctx) do
@@ -337,9 +365,11 @@ defmodule RoverKino do
         ctx.pushEvent(event, payload)
       })
 
+      map.setShapes(data.shapes)
       map.setMarkers(data.markers)
 
       ctx.handleEvent("markers", (markers) => map.setMarkers(markers))
+      ctx.handleEvent("shapes", (shapes) => map.setShapes(shapes))
       ctx.handleEvent("config", (config) => map.setConfig(config))
     }
     """
@@ -349,7 +379,7 @@ end
 
 ```elixir
 events = Kino.Frame.new()
-map = RoverKino.new(config, markers, height: 440, events: events)
+map = RoverKino.new(config, markers, shapes, height: 440, events: events)
 
 Kino.Layout.grid([map, events], columns: 1)
 ```
@@ -412,5 +442,7 @@ RoverKino.set_config(map, %{config | "center" => [48.8566, 2.3522], "zoom" => 13
 * `mix dev` in the repository — the LiveView playground, which is what your
   application actually looks like.
 * `Rover.Components` docs — every attribute and every event.
-* `assets/test/markers.test.js` — the reconciliation guarantees, asserted by
-  object identity.
+* `assets/test/markers.test.js` and `assets/test/shapes.test.js` — the
+  reconciliation guarantees, asserted by object identity.
+* `Rover.Shape` — why geometry is the one place Rover is not latitude-first, and
+  what `:rev` buys you.

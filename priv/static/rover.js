@@ -2,6 +2,1522 @@ var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
+// node_modules/ol/console.js
+var levels = {
+  info: 1,
+  warn: 2,
+  error: 3,
+  none: 4
+};
+var level = levels.info;
+function warn(...args) {
+  if (level > levels.warn) {
+    return;
+  }
+  console.warn(...args);
+}
+
+// node_modules/ol/extent/Relationship.js
+var Relationship_default = {
+  UNKNOWN: 0,
+  INTERSECTING: 1,
+  ABOVE: 2,
+  RIGHT: 4,
+  BELOW: 8,
+  LEFT: 16
+};
+
+// node_modules/ol/extent.js
+function boundingExtent(coordinates2) {
+  const extent = createEmpty();
+  for (let i = 0, ii = coordinates2.length; i < ii; ++i) {
+    extendCoordinate(extent, coordinates2[i]);
+  }
+  return extent;
+}
+function _boundingExtentXYs(xs, ys, dest) {
+  const minX = Math.min.apply(null, xs);
+  const minY = Math.min.apply(null, ys);
+  const maxX = Math.max.apply(null, xs);
+  const maxY = Math.max.apply(null, ys);
+  return createOrUpdate(minX, minY, maxX, maxY, dest);
+}
+function buffer(extent, value, dest) {
+  if (dest) {
+    dest[0] = extent[0] - value;
+    dest[1] = extent[1] - value;
+    dest[2] = extent[2] + value;
+    dest[3] = extent[3] + value;
+    return dest;
+  }
+  return [
+    extent[0] - value,
+    extent[1] - value,
+    extent[2] + value,
+    extent[3] + value
+  ];
+}
+function clone(extent, dest) {
+  if (dest) {
+    dest[0] = extent[0];
+    dest[1] = extent[1];
+    dest[2] = extent[2];
+    dest[3] = extent[3];
+    return dest;
+  }
+  return extent.slice();
+}
+function closestSquaredDistanceXY(extent, x, y) {
+  let dx, dy;
+  if (x < extent[0]) {
+    dx = extent[0] - x;
+  } else if (extent[2] < x) {
+    dx = x - extent[2];
+  } else {
+    dx = 0;
+  }
+  if (y < extent[1]) {
+    dy = extent[1] - y;
+  } else if (extent[3] < y) {
+    dy = y - extent[3];
+  } else {
+    dy = 0;
+  }
+  return dx * dx + dy * dy;
+}
+function containsCoordinate(extent, coordinate) {
+  return containsXY(extent, coordinate[0], coordinate[1]);
+}
+function containsExtent(extent1, extent2) {
+  return extent1[0] <= extent2[0] && extent2[2] <= extent1[2] && extent1[1] <= extent2[1] && extent2[3] <= extent1[3];
+}
+function containsXY(extent, x, y) {
+  return extent[0] <= x && x <= extent[2] && extent[1] <= y && y <= extent[3];
+}
+function coordinateRelationship(extent, coordinate) {
+  const minX = extent[0];
+  const minY = extent[1];
+  const maxX = extent[2];
+  const maxY = extent[3];
+  const x = coordinate[0];
+  const y = coordinate[1];
+  let relationship = Relationship_default.UNKNOWN;
+  if (x < minX) {
+    relationship = relationship | Relationship_default.LEFT;
+  } else if (x > maxX) {
+    relationship = relationship | Relationship_default.RIGHT;
+  }
+  if (y < minY) {
+    relationship = relationship | Relationship_default.BELOW;
+  } else if (y > maxY) {
+    relationship = relationship | Relationship_default.ABOVE;
+  }
+  if (relationship === Relationship_default.UNKNOWN) {
+    relationship = Relationship_default.INTERSECTING;
+  }
+  return relationship;
+}
+function createEmpty() {
+  return [Infinity, Infinity, -Infinity, -Infinity];
+}
+function createOrUpdate(minX, minY, maxX, maxY, dest) {
+  if (dest) {
+    dest[0] = minX;
+    dest[1] = minY;
+    dest[2] = maxX;
+    dest[3] = maxY;
+    return dest;
+  }
+  return [minX, minY, maxX, maxY];
+}
+function createOrUpdateEmpty(dest) {
+  return createOrUpdate(Infinity, Infinity, -Infinity, -Infinity, dest);
+}
+function createOrUpdateFromCoordinate(coordinate, dest) {
+  const x = coordinate[0];
+  const y = coordinate[1];
+  return createOrUpdate(x, y, x, y, dest);
+}
+function createOrUpdateFromFlatCoordinates(flatCoordinates, offset, end, stride, dest) {
+  const extent = createOrUpdateEmpty(dest);
+  return extendFlatCoordinates(extent, flatCoordinates, offset, end, stride);
+}
+function equals(extent1, extent2) {
+  return extent1[0] == extent2[0] && extent1[2] == extent2[2] && extent1[1] == extent2[1] && extent1[3] == extent2[3];
+}
+function extend(extent1, extent2) {
+  if (extent2[0] < extent1[0]) {
+    extent1[0] = extent2[0];
+  }
+  if (extent2[2] > extent1[2]) {
+    extent1[2] = extent2[2];
+  }
+  if (extent2[1] < extent1[1]) {
+    extent1[1] = extent2[1];
+  }
+  if (extent2[3] > extent1[3]) {
+    extent1[3] = extent2[3];
+  }
+  return extent1;
+}
+function extendCoordinate(extent, coordinate) {
+  if (coordinate[0] < extent[0]) {
+    extent[0] = coordinate[0];
+  }
+  if (coordinate[0] > extent[2]) {
+    extent[2] = coordinate[0];
+  }
+  if (coordinate[1] < extent[1]) {
+    extent[1] = coordinate[1];
+  }
+  if (coordinate[1] > extent[3]) {
+    extent[3] = coordinate[1];
+  }
+}
+function extendFlatCoordinates(extent, flatCoordinates, offset, end, stride) {
+  for (; offset < end; offset += stride) {
+    extendXY(extent, flatCoordinates[offset], flatCoordinates[offset + 1]);
+  }
+  return extent;
+}
+function extendXY(extent, x, y) {
+  extent[0] = Math.min(extent[0], x);
+  extent[1] = Math.min(extent[1], y);
+  extent[2] = Math.max(extent[2], x);
+  extent[3] = Math.max(extent[3], y);
+}
+function forEachCorner(extent, callback) {
+  let val;
+  val = callback(getBottomLeft(extent));
+  if (val) {
+    return val;
+  }
+  val = callback(getBottomRight(extent));
+  if (val) {
+    return val;
+  }
+  val = callback(getTopRight(extent));
+  if (val) {
+    return val;
+  }
+  val = callback(getTopLeft(extent));
+  if (val) {
+    return val;
+  }
+  return false;
+}
+function getArea(extent) {
+  let area = 0;
+  if (!isEmpty(extent)) {
+    area = getWidth(extent) * getHeight(extent);
+  }
+  return area;
+}
+function getBottomLeft(extent) {
+  return [extent[0], extent[1]];
+}
+function getBottomRight(extent) {
+  return [extent[2], extent[1]];
+}
+function getCenter(extent) {
+  return [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2];
+}
+function getCorner(extent, corner) {
+  let coordinate;
+  if (corner === "bottom-left") {
+    coordinate = getBottomLeft(extent);
+  } else if (corner === "bottom-right") {
+    coordinate = getBottomRight(extent);
+  } else if (corner === "top-left") {
+    coordinate = getTopLeft(extent);
+  } else if (corner === "top-right") {
+    coordinate = getTopRight(extent);
+  } else {
+    throw new Error("Invalid corner");
+  }
+  return coordinate;
+}
+function getForViewAndSize(center, resolution, rotation, size, dest) {
+  const [x0, y0, x1, y1, x2, y2, x3, y3] = getRotatedViewport(
+    center,
+    resolution,
+    rotation,
+    size
+  );
+  return createOrUpdate(
+    Math.min(x0, x1, x2, x3),
+    Math.min(y0, y1, y2, y3),
+    Math.max(x0, x1, x2, x3),
+    Math.max(y0, y1, y2, y3),
+    dest
+  );
+}
+function getRotatedViewport(center, resolution, rotation, size) {
+  const dx = resolution * size[0] / 2;
+  const dy = resolution * size[1] / 2;
+  const cosRotation = Math.cos(rotation);
+  const sinRotation = Math.sin(rotation);
+  const xCos = dx * cosRotation;
+  const xSin = dx * sinRotation;
+  const yCos = dy * cosRotation;
+  const ySin = dy * sinRotation;
+  const x = center[0];
+  const y = center[1];
+  return [
+    x - xCos + ySin,
+    y - xSin - yCos,
+    x - xCos - ySin,
+    y - xSin + yCos,
+    x + xCos - ySin,
+    y + xSin + yCos,
+    x + xCos + ySin,
+    y + xSin - yCos,
+    x - xCos + ySin,
+    y - xSin - yCos
+  ];
+}
+function getHeight(extent) {
+  return extent[3] - extent[1];
+}
+function getIntersection(extent1, extent2, dest) {
+  const intersection = dest ? dest : createEmpty();
+  if (intersects(extent1, extent2)) {
+    if (extent1[0] > extent2[0]) {
+      intersection[0] = extent1[0];
+    } else {
+      intersection[0] = extent2[0];
+    }
+    if (extent1[1] > extent2[1]) {
+      intersection[1] = extent1[1];
+    } else {
+      intersection[1] = extent2[1];
+    }
+    if (extent1[2] < extent2[2]) {
+      intersection[2] = extent1[2];
+    } else {
+      intersection[2] = extent2[2];
+    }
+    if (extent1[3] < extent2[3]) {
+      intersection[3] = extent1[3];
+    } else {
+      intersection[3] = extent2[3];
+    }
+  } else {
+    createOrUpdateEmpty(intersection);
+  }
+  return intersection;
+}
+function getDifference(extent1, extent2) {
+  if (!intersects(extent1, extent2)) {
+    return [extent1.slice()];
+  }
+  if (containsExtent(extent2, extent1)) {
+    return [];
+  }
+  const [x1, y1, x2, y2] = extent1;
+  const ix1 = Math.max(x1, extent2[0]);
+  const iy1 = Math.max(y1, extent2[1]);
+  const ix2 = Math.min(x2, extent2[2]);
+  const iy2 = Math.min(y2, extent2[3]);
+  const result = [];
+  if (ix1 > x1) {
+    result.push([x1, y1, ix1, y2]);
+  }
+  if (ix2 < x2) {
+    result.push([ix2, y1, x2, y2]);
+  }
+  if (iy1 > y1) {
+    result.push([ix1, y1, ix2, iy1]);
+  }
+  if (iy2 < y2) {
+    result.push([ix1, iy2, ix2, y2]);
+  }
+  return result;
+}
+function getTopLeft(extent) {
+  return [extent[0], extent[3]];
+}
+function getTopRight(extent) {
+  return [extent[2], extent[3]];
+}
+function getWidth(extent) {
+  return extent[2] - extent[0];
+}
+function intersects(extent1, extent2) {
+  return extent1[0] <= extent2[2] && extent1[2] >= extent2[0] && extent1[1] <= extent2[3] && extent1[3] >= extent2[1];
+}
+function isEmpty(extent) {
+  return extent[2] < extent[0] || extent[3] < extent[1];
+}
+function returnOrUpdate(extent, dest) {
+  if (dest) {
+    dest[0] = extent[0];
+    dest[1] = extent[1];
+    dest[2] = extent[2];
+    dest[3] = extent[3];
+    return dest;
+  }
+  return extent;
+}
+function intersectsSegment(extent, start, end) {
+  let intersects3 = false;
+  const startRel = coordinateRelationship(extent, start);
+  const endRel = coordinateRelationship(extent, end);
+  if (startRel === Relationship_default.INTERSECTING || endRel === Relationship_default.INTERSECTING) {
+    intersects3 = true;
+  } else {
+    const minX = extent[0];
+    const minY = extent[1];
+    const maxX = extent[2];
+    const maxY = extent[3];
+    const startX = start[0];
+    const startY = start[1];
+    const endX = end[0];
+    const endY = end[1];
+    const slope = (endY - startY) / (endX - startX);
+    let x, y;
+    if (!!(endRel & Relationship_default.ABOVE) && !(startRel & Relationship_default.ABOVE)) {
+      x = endX - (endY - maxY) / slope;
+      intersects3 = x >= minX && x <= maxX;
+    }
+    if (!intersects3 && !!(endRel & Relationship_default.RIGHT) && !(startRel & Relationship_default.RIGHT)) {
+      y = endY - (endX - maxX) * slope;
+      intersects3 = y >= minY && y <= maxY;
+    }
+    if (!intersects3 && !!(endRel & Relationship_default.BELOW) && !(startRel & Relationship_default.BELOW)) {
+      x = endX - (endY - minY) / slope;
+      intersects3 = x >= minX && x <= maxX;
+    }
+    if (!intersects3 && !!(endRel & Relationship_default.LEFT) && !(startRel & Relationship_default.LEFT)) {
+      y = endY - (endX - minX) * slope;
+      intersects3 = y >= minY && y <= maxY;
+    }
+  }
+  return intersects3;
+}
+function applyTransform(extent, transformFn, dest, stops) {
+  if (isEmpty(extent)) {
+    return createOrUpdateEmpty(dest);
+  }
+  let coordinates2 = [];
+  if (stops > 1) {
+    const width = extent[2] - extent[0];
+    const height = extent[3] - extent[1];
+    for (let i = 0; i < stops; ++i) {
+      coordinates2.push(
+        extent[0] + width * i / stops,
+        extent[1],
+        extent[2],
+        extent[1] + height * i / stops,
+        extent[2] - width * i / stops,
+        extent[3],
+        extent[0],
+        extent[3] - height * i / stops
+      );
+    }
+  } else {
+    coordinates2 = [
+      extent[0],
+      extent[1],
+      extent[2],
+      extent[1],
+      extent[2],
+      extent[3],
+      extent[0],
+      extent[3]
+    ];
+  }
+  transformFn(coordinates2, coordinates2, 2);
+  const xs = [];
+  const ys = [];
+  for (let i = 0, l = coordinates2.length; i < l; i += 2) {
+    xs.push(coordinates2[i]);
+    ys.push(coordinates2[i + 1]);
+  }
+  return _boundingExtentXYs(xs, ys, dest);
+}
+function wrapX(extent, projection) {
+  const projectionExtent = projection.getExtent();
+  const center = getCenter(extent);
+  if (projection.canWrapX() && (center[0] < projectionExtent[0] || center[0] >= projectionExtent[2])) {
+    const worldWidth = getWidth(projectionExtent);
+    const worldsAway = Math.floor(
+      (center[0] - projectionExtent[0]) / worldWidth
+    );
+    const offset = worldsAway * worldWidth;
+    extent[0] -= offset;
+    extent[2] -= offset;
+  }
+  return extent;
+}
+function wrapAndSliceX(extent, projection, multiWorld) {
+  if (projection.canWrapX()) {
+    const projectionExtent = projection.getExtent();
+    if (!isFinite(extent[0]) || !isFinite(extent[2])) {
+      return [[projectionExtent[0], extent[1], projectionExtent[2], extent[3]]];
+    }
+    wrapX(extent, projection);
+    const worldWidth = getWidth(projectionExtent);
+    if (getWidth(extent) > worldWidth && !multiWorld) {
+      return [[projectionExtent[0], extent[1], projectionExtent[2], extent[3]]];
+    }
+    if (extent[0] < projectionExtent[0]) {
+      return [
+        [extent[0] + worldWidth, extent[1], projectionExtent[2], extent[3]],
+        [projectionExtent[0], extent[1], extent[2], extent[3]]
+      ];
+    }
+    if (extent[2] > projectionExtent[2]) {
+      return [
+        [extent[0], extent[1], projectionExtent[2], extent[3]],
+        [projectionExtent[0], extent[1], extent[2] - worldWidth, extent[3]]
+      ];
+    }
+  }
+  return [extent];
+}
+function subtractExtents(base, subtract) {
+  let remainder = [base];
+  for (let i = 0, ii = subtract.length; i < ii && remainder.length > 0; ++i) {
+    const next = [];
+    for (let j = 0, jj = remainder.length; j < jj; ++j) {
+      next.push(...getDifference(remainder[j], subtract[i]));
+    }
+    remainder = next;
+  }
+  return remainder;
+}
+
+// node_modules/ol/math.js
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+function squaredSegmentDistance(x, y, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  if (dx !== 0 || dy !== 0) {
+    const t = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy);
+    if (t > 1) {
+      x1 = x2;
+      y1 = y2;
+    } else if (t > 0) {
+      x1 += dx * t;
+      y1 += dy * t;
+    }
+  }
+  return squaredDistance(x, y, x1, y1);
+}
+function squaredDistance(x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return dx * dx + dy * dy;
+}
+function solveLinearSystem(mat) {
+  const n = mat.length;
+  for (let i = 0; i < n; i++) {
+    let maxRow = i;
+    let maxEl = Math.abs(mat[i][i]);
+    for (let r = i + 1; r < n; r++) {
+      const absValue = Math.abs(mat[r][i]);
+      if (absValue > maxEl) {
+        maxEl = absValue;
+        maxRow = r;
+      }
+    }
+    if (maxEl === 0) {
+      return null;
+    }
+    const tmp = mat[maxRow];
+    mat[maxRow] = mat[i];
+    mat[i] = tmp;
+    for (let j = i + 1; j < n; j++) {
+      const coef = -mat[j][i] / mat[i][i];
+      for (let k = i; k < n + 1; k++) {
+        if (i == k) {
+          mat[j][k] = 0;
+        } else {
+          mat[j][k] += coef * mat[i][k];
+        }
+      }
+    }
+  }
+  const x = new Array(n);
+  for (let l = n - 1; l >= 0; l--) {
+    x[l] = mat[l][n] / mat[l][l];
+    for (let m = l - 1; m >= 0; m--) {
+      mat[m][n] -= mat[m][l] * x[l];
+    }
+  }
+  return x;
+}
+function toDegrees(angleInRadians) {
+  return angleInRadians * 180 / Math.PI;
+}
+function toRadians(angleInDegrees) {
+  return angleInDegrees * Math.PI / 180;
+}
+function modulo(a, b) {
+  const r = a % b;
+  return r * b < 0 ? r + b : r;
+}
+function lerp(a, b, x) {
+  return a + x * (b - a);
+}
+function toFixed(n, decimals) {
+  const factor = Math.pow(10, decimals);
+  return Math.round(n * factor) / factor;
+}
+function floor(n, decimals) {
+  return Math.floor(toFixed(n, decimals));
+}
+function ceil(n, decimals) {
+  return Math.ceil(toFixed(n, decimals));
+}
+function wrap(n, min, max) {
+  if (n >= min && n < max) {
+    return n;
+  }
+  const range = max - min;
+  return ((n - min) % range + range) % range + min;
+}
+
+// node_modules/ol/coordinate.js
+function add(coordinate, delta) {
+  coordinate[0] += +delta[0];
+  coordinate[1] += +delta[1];
+  return coordinate;
+}
+function equals2(coordinate1, coordinate2) {
+  let equals4 = true;
+  for (let i = coordinate1.length - 1; i >= 0; --i) {
+    if (coordinate1[i] != coordinate2[i]) {
+      equals4 = false;
+      break;
+    }
+  }
+  return equals4;
+}
+function rotate(coordinate, angle) {
+  const cosAngle = Math.cos(angle);
+  const sinAngle = Math.sin(angle);
+  const x = coordinate[0] * cosAngle - coordinate[1] * sinAngle;
+  const y = coordinate[1] * cosAngle + coordinate[0] * sinAngle;
+  coordinate[0] = x;
+  coordinate[1] = y;
+  return coordinate;
+}
+function scale(coordinate, scale4) {
+  coordinate[0] *= scale4;
+  coordinate[1] *= scale4;
+  return coordinate;
+}
+function wrapX2(coordinate, projection) {
+  if (projection.canWrapX()) {
+    const worldWidth = getWidth(projection.getExtent());
+    const worldsAway = getWorldsAway(coordinate, projection, worldWidth);
+    if (worldsAway) {
+      coordinate[0] -= worldsAway * worldWidth;
+    }
+  }
+  return coordinate;
+}
+function getWorldsAway(coordinate, projection, sourceExtentWidth) {
+  const projectionExtent = projection.getExtent();
+  let worldsAway = 0;
+  if (projection.canWrapX() && (coordinate[0] < projectionExtent[0] || coordinate[0] > projectionExtent[2])) {
+    sourceExtentWidth = sourceExtentWidth || getWidth(projectionExtent);
+    worldsAway = Math.floor(
+      (coordinate[0] - projectionExtent[0]) / sourceExtentWidth
+    );
+  }
+  return worldsAway;
+}
+function angleBetween(p0, pA, pB) {
+  const lenA = Math.sqrt(
+    (pA[0] - p0[0]) * (pA[0] - p0[0]) + (pA[1] - p0[1]) * (pA[1] - p0[1])
+  );
+  const tangentA = [(pA[0] - p0[0]) / lenA, (pA[1] - p0[1]) / lenA];
+  const orthoA = [-tangentA[1], tangentA[0]];
+  const lenB = Math.sqrt(
+    (pB[0] - p0[0]) * (pB[0] - p0[0]) + (pB[1] - p0[1]) * (pB[1] - p0[1])
+  );
+  const tangentB = [(pB[0] - p0[0]) / lenB, (pB[1] - p0[1]) / lenB];
+  let angle = lenA === 0 || lenB === 0 ? 0 : Math.acos(
+    clamp(tangentB[0] * tangentA[0] + tangentB[1] * tangentA[1], -1, 1)
+  );
+  angle = Math.max(angle, 1e-5);
+  const isClockwise = tangentB[0] * orthoA[0] + tangentB[1] * orthoA[1] > 0;
+  return !isClockwise ? Math.PI * 2 - angle : angle;
+}
+
+// node_modules/ol/proj/Units.js
+var METERS_PER_UNIT = {
+  // use the radius of the Normal sphere
+  "radians": 6370997 / (2 * Math.PI),
+  "degrees": 2 * Math.PI * 6370997 / 360,
+  "ft": 0.3048,
+  "m": 1,
+  "us-ft": 1200 / 3937
+};
+
+// node_modules/ol/proj/Projection.js
+var Projection = class {
+  /**
+   * @param {Options} options Projection options.
+   */
+  constructor(options) {
+    this.code_ = options.code;
+    this.units_ = /** @type {import("./Units.js").Units} */
+    options.units;
+    this.extent_ = options.extent !== void 0 ? options.extent : null;
+    this.worldExtent_ = options.worldExtent !== void 0 ? options.worldExtent : null;
+    this.axisOrientation_ = options.axisOrientation !== void 0 ? options.axisOrientation : "enu";
+    this.global_ = options.global !== void 0 ? options.global : false;
+    this.canWrapX_ = !!(this.global_ && this.extent_);
+    this.getPointResolutionFunc_ = options.getPointResolution;
+    this.defaultTileGrid_ = null;
+    this.metersPerUnit_ = options.metersPerUnit;
+  }
+  /**
+   * @return {boolean} The projection is suitable for wrapping the x-axis
+   */
+  canWrapX() {
+    return this.canWrapX_;
+  }
+  /**
+   * Get the code for this projection, e.g. 'EPSG:4326'.
+   * @return {string} Code.
+   * @api
+   */
+  getCode() {
+    return this.code_;
+  }
+  /**
+   * Get the validity extent for this projection.
+   * @return {import("../extent.js").Extent} Extent.
+   * @api
+   */
+  getExtent() {
+    return this.extent_;
+  }
+  /**
+   * Get the units of this projection.
+   * @return {import("./Units.js").Units} Units.
+   * @api
+   */
+  getUnits() {
+    return this.units_;
+  }
+  /**
+   * Get the amount of meters per unit of this projection.  If the projection is
+   * not configured with `metersPerUnit` or a units identifier, the return is
+   * `undefined`.
+   * @return {number|undefined} Meters.
+   * @api
+   */
+  getMetersPerUnit() {
+    return this.metersPerUnit_ || METERS_PER_UNIT[this.units_];
+  }
+  /**
+   * Get the world extent for this projection.
+   * @return {import("../extent.js").Extent} Extent.
+   * @api
+   */
+  getWorldExtent() {
+    return this.worldExtent_;
+  }
+  /**
+   * Get the axis orientation of this projection.
+   * Example values are:
+   * enu - the default easting, northing, elevation.
+   * neu - northing, easting, up - useful for "lat/long" geographic coordinates,
+   *     or south orientated transverse mercator.
+   * wnu - westing, northing, up - some planetary coordinate systems have
+   *     "west positive" coordinate systems
+   * @return {string} Axis orientation.
+   * @api
+   */
+  getAxisOrientation() {
+    return this.axisOrientation_;
+  }
+  /**
+   * Is this projection a global projection which spans the whole world?
+   * @return {boolean} Whether the projection is global.
+   * @api
+   */
+  isGlobal() {
+    return this.global_;
+  }
+  /**
+   * Set if the projection is a global projection which spans the whole world
+   * @param {boolean} global Whether the projection is global.
+   * @api
+   */
+  setGlobal(global) {
+    this.global_ = global;
+    this.canWrapX_ = !!(global && this.extent_);
+  }
+  /**
+   * @return {import("../tilegrid/TileGrid.js").default} The default tile grid.
+   */
+  getDefaultTileGrid() {
+    return this.defaultTileGrid_;
+  }
+  /**
+   * @param {import("../tilegrid/TileGrid.js").default} tileGrid The default tile grid.
+   */
+  setDefaultTileGrid(tileGrid) {
+    this.defaultTileGrid_ = tileGrid;
+  }
+  /**
+   * Set the validity extent for this projection.
+   * @param {import("../extent.js").Extent} extent Extent.
+   * @api
+   */
+  setExtent(extent) {
+    this.extent_ = extent;
+    this.canWrapX_ = !!(this.global_ && extent);
+  }
+  /**
+   * Set the world extent for this projection.
+   * @param {import("../extent.js").Extent} worldExtent World extent
+   *     [minlon, minlat, maxlon, maxlat].
+   * @api
+   */
+  setWorldExtent(worldExtent) {
+    this.worldExtent_ = worldExtent;
+  }
+  /**
+   * Set the getPointResolution function (see {@link module:ol/proj.getPointResolution}
+   * for this projection.
+   * @param {function(number, import("../coordinate.js").Coordinate):number} func Function
+   * @api
+   */
+  setGetPointResolution(func) {
+    this.getPointResolutionFunc_ = func;
+  }
+  /**
+   * Get the custom point resolution function for this projection (if set).
+   * @return {GetPointResolution|undefined} The custom point
+   * resolution function (if set).
+   */
+  getPointResolutionFunc() {
+    return this.getPointResolutionFunc_;
+  }
+};
+var Projection_default = Projection;
+
+// node_modules/ol/proj/epsg3857.js
+var RADIUS = 6378137;
+var HALF_SIZE = Math.PI * RADIUS;
+var EXTENT = [-HALF_SIZE, -HALF_SIZE, HALF_SIZE, HALF_SIZE];
+var WORLD_EXTENT = [-180, -85, 180, 85];
+var MAX_SAFE_Y = RADIUS * Math.log(Math.tan(Math.PI / 2));
+var EPSG3857Projection = class extends Projection_default {
+  /**
+   * @param {string} code Code.
+   */
+  constructor(code) {
+    super({
+      code,
+      units: "m",
+      extent: EXTENT,
+      global: true,
+      worldExtent: WORLD_EXTENT,
+      getPointResolution: function(resolution, point) {
+        return resolution / Math.cosh(point[1] / RADIUS);
+      }
+    });
+  }
+};
+var PROJECTIONS = [
+  new EPSG3857Projection("EPSG:3857"),
+  new EPSG3857Projection("EPSG:102100"),
+  new EPSG3857Projection("EPSG:102113"),
+  new EPSG3857Projection("EPSG:900913"),
+  new EPSG3857Projection("http://www.opengis.net/def/crs/EPSG/0/3857"),
+  new EPSG3857Projection("http://www.opengis.net/gml/srs/epsg.xml#3857")
+];
+function fromEPSG4326(input, output, dimension, stride) {
+  const length = input.length;
+  dimension = dimension > 1 ? dimension : 2;
+  stride = stride ?? dimension;
+  if (output === void 0) {
+    if (dimension > 2) {
+      output = input.slice();
+    } else {
+      output = new Array(length);
+    }
+  }
+  for (let i = 0; i < length; i += stride) {
+    output[i] = HALF_SIZE * input[i] / 180;
+    let y = RADIUS * Math.log(Math.tan(Math.PI * (+input[i + 1] + 90) / 360));
+    if (y > MAX_SAFE_Y) {
+      y = MAX_SAFE_Y;
+    } else if (y < -MAX_SAFE_Y) {
+      y = -MAX_SAFE_Y;
+    }
+    output[i + 1] = y;
+  }
+  return output;
+}
+function toEPSG4326(input, output, dimension, stride) {
+  const length = input.length;
+  dimension = dimension > 1 ? dimension : 2;
+  stride = stride ?? dimension;
+  if (output === void 0) {
+    if (dimension > 2) {
+      output = input.slice();
+    } else {
+      output = new Array(length);
+    }
+  }
+  for (let i = 0; i < length; i += stride) {
+    output[i] = 180 * input[i] / HALF_SIZE;
+    output[i + 1] = 360 * Math.atan(Math.exp(input[i + 1] / RADIUS)) / Math.PI - 90;
+  }
+  return output;
+}
+
+// node_modules/ol/proj/epsg4326.js
+var RADIUS2 = 6378137;
+var EXTENT2 = [-180, -90, 180, 90];
+var METERS_PER_UNIT2 = Math.PI * RADIUS2 / 180;
+var EPSG4326Projection = class extends Projection_default {
+  /**
+   * @param {string} code Code.
+   * @param {string} [axisOrientation] Axis orientation.
+   */
+  constructor(code, axisOrientation) {
+    super({
+      code,
+      units: "degrees",
+      extent: EXTENT2,
+      axisOrientation,
+      global: true,
+      metersPerUnit: METERS_PER_UNIT2,
+      worldExtent: EXTENT2
+    });
+  }
+};
+var PROJECTIONS2 = [
+  new EPSG4326Projection("CRS:84"),
+  new EPSG4326Projection("EPSG:4326", "neu"),
+  new EPSG4326Projection("urn:ogc:def:crs:OGC:1.3:CRS84"),
+  new EPSG4326Projection("urn:ogc:def:crs:OGC:2:84"),
+  new EPSG4326Projection("http://www.opengis.net/def/crs/OGC/1.3/CRS84"),
+  new EPSG4326Projection("http://www.opengis.net/gml/srs/epsg.xml#4326", "neu"),
+  new EPSG4326Projection("http://www.opengis.net/def/crs/EPSG/0/4326", "neu")
+];
+
+// node_modules/ol/proj/projections.js
+var cache = {};
+function get(code) {
+  return cache[code] || cache[code.replace(/urn:(x-)?ogc:def:crs:EPSG:(.*:)?(\w+)$/, "EPSG:$3")] || null;
+}
+function add2(code, projection) {
+  cache[code] = projection;
+}
+
+// node_modules/ol/obj.js
+function clear(object) {
+  for (const property in object) {
+    delete object[property];
+  }
+}
+function isEmpty2(object) {
+  let property;
+  for (property in object) {
+    return false;
+  }
+  return !property;
+}
+
+// node_modules/ol/proj/transforms.js
+var transforms = {};
+function add3(source, destination, transformFn) {
+  const sourceCode = source.getCode();
+  const destinationCode = destination.getCode();
+  if (!(sourceCode in transforms)) {
+    transforms[sourceCode] = {};
+  }
+  transforms[sourceCode][destinationCode] = transformFn;
+}
+function get2(sourceCode, destinationCode) {
+  if (sourceCode in transforms && destinationCode in transforms[sourceCode]) {
+    return transforms[sourceCode][destinationCode];
+  }
+  return null;
+}
+
+// node_modules/ol/proj/utm.js
+var K0 = 0.9996;
+var E = 669438e-8;
+var E2 = E * E;
+var E3 = E2 * E;
+var E_P2 = E / (1 - E);
+var SQRT_E = Math.sqrt(1 - E);
+var _E = (1 - SQRT_E) / (1 + SQRT_E);
+var _E2 = _E * _E;
+var _E3 = _E2 * _E;
+var _E4 = _E3 * _E;
+var _E5 = _E4 * _E;
+var M1 = 1 - E / 4 - 3 * E2 / 64 - 5 * E3 / 256;
+var M2 = 3 * E / 8 + 3 * E2 / 32 + 45 * E3 / 1024;
+var M3 = 15 * E2 / 256 + 45 * E3 / 1024;
+var M4 = 35 * E3 / 3072;
+var P2 = 3 / 2 * _E - 27 / 32 * _E3 + 269 / 512 * _E5;
+var P3 = 21 / 16 * _E2 - 55 / 32 * _E4;
+var P4 = 151 / 96 * _E3 - 417 / 128 * _E5;
+var P5 = 1097 / 512 * _E4;
+var R = 6378137;
+function toLonLat(easting, northing, zone) {
+  const x = easting - 5e5;
+  const y = zone.north ? northing : northing - 1e7;
+  const m = y / K0;
+  const mu = m / (R * M1);
+  const pRad = mu + P2 * Math.sin(2 * mu) + P3 * Math.sin(4 * mu) + P4 * Math.sin(6 * mu) + P5 * Math.sin(8 * mu);
+  const pSin = Math.sin(pRad);
+  const pSin2 = pSin * pSin;
+  const pCos = Math.cos(pRad);
+  const pTan = pSin / pCos;
+  const pTan2 = pTan * pTan;
+  const pTan4 = pTan2 * pTan2;
+  const epSin = 1 - E * pSin2;
+  const epSinSqrt = Math.sqrt(1 - E * pSin2);
+  const n = R / epSinSqrt;
+  const r = (1 - E) / epSin;
+  const c = E_P2 * pCos ** 2;
+  const c2 = c * c;
+  const d = x / (n * K0);
+  const d2 = d * d;
+  const d3 = d2 * d;
+  const d4 = d3 * d;
+  const d5 = d4 * d;
+  const d6 = d5 * d;
+  const latitude = pRad - pTan / r * (d2 / 2 - d4 / 24 * (5 + 3 * pTan2 + 10 * c - 4 * c2 - 9 * E_P2)) + d6 / 720 * (61 + 90 * pTan2 + 298 * c + 45 * pTan4 - 252 * E_P2 - 3 * c2);
+  let longitude = (d - d3 / 6 * (1 + 2 * pTan2 + c) + d5 / 120 * (5 - 2 * c + 28 * pTan2 - 3 * c2 + 8 * E_P2 + 24 * pTan4)) / pCos;
+  longitude = wrap(
+    longitude + toRadians(zoneToCentralLongitude(zone.number)),
+    -Math.PI,
+    Math.PI
+  );
+  return [toDegrees(longitude), toDegrees(latitude)];
+}
+var MIN_LATITUDE = -80;
+var MAX_LATITUDE = 84;
+var MIN_LONGITUDE = -180;
+var MAX_LONGITUDE = 180;
+function fromLonLat(longitude, latitude, zone) {
+  longitude = wrap(longitude, MIN_LONGITUDE, MAX_LONGITUDE);
+  if (latitude < MIN_LATITUDE) {
+    latitude = MIN_LATITUDE;
+  } else if (latitude > MAX_LATITUDE) {
+    latitude = MAX_LATITUDE;
+  }
+  const latRad = toRadians(latitude);
+  const latSin = Math.sin(latRad);
+  const latCos = Math.cos(latRad);
+  const latTan = latSin / latCos;
+  const latTan2 = latTan * latTan;
+  const latTan4 = latTan2 * latTan2;
+  const lonRad = toRadians(longitude);
+  const centralLon = zoneToCentralLongitude(zone.number);
+  const centralLonRad = toRadians(centralLon);
+  const n = R / Math.sqrt(1 - E * latSin ** 2);
+  const c = E_P2 * latCos ** 2;
+  const a = latCos * wrap(lonRad - centralLonRad, -Math.PI, Math.PI);
+  const a22 = a * a;
+  const a3 = a22 * a;
+  const a4 = a3 * a;
+  const a5 = a4 * a;
+  const a6 = a5 * a;
+  const m = R * (M1 * latRad - M2 * Math.sin(2 * latRad) + M3 * Math.sin(4 * latRad) - M4 * Math.sin(6 * latRad));
+  const easting = K0 * n * (a + a3 / 6 * (1 - latTan2 + c) + a5 / 120 * (5 - 18 * latTan2 + latTan4 + 72 * c - 58 * E_P2)) + 5e5;
+  let northing = K0 * (m + n * latTan * (a22 / 2 + a4 / 24 * (5 - latTan2 + 9 * c + 4 * c ** 2) + a6 / 720 * (61 - 58 * latTan2 + latTan4 + 600 * c - 330 * E_P2)));
+  if (!zone.north) {
+    northing += 1e7;
+  }
+  return [easting, northing];
+}
+function zoneToCentralLongitude(zone) {
+  return (zone - 1) * 6 - 180 + 3;
+}
+var epsgRegExes = [
+  /^EPSG:(\d+)$/,
+  /^urn:ogc:def:crs:EPSG::(\d+)$/,
+  /^http:\/\/www\.opengis\.net\/def\/crs\/EPSG\/0\/(\d+)$/
+];
+function zoneFromCode(code) {
+  let epsgId = 0;
+  for (const re of epsgRegExes) {
+    const match = code.match(re);
+    if (match) {
+      epsgId = parseInt(match[1]);
+      break;
+    }
+  }
+  if (!epsgId) {
+    return null;
+  }
+  let number = 0;
+  let north = false;
+  if (epsgId > 32700 && epsgId < 32761) {
+    number = epsgId - 32700;
+  } else if (epsgId > 32600 && epsgId < 32661) {
+    north = true;
+    number = epsgId - 32600;
+  }
+  if (!number) {
+    return null;
+  }
+  return { number, north };
+}
+function makeTransformFunction(transformer, zone) {
+  return function(input, output, dimension, stride) {
+    const length = input.length;
+    dimension = dimension > 1 ? dimension : 2;
+    stride = stride ?? dimension;
+    if (!output) {
+      if (dimension > 2) {
+        output = input.slice();
+      } else {
+        output = new Array(length);
+      }
+    }
+    for (let i = 0; i < length; i += stride) {
+      const x = input[i];
+      const y = input[i + 1];
+      const coord = transformer(x, y, zone);
+      output[i] = coord[0];
+      output[i + 1] = coord[1];
+    }
+    return output;
+  };
+}
+function makeProjection(code) {
+  const zone = zoneFromCode(code);
+  if (!zone) {
+    return null;
+  }
+  return new Projection_default({ code, units: "m" });
+}
+function makeTransforms(projection) {
+  const zone = zoneFromCode(projection.getCode());
+  if (!zone) {
+    return null;
+  }
+  return {
+    forward: makeTransformFunction(fromLonLat, zone),
+    inverse: makeTransformFunction(toLonLat, zone)
+  };
+}
+
+// node_modules/ol/sphere.js
+var DEFAULT_RADIUS = 63710088e-1;
+function getDistance(c1, c2, radius) {
+  radius = radius || DEFAULT_RADIUS;
+  const lat1 = toRadians(c1[1]);
+  const lat2 = toRadians(c2[1]);
+  const deltaLatBy2 = (lat2 - lat1) / 2;
+  const deltaLonBy2 = toRadians(c2[0] - c1[0]) / 2;
+  const a = Math.sin(deltaLatBy2) * Math.sin(deltaLatBy2) + Math.sin(deltaLonBy2) * Math.sin(deltaLonBy2) * Math.cos(lat1) * Math.cos(lat2);
+  return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// node_modules/ol/proj.js
+var transformFactories = [makeTransforms];
+var projectionFactories = [makeProjection];
+var showCoordinateWarning = true;
+function disableCoordinateWarning(disable2) {
+  const hide = disable2 === void 0 ? true : disable2;
+  showCoordinateWarning = !hide;
+}
+function cloneTransform(input, output) {
+  if (output !== void 0) {
+    for (let i = 0, ii = input.length; i < ii; ++i) {
+      output[i] = input[i];
+    }
+    output = output;
+  } else {
+    output = input.slice();
+  }
+  return output;
+}
+function addProjection(projection) {
+  add2(projection.getCode(), projection);
+  add3(projection, projection, cloneTransform);
+}
+function addProjections(projections) {
+  projections.forEach(addProjection);
+}
+function get3(projectionLike) {
+  if (!(typeof projectionLike === "string")) {
+    return projectionLike;
+  }
+  const projection = get(projectionLike);
+  if (projection) {
+    return projection;
+  }
+  for (const makeProjection2 of projectionFactories) {
+    const projection2 = makeProjection2(projectionLike);
+    if (projection2) {
+      return projection2;
+    }
+  }
+  return null;
+}
+function getPointResolution(projection, resolution, point, units) {
+  projection = get3(projection);
+  let pointResolution;
+  const getter = projection.getPointResolutionFunc();
+  if (getter) {
+    pointResolution = getter(resolution, point);
+    if (units && units !== projection.getUnits()) {
+      const metersPerUnit = projection.getMetersPerUnit();
+      if (metersPerUnit) {
+        pointResolution = pointResolution * metersPerUnit / METERS_PER_UNIT[units];
+      }
+    }
+  } else {
+    const projUnits = projection.getUnits();
+    if (projUnits == "degrees" && !units || units == "degrees") {
+      pointResolution = resolution;
+    } else {
+      const toEPSG43262 = getTransformFromProjections(
+        projection,
+        get3("EPSG:4326")
+      );
+      if (!toEPSG43262 && projUnits !== "degrees") {
+        pointResolution = resolution * projection.getMetersPerUnit();
+      } else {
+        let vertices = [
+          point[0] - resolution / 2,
+          point[1],
+          point[0] + resolution / 2,
+          point[1],
+          point[0],
+          point[1] - resolution / 2,
+          point[0],
+          point[1] + resolution / 2
+        ];
+        vertices = toEPSG43262(vertices, vertices, 2);
+        const width = getDistance(vertices.slice(0, 2), vertices.slice(2, 4));
+        const height = getDistance(vertices.slice(4, 6), vertices.slice(6, 8));
+        pointResolution = (width + height) / 2;
+      }
+      const metersPerUnit = units ? METERS_PER_UNIT[units] : projection.getMetersPerUnit();
+      if (metersPerUnit !== void 0) {
+        pointResolution /= metersPerUnit;
+      }
+    }
+  }
+  return pointResolution;
+}
+function addEquivalentProjections(projections) {
+  addProjections(projections);
+  projections.forEach(function(source) {
+    projections.forEach(function(destination) {
+      if (source !== destination) {
+        add3(source, destination, cloneTransform);
+      }
+    });
+  });
+}
+function addEquivalentTransforms(projections1, projections2, forwardTransform, inverseTransform) {
+  projections1.forEach(function(projection1) {
+    projections2.forEach(function(projection2) {
+      add3(projection1, projection2, forwardTransform);
+      add3(projection2, projection1, inverseTransform);
+    });
+  });
+}
+function createProjection(projection, defaultCode) {
+  if (!projection) {
+    return get3(defaultCode);
+  }
+  if (typeof projection === "string") {
+    return get3(projection);
+  }
+  return (
+    /** @type {Projection} */
+    projection
+  );
+}
+function createTransformFromCoordinateTransform(coordTransform) {
+  return (
+    /**
+     * @param {Array<number>} input Input.
+     * @param {Array<number>} [output] Output.
+     * @param {number} [dimension] Dimensions that should be transformed.
+     * @param {number} [stride] Stride.
+     * @return {Array<number>} Output.
+     */
+    (function(input, output, dimension, stride) {
+      const length = input.length;
+      dimension = dimension !== void 0 ? dimension : 2;
+      stride = stride ?? dimension;
+      output = output !== void 0 ? output : new Array(length);
+      for (let i = 0; i < length; i += stride) {
+        const point = coordTransform(input.slice(i, i + dimension));
+        const pointLength = point.length;
+        for (let j = 0, jj = stride; j < jj; ++j) {
+          output[i + j] = j >= pointLength ? input[i + j] : point[j];
+        }
+      }
+      return output;
+    })
+  );
+}
+function fromLonLat2(coordinate, projection) {
+  disableCoordinateWarning();
+  return transform(
+    coordinate,
+    "EPSG:4326",
+    projection !== void 0 ? projection : "EPSG:3857"
+  );
+}
+function toLonLat2(coordinate, projection) {
+  const lonLat = transform(
+    coordinate,
+    projection !== void 0 ? projection : "EPSG:3857",
+    "EPSG:4326"
+  );
+  const lon = lonLat[0];
+  if (lon < -180 || lon > 180) {
+    lonLat[0] = modulo(lon + 180, 360) - 180;
+  }
+  return lonLat;
+}
+function equivalent(projection1, projection2) {
+  if (projection1 === projection2) {
+    return true;
+  }
+  const equalUnits = projection1.getUnits() === projection2.getUnits();
+  if (projection1.getCode() === projection2.getCode()) {
+    return equalUnits;
+  }
+  const transformFunc = getTransformFromProjections(projection1, projection2);
+  return transformFunc === cloneTransform && equalUnits;
+}
+function getTransformFromProjections(source, destination) {
+  const sourceCode = source.getCode();
+  const destinationCode = destination.getCode();
+  let transformFunc = get2(sourceCode, destinationCode);
+  if (transformFunc) {
+    return transformFunc;
+  }
+  let sourceTransforms = null;
+  let destinationTransforms = null;
+  for (const makeTransforms2 of transformFactories) {
+    if (!sourceTransforms) {
+      sourceTransforms = makeTransforms2(source);
+    }
+    if (!destinationTransforms) {
+      destinationTransforms = makeTransforms2(destination);
+    }
+  }
+  if (!sourceTransforms && !destinationTransforms) {
+    return null;
+  }
+  const intermediateCode = "EPSG:4326";
+  if (!destinationTransforms) {
+    const toDestination = get2(intermediateCode, destinationCode);
+    if (toDestination) {
+      transformFunc = composeTransformFuncs(
+        sourceTransforms.inverse,
+        toDestination
+      );
+    }
+  } else if (!sourceTransforms) {
+    const fromSource = get2(sourceCode, intermediateCode);
+    if (fromSource) {
+      transformFunc = composeTransformFuncs(
+        fromSource,
+        destinationTransforms.forward
+      );
+    }
+  } else {
+    transformFunc = composeTransformFuncs(
+      sourceTransforms.inverse,
+      destinationTransforms.forward
+    );
+  }
+  if (transformFunc) {
+    addProjection(source);
+    addProjection(destination);
+    add3(source, destination, transformFunc);
+  }
+  return transformFunc;
+}
+function composeTransformFuncs(t1, t2) {
+  return function(input, output, dimensions, stride) {
+    output = t1(input, output, dimensions, stride);
+    return t2(output, output, dimensions, stride);
+  };
+}
+function getTransform(source, destination) {
+  const sourceProjection = get3(source);
+  const destinationProjection = get3(destination);
+  return getTransformFromProjections(sourceProjection, destinationProjection);
+}
+function transform(coordinate, source, destination) {
+  const transformFunc = getTransform(source, destination);
+  if (!transformFunc) {
+    const sourceCode = get3(source).getCode();
+    const destinationCode = get3(destination).getCode();
+    throw new Error(
+      `No transform available between ${sourceCode} and ${destinationCode}`
+    );
+  }
+  return transformFunc(coordinate, void 0, coordinate.length);
+}
+function transformExtent(extent, source, destination, stops) {
+  const transformFunc = getTransform(source, destination);
+  return applyTransform(extent, transformFunc, void 0, stops);
+}
+var userProjection = null;
+function getUserProjection() {
+  return userProjection;
+}
+function toUserCoordinate(coordinate, sourceProjection) {
+  if (!userProjection) {
+    return coordinate;
+  }
+  return transform(coordinate, sourceProjection, userProjection);
+}
+function fromUserCoordinate(coordinate, destProjection) {
+  if (!userProjection) {
+    if (showCoordinateWarning && !equals2(coordinate, [0, 0]) && coordinate[0] >= -180 && coordinate[0] <= 180 && coordinate[1] >= -90 && coordinate[1] <= 90) {
+      showCoordinateWarning = false;
+      warn(
+        "Call useGeographic() from ol/proj once to work with [longitude, latitude] coordinates."
+      );
+    }
+    return coordinate;
+  }
+  return transform(coordinate, userProjection, destProjection);
+}
+function toUserExtent(extent, sourceProjection) {
+  if (!userProjection) {
+    return extent;
+  }
+  return transformExtent(extent, sourceProjection, userProjection);
+}
+function fromUserExtent(extent, destProjection) {
+  if (!userProjection) {
+    return extent;
+  }
+  return transformExtent(extent, userProjection, destProjection);
+}
+function toUserResolution(resolution, sourceProjection) {
+  if (!userProjection) {
+    return resolution;
+  }
+  const sourceMetersPerUnit = get3(sourceProjection).getMetersPerUnit();
+  const userMetersPerUnit = userProjection.getMetersPerUnit();
+  return sourceMetersPerUnit && userMetersPerUnit ? resolution * sourceMetersPerUnit / userMetersPerUnit : resolution;
+}
+function addCommon() {
+  addEquivalentProjections(PROJECTIONS);
+  addEquivalentProjections(PROJECTIONS2);
+  addEquivalentTransforms(
+    PROJECTIONS2,
+    PROJECTIONS,
+    fromEPSG4326,
+    toEPSG4326
+  );
+}
+addCommon();
+
+// js/coords.js
+function project(lat, lon) {
+  return fromLonLat2([lon, lat]);
+}
+function unproject(coordinate) {
+  const [lon, lat] = toLonLat2(coordinate);
+  return { lat: round(lat), lon: round(lon) };
+}
+function extentToBbox(extent) {
+  const [minX, minY, maxX, maxY] = extent;
+  const southWest = unproject([minX, minY]);
+  const northEast = unproject([maxX, maxY]);
+  const bbox = {
+    south: southWest.lat,
+    west: southWest.lon,
+    north: northEast.lat,
+    east: northEast.lon
+  };
+  if (bbox.west > bbox.east) bbox.crosses_antimeridian = true;
+  return bbox;
+}
+function round(value) {
+  return Math.round(value * 1e7) / 1e7;
+}
+
+// js/popups.js
+var OFFSET_PX = 44;
+var Popups = class {
+  constructor(rootEl, roverMap) {
+    this.root = rootEl;
+    this.roverMap = roverMap;
+    this.openId = null;
+    roverMap.on("markerClick", ({ id }) => this.open(id));
+    roverMap.on("mapClick", () => this.close());
+    roverMap.on("shapeClick", () => this.close());
+    this.onPostrender = () => this.position();
+    roverMap.map.on("postrender", this.onPostrender);
+    this.onKeydown = (event) => {
+      if (event.key === "Escape") this.close();
+    };
+    document.addEventListener("keydown", this.onKeydown);
+    this.onClick = (event) => {
+      if (event.target.closest("[data-rover-popup-close]")) this.close();
+    };
+    this.root.addEventListener("click", this.onClick);
+  }
+  open(id) {
+    const node = this.nodeFor(id);
+    if (!node) return;
+    this.close();
+    this.openId = String(id);
+    node.hidden = false;
+    this.position();
+  }
+  close() {
+    if (this.openId === null) return;
+    const node = this.nodeFor(this.openId);
+    if (node) node.hidden = true;
+    this.openId = null;
+  }
+  position() {
+    if (this.openId === null) return;
+    const node = this.nodeFor(this.openId);
+    const marker = this.roverMap.markerLayer.markerById(this.openId);
+    if (!node || !marker) return this.close();
+    const pixel = this.roverMap.map.getPixelFromCoordinate(project(marker.lat, marker.lon));
+    if (!pixel) return;
+    node.style.left = `${Math.round(pixel[0])}px`;
+    node.style.top = `${Math.round(pixel[1]) - OFFSET_PX}px`;
+  }
+  // Called after LiveView patches the element: the open marker may be gone, or
+  // its coordinates may have changed underneath the popup.
+  refresh() {
+    this.position();
+  }
+  nodeFor(id) {
+    return this.root.querySelector(`[data-rover-popup-for="${cssEscape(String(id))}"]`);
+  }
+  destroy() {
+    document.removeEventListener("keydown", this.onKeydown);
+    this.root.removeEventListener("click", this.onClick);
+    this.roverMap.map.un("postrender", this.onPostrender);
+  }
+};
+function cssEscape(value) {
+  return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(value) : value.replace(/"/g, '\\"');
+}
+
 // node_modules/ol/CollectionEventType.js
 var CollectionEventType_default = {
   /**
@@ -27,20 +1543,6 @@ var ObjectEventType_default = {
    */
   PROPERTYCHANGE: "propertychange"
 };
-
-// node_modules/ol/obj.js
-function clear(object) {
-  for (const property in object) {
-    delete object[property];
-  }
-}
-function isEmpty(object) {
-  let property;
-  for (property in object) {
-    return false;
-  }
-  return !property;
-}
 
 // node_modules/ol/events.js
 function listen(target, type, listener, thisArg, once) {
@@ -211,14 +1713,14 @@ function reverseSubArray(arr, begin, end) {
     --end;
   }
 }
-function extend(arr, data) {
+function extend2(arr, data) {
   const extension = Array.isArray(data) ? data : [data];
   const length = extension.length;
   for (let i = 0; i < length; i++) {
     arr[arr.length] = extension[i];
   }
 }
-function equals(arr1, arr2) {
+function equals3(arr1, arr2) {
   const len1 = arr1.length;
   if (len1 !== arr2.length) {
     return false;
@@ -256,7 +1758,7 @@ function memoizeOne(fn) {
   let lastThis;
   return function() {
     const nextArgs = Array.prototype.slice.call(arguments);
-    if (!lastArgs || this !== lastThis || !equals(nextArgs, lastArgs)) {
+    if (!lastArgs || this !== lastThis || !equals3(nextArgs, lastArgs)) {
       lastThis = this;
       lastArgs = nextArgs;
       lastResult = fn.apply(this, arguments);
@@ -724,7 +2226,7 @@ var BaseObject = class extends Observable_default {
     if (this.values_ && key in this.values_) {
       const oldValue = this.values_[key];
       delete this.values_[key];
-      if (isEmpty(this.values_)) {
+      if (isEmpty2(this.values_)) {
         this.values_ = null;
       }
       if (!silent) {
@@ -1773,99 +3275,6 @@ var ViewProperty_default = {
   ROTATION: "rotation"
 };
 
-// node_modules/ol/math.js
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-function squaredSegmentDistance(x, y, x1, y1, x2, y2) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  if (dx !== 0 || dy !== 0) {
-    const t = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy);
-    if (t > 1) {
-      x1 = x2;
-      y1 = y2;
-    } else if (t > 0) {
-      x1 += dx * t;
-      y1 += dy * t;
-    }
-  }
-  return squaredDistance(x, y, x1, y1);
-}
-function squaredDistance(x1, y1, x2, y2) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  return dx * dx + dy * dy;
-}
-function solveLinearSystem(mat) {
-  const n = mat.length;
-  for (let i = 0; i < n; i++) {
-    let maxRow = i;
-    let maxEl = Math.abs(mat[i][i]);
-    for (let r = i + 1; r < n; r++) {
-      const absValue = Math.abs(mat[r][i]);
-      if (absValue > maxEl) {
-        maxEl = absValue;
-        maxRow = r;
-      }
-    }
-    if (maxEl === 0) {
-      return null;
-    }
-    const tmp = mat[maxRow];
-    mat[maxRow] = mat[i];
-    mat[i] = tmp;
-    for (let j = i + 1; j < n; j++) {
-      const coef = -mat[j][i] / mat[i][i];
-      for (let k = i; k < n + 1; k++) {
-        if (i == k) {
-          mat[j][k] = 0;
-        } else {
-          mat[j][k] += coef * mat[i][k];
-        }
-      }
-    }
-  }
-  const x = new Array(n);
-  for (let l = n - 1; l >= 0; l--) {
-    x[l] = mat[l][n] / mat[l][l];
-    for (let m = l - 1; m >= 0; m--) {
-      mat[m][n] -= mat[m][l] * x[l];
-    }
-  }
-  return x;
-}
-function toDegrees(angleInRadians) {
-  return angleInRadians * 180 / Math.PI;
-}
-function toRadians(angleInDegrees) {
-  return angleInDegrees * Math.PI / 180;
-}
-function modulo(a, b) {
-  const r = a % b;
-  return r * b < 0 ? r + b : r;
-}
-function lerp(a, b, x) {
-  return a + x * (b - a);
-}
-function toFixed(n, decimals) {
-  const factor = Math.pow(10, decimals);
-  return Math.round(n * factor) / factor;
-}
-function floor(n, decimals) {
-  return Math.floor(toFixed(n, decimals));
-}
-function ceil(n, decimals) {
-  return Math.ceil(toFixed(n, decimals));
-}
-function wrap(n, min, max) {
-  if (n >= min && n < max) {
-    return n;
-  }
-  const range = max - min;
-  return ((n - min) % range + range) % range + min;
-}
-
 // node_modules/ol/centerconstraint.js
 function createExtent(extent, onlyCenter, smooth) {
   return (
@@ -1915,546 +3324,6 @@ function none(center) {
   return center;
 }
 
-// node_modules/ol/extent/Relationship.js
-var Relationship_default = {
-  UNKNOWN: 0,
-  INTERSECTING: 1,
-  ABOVE: 2,
-  RIGHT: 4,
-  BELOW: 8,
-  LEFT: 16
-};
-
-// node_modules/ol/extent.js
-function boundingExtent(coordinates2) {
-  const extent = createEmpty();
-  for (let i = 0, ii = coordinates2.length; i < ii; ++i) {
-    extendCoordinate(extent, coordinates2[i]);
-  }
-  return extent;
-}
-function _boundingExtentXYs(xs, ys, dest) {
-  const minX = Math.min.apply(null, xs);
-  const minY = Math.min.apply(null, ys);
-  const maxX = Math.max.apply(null, xs);
-  const maxY = Math.max.apply(null, ys);
-  return createOrUpdate(minX, minY, maxX, maxY, dest);
-}
-function buffer(extent, value, dest) {
-  if (dest) {
-    dest[0] = extent[0] - value;
-    dest[1] = extent[1] - value;
-    dest[2] = extent[2] + value;
-    dest[3] = extent[3] + value;
-    return dest;
-  }
-  return [
-    extent[0] - value,
-    extent[1] - value,
-    extent[2] + value,
-    extent[3] + value
-  ];
-}
-function clone(extent, dest) {
-  if (dest) {
-    dest[0] = extent[0];
-    dest[1] = extent[1];
-    dest[2] = extent[2];
-    dest[3] = extent[3];
-    return dest;
-  }
-  return extent.slice();
-}
-function closestSquaredDistanceXY(extent, x, y) {
-  let dx, dy;
-  if (x < extent[0]) {
-    dx = extent[0] - x;
-  } else if (extent[2] < x) {
-    dx = x - extent[2];
-  } else {
-    dx = 0;
-  }
-  if (y < extent[1]) {
-    dy = extent[1] - y;
-  } else if (extent[3] < y) {
-    dy = y - extent[3];
-  } else {
-    dy = 0;
-  }
-  return dx * dx + dy * dy;
-}
-function containsCoordinate(extent, coordinate) {
-  return containsXY(extent, coordinate[0], coordinate[1]);
-}
-function containsExtent(extent1, extent2) {
-  return extent1[0] <= extent2[0] && extent2[2] <= extent1[2] && extent1[1] <= extent2[1] && extent2[3] <= extent1[3];
-}
-function containsXY(extent, x, y) {
-  return extent[0] <= x && x <= extent[2] && extent[1] <= y && y <= extent[3];
-}
-function coordinateRelationship(extent, coordinate) {
-  const minX = extent[0];
-  const minY = extent[1];
-  const maxX = extent[2];
-  const maxY = extent[3];
-  const x = coordinate[0];
-  const y = coordinate[1];
-  let relationship = Relationship_default.UNKNOWN;
-  if (x < minX) {
-    relationship = relationship | Relationship_default.LEFT;
-  } else if (x > maxX) {
-    relationship = relationship | Relationship_default.RIGHT;
-  }
-  if (y < minY) {
-    relationship = relationship | Relationship_default.BELOW;
-  } else if (y > maxY) {
-    relationship = relationship | Relationship_default.ABOVE;
-  }
-  if (relationship === Relationship_default.UNKNOWN) {
-    relationship = Relationship_default.INTERSECTING;
-  }
-  return relationship;
-}
-function createEmpty() {
-  return [Infinity, Infinity, -Infinity, -Infinity];
-}
-function createOrUpdate(minX, minY, maxX, maxY, dest) {
-  if (dest) {
-    dest[0] = minX;
-    dest[1] = minY;
-    dest[2] = maxX;
-    dest[3] = maxY;
-    return dest;
-  }
-  return [minX, minY, maxX, maxY];
-}
-function createOrUpdateEmpty(dest) {
-  return createOrUpdate(Infinity, Infinity, -Infinity, -Infinity, dest);
-}
-function createOrUpdateFromCoordinate(coordinate, dest) {
-  const x = coordinate[0];
-  const y = coordinate[1];
-  return createOrUpdate(x, y, x, y, dest);
-}
-function createOrUpdateFromFlatCoordinates(flatCoordinates, offset, end, stride, dest) {
-  const extent = createOrUpdateEmpty(dest);
-  return extendFlatCoordinates(extent, flatCoordinates, offset, end, stride);
-}
-function equals2(extent1, extent2) {
-  return extent1[0] == extent2[0] && extent1[2] == extent2[2] && extent1[1] == extent2[1] && extent1[3] == extent2[3];
-}
-function extend2(extent1, extent2) {
-  if (extent2[0] < extent1[0]) {
-    extent1[0] = extent2[0];
-  }
-  if (extent2[2] > extent1[2]) {
-    extent1[2] = extent2[2];
-  }
-  if (extent2[1] < extent1[1]) {
-    extent1[1] = extent2[1];
-  }
-  if (extent2[3] > extent1[3]) {
-    extent1[3] = extent2[3];
-  }
-  return extent1;
-}
-function extendCoordinate(extent, coordinate) {
-  if (coordinate[0] < extent[0]) {
-    extent[0] = coordinate[0];
-  }
-  if (coordinate[0] > extent[2]) {
-    extent[2] = coordinate[0];
-  }
-  if (coordinate[1] < extent[1]) {
-    extent[1] = coordinate[1];
-  }
-  if (coordinate[1] > extent[3]) {
-    extent[3] = coordinate[1];
-  }
-}
-function extendFlatCoordinates(extent, flatCoordinates, offset, end, stride) {
-  for (; offset < end; offset += stride) {
-    extendXY(extent, flatCoordinates[offset], flatCoordinates[offset + 1]);
-  }
-  return extent;
-}
-function extendXY(extent, x, y) {
-  extent[0] = Math.min(extent[0], x);
-  extent[1] = Math.min(extent[1], y);
-  extent[2] = Math.max(extent[2], x);
-  extent[3] = Math.max(extent[3], y);
-}
-function forEachCorner(extent, callback) {
-  let val;
-  val = callback(getBottomLeft(extent));
-  if (val) {
-    return val;
-  }
-  val = callback(getBottomRight(extent));
-  if (val) {
-    return val;
-  }
-  val = callback(getTopRight(extent));
-  if (val) {
-    return val;
-  }
-  val = callback(getTopLeft(extent));
-  if (val) {
-    return val;
-  }
-  return false;
-}
-function getArea(extent) {
-  let area = 0;
-  if (!isEmpty2(extent)) {
-    area = getWidth(extent) * getHeight(extent);
-  }
-  return area;
-}
-function getBottomLeft(extent) {
-  return [extent[0], extent[1]];
-}
-function getBottomRight(extent) {
-  return [extent[2], extent[1]];
-}
-function getCenter(extent) {
-  return [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2];
-}
-function getCorner(extent, corner) {
-  let coordinate;
-  if (corner === "bottom-left") {
-    coordinate = getBottomLeft(extent);
-  } else if (corner === "bottom-right") {
-    coordinate = getBottomRight(extent);
-  } else if (corner === "top-left") {
-    coordinate = getTopLeft(extent);
-  } else if (corner === "top-right") {
-    coordinate = getTopRight(extent);
-  } else {
-    throw new Error("Invalid corner");
-  }
-  return coordinate;
-}
-function getForViewAndSize(center, resolution, rotation, size, dest) {
-  const [x0, y0, x1, y1, x2, y2, x3, y3] = getRotatedViewport(
-    center,
-    resolution,
-    rotation,
-    size
-  );
-  return createOrUpdate(
-    Math.min(x0, x1, x2, x3),
-    Math.min(y0, y1, y2, y3),
-    Math.max(x0, x1, x2, x3),
-    Math.max(y0, y1, y2, y3),
-    dest
-  );
-}
-function getRotatedViewport(center, resolution, rotation, size) {
-  const dx = resolution * size[0] / 2;
-  const dy = resolution * size[1] / 2;
-  const cosRotation = Math.cos(rotation);
-  const sinRotation = Math.sin(rotation);
-  const xCos = dx * cosRotation;
-  const xSin = dx * sinRotation;
-  const yCos = dy * cosRotation;
-  const ySin = dy * sinRotation;
-  const x = center[0];
-  const y = center[1];
-  return [
-    x - xCos + ySin,
-    y - xSin - yCos,
-    x - xCos - ySin,
-    y - xSin + yCos,
-    x + xCos - ySin,
-    y + xSin + yCos,
-    x + xCos + ySin,
-    y + xSin - yCos,
-    x - xCos + ySin,
-    y - xSin - yCos
-  ];
-}
-function getHeight(extent) {
-  return extent[3] - extent[1];
-}
-function getIntersection(extent1, extent2, dest) {
-  const intersection = dest ? dest : createEmpty();
-  if (intersects(extent1, extent2)) {
-    if (extent1[0] > extent2[0]) {
-      intersection[0] = extent1[0];
-    } else {
-      intersection[0] = extent2[0];
-    }
-    if (extent1[1] > extent2[1]) {
-      intersection[1] = extent1[1];
-    } else {
-      intersection[1] = extent2[1];
-    }
-    if (extent1[2] < extent2[2]) {
-      intersection[2] = extent1[2];
-    } else {
-      intersection[2] = extent2[2];
-    }
-    if (extent1[3] < extent2[3]) {
-      intersection[3] = extent1[3];
-    } else {
-      intersection[3] = extent2[3];
-    }
-  } else {
-    createOrUpdateEmpty(intersection);
-  }
-  return intersection;
-}
-function getDifference(extent1, extent2) {
-  if (!intersects(extent1, extent2)) {
-    return [extent1.slice()];
-  }
-  if (containsExtent(extent2, extent1)) {
-    return [];
-  }
-  const [x1, y1, x2, y2] = extent1;
-  const ix1 = Math.max(x1, extent2[0]);
-  const iy1 = Math.max(y1, extent2[1]);
-  const ix2 = Math.min(x2, extent2[2]);
-  const iy2 = Math.min(y2, extent2[3]);
-  const result = [];
-  if (ix1 > x1) {
-    result.push([x1, y1, ix1, y2]);
-  }
-  if (ix2 < x2) {
-    result.push([ix2, y1, x2, y2]);
-  }
-  if (iy1 > y1) {
-    result.push([ix1, y1, ix2, iy1]);
-  }
-  if (iy2 < y2) {
-    result.push([ix1, iy2, ix2, y2]);
-  }
-  return result;
-}
-function getTopLeft(extent) {
-  return [extent[0], extent[3]];
-}
-function getTopRight(extent) {
-  return [extent[2], extent[3]];
-}
-function getWidth(extent) {
-  return extent[2] - extent[0];
-}
-function intersects(extent1, extent2) {
-  return extent1[0] <= extent2[2] && extent1[2] >= extent2[0] && extent1[1] <= extent2[3] && extent1[3] >= extent2[1];
-}
-function isEmpty2(extent) {
-  return extent[2] < extent[0] || extent[3] < extent[1];
-}
-function returnOrUpdate(extent, dest) {
-  if (dest) {
-    dest[0] = extent[0];
-    dest[1] = extent[1];
-    dest[2] = extent[2];
-    dest[3] = extent[3];
-    return dest;
-  }
-  return extent;
-}
-function intersectsSegment(extent, start, end) {
-  let intersects3 = false;
-  const startRel = coordinateRelationship(extent, start);
-  const endRel = coordinateRelationship(extent, end);
-  if (startRel === Relationship_default.INTERSECTING || endRel === Relationship_default.INTERSECTING) {
-    intersects3 = true;
-  } else {
-    const minX = extent[0];
-    const minY = extent[1];
-    const maxX = extent[2];
-    const maxY = extent[3];
-    const startX = start[0];
-    const startY = start[1];
-    const endX = end[0];
-    const endY = end[1];
-    const slope = (endY - startY) / (endX - startX);
-    let x, y;
-    if (!!(endRel & Relationship_default.ABOVE) && !(startRel & Relationship_default.ABOVE)) {
-      x = endX - (endY - maxY) / slope;
-      intersects3 = x >= minX && x <= maxX;
-    }
-    if (!intersects3 && !!(endRel & Relationship_default.RIGHT) && !(startRel & Relationship_default.RIGHT)) {
-      y = endY - (endX - maxX) * slope;
-      intersects3 = y >= minY && y <= maxY;
-    }
-    if (!intersects3 && !!(endRel & Relationship_default.BELOW) && !(startRel & Relationship_default.BELOW)) {
-      x = endX - (endY - minY) / slope;
-      intersects3 = x >= minX && x <= maxX;
-    }
-    if (!intersects3 && !!(endRel & Relationship_default.LEFT) && !(startRel & Relationship_default.LEFT)) {
-      y = endY - (endX - minX) * slope;
-      intersects3 = y >= minY && y <= maxY;
-    }
-  }
-  return intersects3;
-}
-function applyTransform(extent, transformFn, dest, stops) {
-  if (isEmpty2(extent)) {
-    return createOrUpdateEmpty(dest);
-  }
-  let coordinates2 = [];
-  if (stops > 1) {
-    const width = extent[2] - extent[0];
-    const height = extent[3] - extent[1];
-    for (let i = 0; i < stops; ++i) {
-      coordinates2.push(
-        extent[0] + width * i / stops,
-        extent[1],
-        extent[2],
-        extent[1] + height * i / stops,
-        extent[2] - width * i / stops,
-        extent[3],
-        extent[0],
-        extent[3] - height * i / stops
-      );
-    }
-  } else {
-    coordinates2 = [
-      extent[0],
-      extent[1],
-      extent[2],
-      extent[1],
-      extent[2],
-      extent[3],
-      extent[0],
-      extent[3]
-    ];
-  }
-  transformFn(coordinates2, coordinates2, 2);
-  const xs = [];
-  const ys = [];
-  for (let i = 0, l = coordinates2.length; i < l; i += 2) {
-    xs.push(coordinates2[i]);
-    ys.push(coordinates2[i + 1]);
-  }
-  return _boundingExtentXYs(xs, ys, dest);
-}
-function wrapX(extent, projection) {
-  const projectionExtent = projection.getExtent();
-  const center = getCenter(extent);
-  if (projection.canWrapX() && (center[0] < projectionExtent[0] || center[0] >= projectionExtent[2])) {
-    const worldWidth = getWidth(projectionExtent);
-    const worldsAway = Math.floor(
-      (center[0] - projectionExtent[0]) / worldWidth
-    );
-    const offset = worldsAway * worldWidth;
-    extent[0] -= offset;
-    extent[2] -= offset;
-  }
-  return extent;
-}
-function wrapAndSliceX(extent, projection, multiWorld) {
-  if (projection.canWrapX()) {
-    const projectionExtent = projection.getExtent();
-    if (!isFinite(extent[0]) || !isFinite(extent[2])) {
-      return [[projectionExtent[0], extent[1], projectionExtent[2], extent[3]]];
-    }
-    wrapX(extent, projection);
-    const worldWidth = getWidth(projectionExtent);
-    if (getWidth(extent) > worldWidth && !multiWorld) {
-      return [[projectionExtent[0], extent[1], projectionExtent[2], extent[3]]];
-    }
-    if (extent[0] < projectionExtent[0]) {
-      return [
-        [extent[0] + worldWidth, extent[1], projectionExtent[2], extent[3]],
-        [projectionExtent[0], extent[1], extent[2], extent[3]]
-      ];
-    }
-    if (extent[2] > projectionExtent[2]) {
-      return [
-        [extent[0], extent[1], projectionExtent[2], extent[3]],
-        [projectionExtent[0], extent[1], extent[2] - worldWidth, extent[3]]
-      ];
-    }
-  }
-  return [extent];
-}
-function subtractExtents(base, subtract) {
-  let remainder = [base];
-  for (let i = 0, ii = subtract.length; i < ii && remainder.length > 0; ++i) {
-    const next = [];
-    for (let j = 0, jj = remainder.length; j < jj; ++j) {
-      next.push(...getDifference(remainder[j], subtract[i]));
-    }
-    remainder = next;
-  }
-  return remainder;
-}
-
-// node_modules/ol/coordinate.js
-function add(coordinate, delta) {
-  coordinate[0] += +delta[0];
-  coordinate[1] += +delta[1];
-  return coordinate;
-}
-function equals3(coordinate1, coordinate2) {
-  let equals4 = true;
-  for (let i = coordinate1.length - 1; i >= 0; --i) {
-    if (coordinate1[i] != coordinate2[i]) {
-      equals4 = false;
-      break;
-    }
-  }
-  return equals4;
-}
-function rotate(coordinate, angle) {
-  const cosAngle = Math.cos(angle);
-  const sinAngle = Math.sin(angle);
-  const x = coordinate[0] * cosAngle - coordinate[1] * sinAngle;
-  const y = coordinate[1] * cosAngle + coordinate[0] * sinAngle;
-  coordinate[0] = x;
-  coordinate[1] = y;
-  return coordinate;
-}
-function scale(coordinate, scale4) {
-  coordinate[0] *= scale4;
-  coordinate[1] *= scale4;
-  return coordinate;
-}
-function wrapX2(coordinate, projection) {
-  if (projection.canWrapX()) {
-    const worldWidth = getWidth(projection.getExtent());
-    const worldsAway = getWorldsAway(coordinate, projection, worldWidth);
-    if (worldsAway) {
-      coordinate[0] -= worldsAway * worldWidth;
-    }
-  }
-  return coordinate;
-}
-function getWorldsAway(coordinate, projection, sourceExtentWidth) {
-  const projectionExtent = projection.getExtent();
-  let worldsAway = 0;
-  if (projection.canWrapX() && (coordinate[0] < projectionExtent[0] || coordinate[0] > projectionExtent[2])) {
-    sourceExtentWidth = sourceExtentWidth || getWidth(projectionExtent);
-    worldsAway = Math.floor(
-      (coordinate[0] - projectionExtent[0]) / sourceExtentWidth
-    );
-  }
-  return worldsAway;
-}
-function angleBetween(p0, pA, pB) {
-  const lenA = Math.sqrt(
-    (pA[0] - p0[0]) * (pA[0] - p0[0]) + (pA[1] - p0[1]) * (pA[1] - p0[1])
-  );
-  const tangentA = [(pA[0] - p0[0]) / lenA, (pA[1] - p0[1]) / lenA];
-  const orthoA = [-tangentA[1], tangentA[0]];
-  const lenB = Math.sqrt(
-    (pB[0] - p0[0]) * (pB[0] - p0[0]) + (pB[1] - p0[1]) * (pB[1] - p0[1])
-  );
-  const tangentB = [(pB[0] - p0[0]) / lenB, (pB[1] - p0[1]) / lenB];
-  let angle = lenA === 0 || lenB === 0 ? 0 : Math.acos(
-    clamp(tangentB[0] * tangentA[0] + tangentB[1] * tangentA[1], -1, 1)
-  );
-  angle = Math.max(angle, 1e-5);
-  const isClockwise = tangentB[0] * orthoA[0] + tangentB[1] * orthoA[1] > 0;
-  return !isClockwise ? Math.PI * 2 - angle : angle;
-}
-
 // node_modules/ol/easing.js
 function easeIn(t) {
   return Math.pow(t, 3);
@@ -2468,787 +3337,6 @@ function inAndOut(t) {
 function linear(t) {
   return t;
 }
-
-// node_modules/ol/sphere.js
-var DEFAULT_RADIUS = 63710088e-1;
-function getDistance(c1, c2, radius) {
-  radius = radius || DEFAULT_RADIUS;
-  const lat1 = toRadians(c1[1]);
-  const lat2 = toRadians(c2[1]);
-  const deltaLatBy2 = (lat2 - lat1) / 2;
-  const deltaLonBy2 = toRadians(c2[0] - c1[0]) / 2;
-  const a = Math.sin(deltaLatBy2) * Math.sin(deltaLatBy2) + Math.sin(deltaLonBy2) * Math.sin(deltaLonBy2) * Math.cos(lat1) * Math.cos(lat2);
-  return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// node_modules/ol/console.js
-var levels = {
-  info: 1,
-  warn: 2,
-  error: 3,
-  none: 4
-};
-var level = levels.info;
-function warn(...args) {
-  if (level > levels.warn) {
-    return;
-  }
-  console.warn(...args);
-}
-
-// node_modules/ol/proj/Units.js
-var METERS_PER_UNIT = {
-  // use the radius of the Normal sphere
-  "radians": 6370997 / (2 * Math.PI),
-  "degrees": 2 * Math.PI * 6370997 / 360,
-  "ft": 0.3048,
-  "m": 1,
-  "us-ft": 1200 / 3937
-};
-
-// node_modules/ol/proj/Projection.js
-var Projection = class {
-  /**
-   * @param {Options} options Projection options.
-   */
-  constructor(options) {
-    this.code_ = options.code;
-    this.units_ = /** @type {import("./Units.js").Units} */
-    options.units;
-    this.extent_ = options.extent !== void 0 ? options.extent : null;
-    this.worldExtent_ = options.worldExtent !== void 0 ? options.worldExtent : null;
-    this.axisOrientation_ = options.axisOrientation !== void 0 ? options.axisOrientation : "enu";
-    this.global_ = options.global !== void 0 ? options.global : false;
-    this.canWrapX_ = !!(this.global_ && this.extent_);
-    this.getPointResolutionFunc_ = options.getPointResolution;
-    this.defaultTileGrid_ = null;
-    this.metersPerUnit_ = options.metersPerUnit;
-  }
-  /**
-   * @return {boolean} The projection is suitable for wrapping the x-axis
-   */
-  canWrapX() {
-    return this.canWrapX_;
-  }
-  /**
-   * Get the code for this projection, e.g. 'EPSG:4326'.
-   * @return {string} Code.
-   * @api
-   */
-  getCode() {
-    return this.code_;
-  }
-  /**
-   * Get the validity extent for this projection.
-   * @return {import("../extent.js").Extent} Extent.
-   * @api
-   */
-  getExtent() {
-    return this.extent_;
-  }
-  /**
-   * Get the units of this projection.
-   * @return {import("./Units.js").Units} Units.
-   * @api
-   */
-  getUnits() {
-    return this.units_;
-  }
-  /**
-   * Get the amount of meters per unit of this projection.  If the projection is
-   * not configured with `metersPerUnit` or a units identifier, the return is
-   * `undefined`.
-   * @return {number|undefined} Meters.
-   * @api
-   */
-  getMetersPerUnit() {
-    return this.metersPerUnit_ || METERS_PER_UNIT[this.units_];
-  }
-  /**
-   * Get the world extent for this projection.
-   * @return {import("../extent.js").Extent} Extent.
-   * @api
-   */
-  getWorldExtent() {
-    return this.worldExtent_;
-  }
-  /**
-   * Get the axis orientation of this projection.
-   * Example values are:
-   * enu - the default easting, northing, elevation.
-   * neu - northing, easting, up - useful for "lat/long" geographic coordinates,
-   *     or south orientated transverse mercator.
-   * wnu - westing, northing, up - some planetary coordinate systems have
-   *     "west positive" coordinate systems
-   * @return {string} Axis orientation.
-   * @api
-   */
-  getAxisOrientation() {
-    return this.axisOrientation_;
-  }
-  /**
-   * Is this projection a global projection which spans the whole world?
-   * @return {boolean} Whether the projection is global.
-   * @api
-   */
-  isGlobal() {
-    return this.global_;
-  }
-  /**
-   * Set if the projection is a global projection which spans the whole world
-   * @param {boolean} global Whether the projection is global.
-   * @api
-   */
-  setGlobal(global) {
-    this.global_ = global;
-    this.canWrapX_ = !!(global && this.extent_);
-  }
-  /**
-   * @return {import("../tilegrid/TileGrid.js").default} The default tile grid.
-   */
-  getDefaultTileGrid() {
-    return this.defaultTileGrid_;
-  }
-  /**
-   * @param {import("../tilegrid/TileGrid.js").default} tileGrid The default tile grid.
-   */
-  setDefaultTileGrid(tileGrid) {
-    this.defaultTileGrid_ = tileGrid;
-  }
-  /**
-   * Set the validity extent for this projection.
-   * @param {import("../extent.js").Extent} extent Extent.
-   * @api
-   */
-  setExtent(extent) {
-    this.extent_ = extent;
-    this.canWrapX_ = !!(this.global_ && extent);
-  }
-  /**
-   * Set the world extent for this projection.
-   * @param {import("../extent.js").Extent} worldExtent World extent
-   *     [minlon, minlat, maxlon, maxlat].
-   * @api
-   */
-  setWorldExtent(worldExtent) {
-    this.worldExtent_ = worldExtent;
-  }
-  /**
-   * Set the getPointResolution function (see {@link module:ol/proj.getPointResolution}
-   * for this projection.
-   * @param {function(number, import("../coordinate.js").Coordinate):number} func Function
-   * @api
-   */
-  setGetPointResolution(func) {
-    this.getPointResolutionFunc_ = func;
-  }
-  /**
-   * Get the custom point resolution function for this projection (if set).
-   * @return {GetPointResolution|undefined} The custom point
-   * resolution function (if set).
-   */
-  getPointResolutionFunc() {
-    return this.getPointResolutionFunc_;
-  }
-};
-var Projection_default = Projection;
-
-// node_modules/ol/proj/epsg3857.js
-var RADIUS = 6378137;
-var HALF_SIZE = Math.PI * RADIUS;
-var EXTENT = [-HALF_SIZE, -HALF_SIZE, HALF_SIZE, HALF_SIZE];
-var WORLD_EXTENT = [-180, -85, 180, 85];
-var MAX_SAFE_Y = RADIUS * Math.log(Math.tan(Math.PI / 2));
-var EPSG3857Projection = class extends Projection_default {
-  /**
-   * @param {string} code Code.
-   */
-  constructor(code) {
-    super({
-      code,
-      units: "m",
-      extent: EXTENT,
-      global: true,
-      worldExtent: WORLD_EXTENT,
-      getPointResolution: function(resolution, point) {
-        return resolution / Math.cosh(point[1] / RADIUS);
-      }
-    });
-  }
-};
-var PROJECTIONS = [
-  new EPSG3857Projection("EPSG:3857"),
-  new EPSG3857Projection("EPSG:102100"),
-  new EPSG3857Projection("EPSG:102113"),
-  new EPSG3857Projection("EPSG:900913"),
-  new EPSG3857Projection("http://www.opengis.net/def/crs/EPSG/0/3857"),
-  new EPSG3857Projection("http://www.opengis.net/gml/srs/epsg.xml#3857")
-];
-function fromEPSG4326(input, output, dimension, stride) {
-  const length = input.length;
-  dimension = dimension > 1 ? dimension : 2;
-  stride = stride ?? dimension;
-  if (output === void 0) {
-    if (dimension > 2) {
-      output = input.slice();
-    } else {
-      output = new Array(length);
-    }
-  }
-  for (let i = 0; i < length; i += stride) {
-    output[i] = HALF_SIZE * input[i] / 180;
-    let y = RADIUS * Math.log(Math.tan(Math.PI * (+input[i + 1] + 90) / 360));
-    if (y > MAX_SAFE_Y) {
-      y = MAX_SAFE_Y;
-    } else if (y < -MAX_SAFE_Y) {
-      y = -MAX_SAFE_Y;
-    }
-    output[i + 1] = y;
-  }
-  return output;
-}
-function toEPSG4326(input, output, dimension, stride) {
-  const length = input.length;
-  dimension = dimension > 1 ? dimension : 2;
-  stride = stride ?? dimension;
-  if (output === void 0) {
-    if (dimension > 2) {
-      output = input.slice();
-    } else {
-      output = new Array(length);
-    }
-  }
-  for (let i = 0; i < length; i += stride) {
-    output[i] = 180 * input[i] / HALF_SIZE;
-    output[i + 1] = 360 * Math.atan(Math.exp(input[i + 1] / RADIUS)) / Math.PI - 90;
-  }
-  return output;
-}
-
-// node_modules/ol/proj/epsg4326.js
-var RADIUS2 = 6378137;
-var EXTENT2 = [-180, -90, 180, 90];
-var METERS_PER_UNIT2 = Math.PI * RADIUS2 / 180;
-var EPSG4326Projection = class extends Projection_default {
-  /**
-   * @param {string} code Code.
-   * @param {string} [axisOrientation] Axis orientation.
-   */
-  constructor(code, axisOrientation) {
-    super({
-      code,
-      units: "degrees",
-      extent: EXTENT2,
-      axisOrientation,
-      global: true,
-      metersPerUnit: METERS_PER_UNIT2,
-      worldExtent: EXTENT2
-    });
-  }
-};
-var PROJECTIONS2 = [
-  new EPSG4326Projection("CRS:84"),
-  new EPSG4326Projection("EPSG:4326", "neu"),
-  new EPSG4326Projection("urn:ogc:def:crs:OGC:1.3:CRS84"),
-  new EPSG4326Projection("urn:ogc:def:crs:OGC:2:84"),
-  new EPSG4326Projection("http://www.opengis.net/def/crs/OGC/1.3/CRS84"),
-  new EPSG4326Projection("http://www.opengis.net/gml/srs/epsg.xml#4326", "neu"),
-  new EPSG4326Projection("http://www.opengis.net/def/crs/EPSG/0/4326", "neu")
-];
-
-// node_modules/ol/proj/projections.js
-var cache = {};
-function get(code) {
-  return cache[code] || cache[code.replace(/urn:(x-)?ogc:def:crs:EPSG:(.*:)?(\w+)$/, "EPSG:$3")] || null;
-}
-function add2(code, projection) {
-  cache[code] = projection;
-}
-
-// node_modules/ol/proj/transforms.js
-var transforms = {};
-function add3(source, destination, transformFn) {
-  const sourceCode = source.getCode();
-  const destinationCode = destination.getCode();
-  if (!(sourceCode in transforms)) {
-    transforms[sourceCode] = {};
-  }
-  transforms[sourceCode][destinationCode] = transformFn;
-}
-function get2(sourceCode, destinationCode) {
-  if (sourceCode in transforms && destinationCode in transforms[sourceCode]) {
-    return transforms[sourceCode][destinationCode];
-  }
-  return null;
-}
-
-// node_modules/ol/proj/utm.js
-var K0 = 0.9996;
-var E = 669438e-8;
-var E2 = E * E;
-var E3 = E2 * E;
-var E_P2 = E / (1 - E);
-var SQRT_E = Math.sqrt(1 - E);
-var _E = (1 - SQRT_E) / (1 + SQRT_E);
-var _E2 = _E * _E;
-var _E3 = _E2 * _E;
-var _E4 = _E3 * _E;
-var _E5 = _E4 * _E;
-var M1 = 1 - E / 4 - 3 * E2 / 64 - 5 * E3 / 256;
-var M2 = 3 * E / 8 + 3 * E2 / 32 + 45 * E3 / 1024;
-var M3 = 15 * E2 / 256 + 45 * E3 / 1024;
-var M4 = 35 * E3 / 3072;
-var P2 = 3 / 2 * _E - 27 / 32 * _E3 + 269 / 512 * _E5;
-var P3 = 21 / 16 * _E2 - 55 / 32 * _E4;
-var P4 = 151 / 96 * _E3 - 417 / 128 * _E5;
-var P5 = 1097 / 512 * _E4;
-var R = 6378137;
-function toLonLat(easting, northing, zone) {
-  const x = easting - 5e5;
-  const y = zone.north ? northing : northing - 1e7;
-  const m = y / K0;
-  const mu = m / (R * M1);
-  const pRad = mu + P2 * Math.sin(2 * mu) + P3 * Math.sin(4 * mu) + P4 * Math.sin(6 * mu) + P5 * Math.sin(8 * mu);
-  const pSin = Math.sin(pRad);
-  const pSin2 = pSin * pSin;
-  const pCos = Math.cos(pRad);
-  const pTan = pSin / pCos;
-  const pTan2 = pTan * pTan;
-  const pTan4 = pTan2 * pTan2;
-  const epSin = 1 - E * pSin2;
-  const epSinSqrt = Math.sqrt(1 - E * pSin2);
-  const n = R / epSinSqrt;
-  const r = (1 - E) / epSin;
-  const c = E_P2 * pCos ** 2;
-  const c2 = c * c;
-  const d = x / (n * K0);
-  const d2 = d * d;
-  const d3 = d2 * d;
-  const d4 = d3 * d;
-  const d5 = d4 * d;
-  const d6 = d5 * d;
-  const latitude = pRad - pTan / r * (d2 / 2 - d4 / 24 * (5 + 3 * pTan2 + 10 * c - 4 * c2 - 9 * E_P2)) + d6 / 720 * (61 + 90 * pTan2 + 298 * c + 45 * pTan4 - 252 * E_P2 - 3 * c2);
-  let longitude = (d - d3 / 6 * (1 + 2 * pTan2 + c) + d5 / 120 * (5 - 2 * c + 28 * pTan2 - 3 * c2 + 8 * E_P2 + 24 * pTan4)) / pCos;
-  longitude = wrap(
-    longitude + toRadians(zoneToCentralLongitude(zone.number)),
-    -Math.PI,
-    Math.PI
-  );
-  return [toDegrees(longitude), toDegrees(latitude)];
-}
-var MIN_LATITUDE = -80;
-var MAX_LATITUDE = 84;
-var MIN_LONGITUDE = -180;
-var MAX_LONGITUDE = 180;
-function fromLonLat(longitude, latitude, zone) {
-  longitude = wrap(longitude, MIN_LONGITUDE, MAX_LONGITUDE);
-  if (latitude < MIN_LATITUDE) {
-    latitude = MIN_LATITUDE;
-  } else if (latitude > MAX_LATITUDE) {
-    latitude = MAX_LATITUDE;
-  }
-  const latRad = toRadians(latitude);
-  const latSin = Math.sin(latRad);
-  const latCos = Math.cos(latRad);
-  const latTan = latSin / latCos;
-  const latTan2 = latTan * latTan;
-  const latTan4 = latTan2 * latTan2;
-  const lonRad = toRadians(longitude);
-  const centralLon = zoneToCentralLongitude(zone.number);
-  const centralLonRad = toRadians(centralLon);
-  const n = R / Math.sqrt(1 - E * latSin ** 2);
-  const c = E_P2 * latCos ** 2;
-  const a = latCos * wrap(lonRad - centralLonRad, -Math.PI, Math.PI);
-  const a22 = a * a;
-  const a3 = a22 * a;
-  const a4 = a3 * a;
-  const a5 = a4 * a;
-  const a6 = a5 * a;
-  const m = R * (M1 * latRad - M2 * Math.sin(2 * latRad) + M3 * Math.sin(4 * latRad) - M4 * Math.sin(6 * latRad));
-  const easting = K0 * n * (a + a3 / 6 * (1 - latTan2 + c) + a5 / 120 * (5 - 18 * latTan2 + latTan4 + 72 * c - 58 * E_P2)) + 5e5;
-  let northing = K0 * (m + n * latTan * (a22 / 2 + a4 / 24 * (5 - latTan2 + 9 * c + 4 * c ** 2) + a6 / 720 * (61 - 58 * latTan2 + latTan4 + 600 * c - 330 * E_P2)));
-  if (!zone.north) {
-    northing += 1e7;
-  }
-  return [easting, northing];
-}
-function zoneToCentralLongitude(zone) {
-  return (zone - 1) * 6 - 180 + 3;
-}
-var epsgRegExes = [
-  /^EPSG:(\d+)$/,
-  /^urn:ogc:def:crs:EPSG::(\d+)$/,
-  /^http:\/\/www\.opengis\.net\/def\/crs\/EPSG\/0\/(\d+)$/
-];
-function zoneFromCode(code) {
-  let epsgId = 0;
-  for (const re of epsgRegExes) {
-    const match = code.match(re);
-    if (match) {
-      epsgId = parseInt(match[1]);
-      break;
-    }
-  }
-  if (!epsgId) {
-    return null;
-  }
-  let number = 0;
-  let north = false;
-  if (epsgId > 32700 && epsgId < 32761) {
-    number = epsgId - 32700;
-  } else if (epsgId > 32600 && epsgId < 32661) {
-    north = true;
-    number = epsgId - 32600;
-  }
-  if (!number) {
-    return null;
-  }
-  return { number, north };
-}
-function makeTransformFunction(transformer, zone) {
-  return function(input, output, dimension, stride) {
-    const length = input.length;
-    dimension = dimension > 1 ? dimension : 2;
-    stride = stride ?? dimension;
-    if (!output) {
-      if (dimension > 2) {
-        output = input.slice();
-      } else {
-        output = new Array(length);
-      }
-    }
-    for (let i = 0; i < length; i += stride) {
-      const x = input[i];
-      const y = input[i + 1];
-      const coord = transformer(x, y, zone);
-      output[i] = coord[0];
-      output[i + 1] = coord[1];
-    }
-    return output;
-  };
-}
-function makeProjection(code) {
-  const zone = zoneFromCode(code);
-  if (!zone) {
-    return null;
-  }
-  return new Projection_default({ code, units: "m" });
-}
-function makeTransforms(projection) {
-  const zone = zoneFromCode(projection.getCode());
-  if (!zone) {
-    return null;
-  }
-  return {
-    forward: makeTransformFunction(fromLonLat, zone),
-    inverse: makeTransformFunction(toLonLat, zone)
-  };
-}
-
-// node_modules/ol/proj.js
-var transformFactories = [makeTransforms];
-var projectionFactories = [makeProjection];
-var showCoordinateWarning = true;
-function disableCoordinateWarning(disable2) {
-  const hide = disable2 === void 0 ? true : disable2;
-  showCoordinateWarning = !hide;
-}
-function cloneTransform(input, output) {
-  if (output !== void 0) {
-    for (let i = 0, ii = input.length; i < ii; ++i) {
-      output[i] = input[i];
-    }
-    output = output;
-  } else {
-    output = input.slice();
-  }
-  return output;
-}
-function addProjection(projection) {
-  add2(projection.getCode(), projection);
-  add3(projection, projection, cloneTransform);
-}
-function addProjections(projections) {
-  projections.forEach(addProjection);
-}
-function get3(projectionLike) {
-  if (!(typeof projectionLike === "string")) {
-    return projectionLike;
-  }
-  const projection = get(projectionLike);
-  if (projection) {
-    return projection;
-  }
-  for (const makeProjection2 of projectionFactories) {
-    const projection2 = makeProjection2(projectionLike);
-    if (projection2) {
-      return projection2;
-    }
-  }
-  return null;
-}
-function getPointResolution(projection, resolution, point, units) {
-  projection = get3(projection);
-  let pointResolution;
-  const getter = projection.getPointResolutionFunc();
-  if (getter) {
-    pointResolution = getter(resolution, point);
-    if (units && units !== projection.getUnits()) {
-      const metersPerUnit = projection.getMetersPerUnit();
-      if (metersPerUnit) {
-        pointResolution = pointResolution * metersPerUnit / METERS_PER_UNIT[units];
-      }
-    }
-  } else {
-    const projUnits = projection.getUnits();
-    if (projUnits == "degrees" && !units || units == "degrees") {
-      pointResolution = resolution;
-    } else {
-      const toEPSG43262 = getTransformFromProjections(
-        projection,
-        get3("EPSG:4326")
-      );
-      if (!toEPSG43262 && projUnits !== "degrees") {
-        pointResolution = resolution * projection.getMetersPerUnit();
-      } else {
-        let vertices = [
-          point[0] - resolution / 2,
-          point[1],
-          point[0] + resolution / 2,
-          point[1],
-          point[0],
-          point[1] - resolution / 2,
-          point[0],
-          point[1] + resolution / 2
-        ];
-        vertices = toEPSG43262(vertices, vertices, 2);
-        const width = getDistance(vertices.slice(0, 2), vertices.slice(2, 4));
-        const height = getDistance(vertices.slice(4, 6), vertices.slice(6, 8));
-        pointResolution = (width + height) / 2;
-      }
-      const metersPerUnit = units ? METERS_PER_UNIT[units] : projection.getMetersPerUnit();
-      if (metersPerUnit !== void 0) {
-        pointResolution /= metersPerUnit;
-      }
-    }
-  }
-  return pointResolution;
-}
-function addEquivalentProjections(projections) {
-  addProjections(projections);
-  projections.forEach(function(source) {
-    projections.forEach(function(destination) {
-      if (source !== destination) {
-        add3(source, destination, cloneTransform);
-      }
-    });
-  });
-}
-function addEquivalentTransforms(projections1, projections2, forwardTransform, inverseTransform) {
-  projections1.forEach(function(projection1) {
-    projections2.forEach(function(projection2) {
-      add3(projection1, projection2, forwardTransform);
-      add3(projection2, projection1, inverseTransform);
-    });
-  });
-}
-function createProjection(projection, defaultCode) {
-  if (!projection) {
-    return get3(defaultCode);
-  }
-  if (typeof projection === "string") {
-    return get3(projection);
-  }
-  return (
-    /** @type {Projection} */
-    projection
-  );
-}
-function createTransformFromCoordinateTransform(coordTransform) {
-  return (
-    /**
-     * @param {Array<number>} input Input.
-     * @param {Array<number>} [output] Output.
-     * @param {number} [dimension] Dimensions that should be transformed.
-     * @param {number} [stride] Stride.
-     * @return {Array<number>} Output.
-     */
-    (function(input, output, dimension, stride) {
-      const length = input.length;
-      dimension = dimension !== void 0 ? dimension : 2;
-      stride = stride ?? dimension;
-      output = output !== void 0 ? output : new Array(length);
-      for (let i = 0; i < length; i += stride) {
-        const point = coordTransform(input.slice(i, i + dimension));
-        const pointLength = point.length;
-        for (let j = 0, jj = stride; j < jj; ++j) {
-          output[i + j] = j >= pointLength ? input[i + j] : point[j];
-        }
-      }
-      return output;
-    })
-  );
-}
-function fromLonLat2(coordinate, projection) {
-  disableCoordinateWarning();
-  return transform(
-    coordinate,
-    "EPSG:4326",
-    projection !== void 0 ? projection : "EPSG:3857"
-  );
-}
-function toLonLat2(coordinate, projection) {
-  const lonLat = transform(
-    coordinate,
-    projection !== void 0 ? projection : "EPSG:3857",
-    "EPSG:4326"
-  );
-  const lon = lonLat[0];
-  if (lon < -180 || lon > 180) {
-    lonLat[0] = modulo(lon + 180, 360) - 180;
-  }
-  return lonLat;
-}
-function equivalent(projection1, projection2) {
-  if (projection1 === projection2) {
-    return true;
-  }
-  const equalUnits = projection1.getUnits() === projection2.getUnits();
-  if (projection1.getCode() === projection2.getCode()) {
-    return equalUnits;
-  }
-  const transformFunc = getTransformFromProjections(projection1, projection2);
-  return transformFunc === cloneTransform && equalUnits;
-}
-function getTransformFromProjections(source, destination) {
-  const sourceCode = source.getCode();
-  const destinationCode = destination.getCode();
-  let transformFunc = get2(sourceCode, destinationCode);
-  if (transformFunc) {
-    return transformFunc;
-  }
-  let sourceTransforms = null;
-  let destinationTransforms = null;
-  for (const makeTransforms2 of transformFactories) {
-    if (!sourceTransforms) {
-      sourceTransforms = makeTransforms2(source);
-    }
-    if (!destinationTransforms) {
-      destinationTransforms = makeTransforms2(destination);
-    }
-  }
-  if (!sourceTransforms && !destinationTransforms) {
-    return null;
-  }
-  const intermediateCode = "EPSG:4326";
-  if (!destinationTransforms) {
-    const toDestination = get2(intermediateCode, destinationCode);
-    if (toDestination) {
-      transformFunc = composeTransformFuncs(
-        sourceTransforms.inverse,
-        toDestination
-      );
-    }
-  } else if (!sourceTransforms) {
-    const fromSource = get2(sourceCode, intermediateCode);
-    if (fromSource) {
-      transformFunc = composeTransformFuncs(
-        fromSource,
-        destinationTransforms.forward
-      );
-    }
-  } else {
-    transformFunc = composeTransformFuncs(
-      sourceTransforms.inverse,
-      destinationTransforms.forward
-    );
-  }
-  if (transformFunc) {
-    addProjection(source);
-    addProjection(destination);
-    add3(source, destination, transformFunc);
-  }
-  return transformFunc;
-}
-function composeTransformFuncs(t1, t2) {
-  return function(input, output, dimensions, stride) {
-    output = t1(input, output, dimensions, stride);
-    return t2(output, output, dimensions, stride);
-  };
-}
-function getTransform(source, destination) {
-  const sourceProjection = get3(source);
-  const destinationProjection = get3(destination);
-  return getTransformFromProjections(sourceProjection, destinationProjection);
-}
-function transform(coordinate, source, destination) {
-  const transformFunc = getTransform(source, destination);
-  if (!transformFunc) {
-    const sourceCode = get3(source).getCode();
-    const destinationCode = get3(destination).getCode();
-    throw new Error(
-      `No transform available between ${sourceCode} and ${destinationCode}`
-    );
-  }
-  return transformFunc(coordinate, void 0, coordinate.length);
-}
-function transformExtent(extent, source, destination, stops) {
-  const transformFunc = getTransform(source, destination);
-  return applyTransform(extent, transformFunc, void 0, stops);
-}
-var userProjection = null;
-function getUserProjection() {
-  return userProjection;
-}
-function toUserCoordinate(coordinate, sourceProjection) {
-  if (!userProjection) {
-    return coordinate;
-  }
-  return transform(coordinate, sourceProjection, userProjection);
-}
-function fromUserCoordinate(coordinate, destProjection) {
-  if (!userProjection) {
-    if (showCoordinateWarning && !equals3(coordinate, [0, 0]) && coordinate[0] >= -180 && coordinate[0] <= 180 && coordinate[1] >= -90 && coordinate[1] <= 90) {
-      showCoordinateWarning = false;
-      warn(
-        "Call useGeographic() from ol/proj once to work with [longitude, latitude] coordinates."
-      );
-    }
-    return coordinate;
-  }
-  return transform(coordinate, userProjection, destProjection);
-}
-function toUserExtent(extent, sourceProjection) {
-  if (!userProjection) {
-    return extent;
-  }
-  return transformExtent(extent, sourceProjection, userProjection);
-}
-function fromUserExtent(extent, destProjection) {
-  if (!userProjection) {
-    return extent;
-  }
-  return transformExtent(extent, userProjection, destProjection);
-}
-function toUserResolution(resolution, sourceProjection) {
-  if (!userProjection) {
-    return resolution;
-  }
-  const sourceMetersPerUnit = get3(sourceProjection).getMetersPerUnit();
-  const userMetersPerUnit = userProjection.getMetersPerUnit();
-  return sourceMetersPerUnit && userMetersPerUnit ? resolution * sourceMetersPerUnit / userMetersPerUnit : resolution;
-}
-function addCommon() {
-  addEquivalentProjections(PROJECTIONS);
-  addEquivalentProjections(PROJECTIONS2);
-  addEquivalentTransforms(
-    PROJECTIONS2,
-    PROJECTIONS,
-    fromEPSG4326,
-    toEPSG4326
-  );
-}
-addCommon();
 
 // node_modules/ol/transform.js
 var IDENTITY_TRANSFORM = [1, 0, 0, 1, 0, 0];
@@ -3960,6 +4048,15 @@ function linearRings(flatCoordinates, offset, ends, stride) {
   }
   return area;
 }
+function linearRingss(flatCoordinates, offset, endss, stride) {
+  let area = 0;
+  for (let i = 0, ii = endss.length; i < ii; ++i) {
+    const ends = endss[i];
+    area += linearRings(flatCoordinates, offset, ends, stride);
+    offset = ends[ends.length - 1];
+  }
+  return area;
+}
 
 // node_modules/ol/geom/flat/closest.js
 function assignClosest(flatCoordinates, offset1, offset2, stride, x, y, closestPoint) {
@@ -4013,6 +4110,14 @@ function arrayMaxSquaredDelta(flatCoordinates, offset, ends, stride, max) {
     const end = ends[i];
     max = maxSquaredDelta(flatCoordinates, offset, end, stride, max);
     offset = end;
+  }
+  return max;
+}
+function multiArrayMaxSquaredDelta(flatCoordinates, offset, endss, stride, max) {
+  for (let i = 0, ii = endss.length; i < ii; ++i) {
+    const ends = endss[i];
+    max = arrayMaxSquaredDelta(flatCoordinates, offset, ends, stride, max);
+    offset = ends[ends.length - 1];
   }
   return max;
 }
@@ -4106,6 +4211,27 @@ function assignClosestArrayPoint(flatCoordinates, offset, ends, stride, maxDelta
   }
   return minSquaredDistance;
 }
+function assignClosestMultiArrayPoint(flatCoordinates, offset, endss, stride, maxDelta, isRing, x, y, closestPoint, minSquaredDistance, tmpPoint2) {
+  tmpPoint2 = tmpPoint2 ? tmpPoint2 : [NaN, NaN];
+  for (let i = 0, ii = endss.length; i < ii; ++i) {
+    const ends = endss[i];
+    minSquaredDistance = assignClosestArrayPoint(
+      flatCoordinates,
+      offset,
+      ends,
+      stride,
+      maxDelta,
+      isRing,
+      x,
+      y,
+      closestPoint,
+      minSquaredDistance,
+      tmpPoint2
+    );
+    offset = ends[ends.length - 1];
+  }
+  return minSquaredDistance;
+}
 
 // node_modules/ol/geom/flat/deflate.js
 function deflateCoordinate(flatCoordinates, offset, coordinate, stride) {
@@ -4138,6 +4264,26 @@ function deflateCoordinatesArray(flatCoordinates, offset, coordinatess, stride, 
   }
   ends.length = i;
   return ends;
+}
+function deflateMultiCoordinatesArray(flatCoordinates, offset, coordinatesss, stride, endss) {
+  endss = endss ? endss : [];
+  let i = 0;
+  for (let j = 0, jj = coordinatesss.length; j < jj; ++j) {
+    const ends = deflateCoordinatesArray(
+      flatCoordinates,
+      offset,
+      coordinatesss[j],
+      stride,
+      endss[i]
+    );
+    if (ends.length === 0) {
+      ends[0] = offset;
+    }
+    endss[i++] = ends;
+    offset = ends[ends.length - 1];
+  }
+  endss.length = i;
+  return endss;
 }
 
 // node_modules/ol/geom/flat/inflate.js
@@ -4239,6 +4385,19 @@ function linearRingsContainsXY(flatCoordinates, offset, ends, stride, x, y) {
   }
   return true;
 }
+function linearRingssContainsXY(flatCoordinates, offset, endss, stride, x, y) {
+  if (endss.length === 0) {
+    return false;
+  }
+  for (let i = 0, ii = endss.length; i < ii; ++i) {
+    const ends = endss[i];
+    if (linearRingsContainsXY(flatCoordinates, offset, ends, stride, x, y)) {
+      return true;
+    }
+    offset = ends[ends.length - 1];
+  }
+  return false;
+}
 
 // node_modules/ol/geom/flat/segments.js
 function forEach(flatCoordinates, offset, end, stride, callback) {
@@ -4280,6 +4439,15 @@ function intersectsLineString(flatCoordinates, offset, end, stride, extent, coor
       return intersectsSegment(extent, point1, point2);
     }
   );
+}
+function intersectsLineStringArray(flatCoordinates, offset, ends, stride, extent) {
+  for (let i = 0, ii = ends.length; i < ii; ++i) {
+    if (intersectsLineString(flatCoordinates, offset, ends[i], stride, extent)) {
+      return true;
+    }
+    offset = ends[i];
+  }
+  return false;
 }
 function intersectsLinearRing(flatCoordinates, offset, end, stride, extent) {
   if (intersectsLineString(flatCoordinates, offset, end, stride, extent)) {
@@ -4354,6 +4522,16 @@ function intersectsLinearRingArray(flatCoordinates, offset, ends, stride, extent
     }
   }
   return true;
+}
+function intersectsLinearRingMultiArray(flatCoordinates, offset, endss, stride, extent) {
+  for (let i = 0, ii = endss.length; i < ii; ++i) {
+    const ends = endss[i];
+    if (intersectsLinearRingArray(flatCoordinates, offset, ends, stride, extent)) {
+      return true;
+    }
+    offset = ends[ends.length - 1];
+  }
+  return false;
 }
 
 // node_modules/ol/geom/flat/simplify.js
@@ -4487,6 +4665,25 @@ function quantizeArray(flatCoordinates, offset, ends, stride, tolerance, simplif
     );
     simplifiedEnds.push(simplifiedOffset);
     offset = end;
+  }
+  return simplifiedOffset;
+}
+function quantizeMultiArray(flatCoordinates, offset, endss, stride, tolerance, simplifiedFlatCoordinates, simplifiedOffset, simplifiedEndss) {
+  for (let i = 0, ii = endss.length; i < ii; ++i) {
+    const ends = endss[i];
+    const simplifiedEnds = [];
+    simplifiedOffset = quantizeArray(
+      flatCoordinates,
+      offset,
+      ends,
+      stride,
+      tolerance,
+      simplifiedFlatCoordinates,
+      simplifiedOffset,
+      simplifiedEnds
+    );
+    simplifiedEndss.push(simplifiedEnds);
+    offset = ends[ends.length - 1];
   }
   return simplifiedOffset;
 }
@@ -4876,6 +5073,18 @@ function linearRingsAreOriented(flatCoordinates, offset, ends, stride, right) {
   }
   return true;
 }
+function linearRingssAreOriented(flatCoordinates, offset, endss, stride, right) {
+  for (let i = 0, ii = endss.length; i < ii; ++i) {
+    const ends = endss[i];
+    if (!linearRingsAreOriented(flatCoordinates, offset, ends, stride, right)) {
+      return false;
+    }
+    if (ends.length) {
+      offset = ends[ends.length - 1];
+    }
+  }
+  return true;
+}
 function orientLinearRings(flatCoordinates, offset, ends, stride, right) {
   right = right !== void 0 ? right : false;
   for (let i = 0, ii = ends.length; i < ii; ++i) {
@@ -4891,6 +5100,18 @@ function orientLinearRings(flatCoordinates, offset, ends, stride, right) {
       coordinates(flatCoordinates, offset, end, stride);
     }
     offset = end;
+  }
+  return offset;
+}
+function orientLinearRingsArray(flatCoordinates, offset, endss, stride, right) {
+  for (let i = 0, ii = endss.length; i < ii; ++i) {
+    offset = orientLinearRings(
+      flatCoordinates,
+      offset,
+      endss[i],
+      stride,
+      right
+    );
   }
   return offset;
 }
@@ -4965,7 +5186,7 @@ var Polygon = class _Polygon extends SimpleGeometry_default {
     if (!this.flatCoordinates) {
       this.flatCoordinates = linearRing2.getFlatCoordinates().slice();
     } else {
-      extend(this.flatCoordinates, linearRing2.getFlatCoordinates());
+      extend2(this.flatCoordinates, linearRing2.getFlatCoordinates());
     }
     this.ends_.push(this.flatCoordinates.length);
     this.changed();
@@ -5260,7 +5481,7 @@ var Polygon = class _Polygon extends SimpleGeometry_default {
 };
 var Polygon_default = Polygon;
 function fromExtent(extent) {
-  if (isEmpty2(extent)) {
+  if (isEmpty(extent)) {
     throw new Error("Cannot create polygon from empty extent");
   }
   const minX = extent[0];
@@ -6331,7 +6552,7 @@ var View = class extends Object_default {
     );
     if (Array.isArray(geometryOrExtent)) {
       assert(
-        !isEmpty2(geometryOrExtent),
+        !isEmpty(geometryOrExtent),
         "Cannot fit empty extent provided as `geometry`"
       );
       const extent = fromUserExtent(geometryOrExtent, this.getProjection());
@@ -6687,7 +6908,7 @@ var View = class extends Object_default {
       this.set(ViewProperty_default.RESOLUTION, newResolution);
       this.set("zoom", this.getZoom(), true);
     }
-    if (!newCenter || !this.get(ViewProperty_default.CENTER) || !equals3(this.get(ViewProperty_default.CENTER), newCenter)) {
+    if (!newCenter || !this.get(ViewProperty_default.CENTER) || !equals2(this.get(ViewProperty_default.CENTER), newCenter)) {
       this.set(ViewProperty_default.CENTER, newCenter);
     }
     if (this.getAnimating() && !doNotCancelAnims) {
@@ -6735,7 +6956,7 @@ var View = class extends Object_default {
     }
     anchor = anchor || (duration === 0 ? this.cancelAnchor_ : void 0);
     this.cancelAnchor_ = void 0;
-    if (this.getResolution() !== newResolution || this.getRotation() !== newRotation || !this.getCenterInternal() || !equals3(this.getCenterInternal(), newCenter)) {
+    if (this.getResolution() !== newResolution || this.getRotation() !== newRotation || !this.getCenterInternal() || !equals2(this.getCenterInternal(), newCenter)) {
       if (this.getAnimating()) {
         this.cancelAnimations();
       }
@@ -6964,7 +7185,7 @@ function createRotationConstraint(options) {
 }
 function isNoopAnimation(animation) {
   if (animation.sourceCenter && animation.targetCenter) {
-    if (!equals3(animation.sourceCenter, animation.targetCenter)) {
+    if (!equals2(animation.sourceCenter, animation.targetCenter)) {
       return false;
     }
   }
@@ -7395,7 +7616,7 @@ var Attribution = class extends Control_default {
       this.element.style.display = visible ? "" : "none";
       this.renderedVisible_ = visible;
     }
-    if (equals(attributions, this.renderedAttributions_)) {
+    if (equals3(attributions, this.renderedAttributions_)) {
       return;
     }
     removeChildren(this.ulElement_);
@@ -12754,12 +12975,12 @@ function measureText(font, text) {
 function measureTextWidth(font, text) {
   return measureText(font, text).width;
 }
-function measureAndCacheTextWidth(font, text, cache4) {
-  if (text in cache4) {
-    return cache4[text];
+function measureAndCacheTextWidth(font, text, cache5) {
+  if (text in cache5) {
+    return cache5[text];
   }
   const width = text.split("\n").reduce((prev, curr) => Math.max(prev, measureTextWidth(font, curr)), 0);
-  cache4[text] = width;
+  cache5[text] = width;
   return width;
 }
 function getTextDimensions(baseStyle, chunks) {
@@ -15103,7 +15324,7 @@ function buildStyle(flatStyle, context) {
   const evaluateText = buildText(flatStyle, context);
   const evaluateImage = buildImage(flatStyle, context);
   const evaluateZIndex = numberEvaluator(flatStyle, "z-index", context);
-  if (!evaluateFill && !evaluateStroke && !evaluateText && !evaluateImage && !isEmpty(flatStyle)) {
+  if (!evaluateFill && !evaluateStroke && !evaluateText && !evaluateImage && !isEmpty2(flatStyle)) {
     throw new Error(
       "No fill, stroke, point, or text symbolizer properties in style: " + JSON.stringify(flatStyle)
     );
@@ -17608,7 +17829,7 @@ var Map2 = class extends Object_default {
         frameState.postRenderFunctions
       );
       if (previousFrameState) {
-        const moveStart = !this.previousExtent_ || !isEmpty2(this.previousExtent_) && !equals2(frameState.extent, this.previousExtent_);
+        const moveStart = !this.previousExtent_ || !isEmpty(this.previousExtent_) && !equals(frameState.extent, this.previousExtent_);
         if (moveStart) {
           this.dispatchEvent(
             new MapEvent_default(MapEventType_default.MOVESTART, this, previousFrameState)
@@ -17616,7 +17837,7 @@ var Map2 = class extends Object_default {
           this.previousExtent_ = createOrUpdateEmpty(this.previousExtent_);
         }
       }
-      const idle = this.previousExtent_ && !frameState.viewHints[ViewHint_default.ANIMATING] && !frameState.viewHints[ViewHint_default.INTERACTING] && !equals2(frameState.extent, this.previousExtent_);
+      const idle = this.previousExtent_ && !frameState.viewHints[ViewHint_default.ANIMATING] && !frameState.viewHints[ViewHint_default.INTERACTING] && !equals(frameState.extent, this.previousExtent_);
       if (idle) {
         this.dispatchEvent(
           new MapEvent_default(MapEventType_default.MOVEEND, this, frameState)
@@ -17717,7 +17938,7 @@ var Map2 = class extends Object_default {
       }
     }
     const oldSize = this.getSize();
-    if (size && (!oldSize || !equals(size, oldSize))) {
+    if (size && (!oldSize || !equals3(size, oldSize))) {
       this.updateViewportSize_(size);
       this.setSize(size);
     }
@@ -18770,7 +18991,7 @@ function render(width, height, pixelRatio, sourceResolution, sourceExtent, targe
   context.globalCompositeOperation = "lighter";
   const sourceDataExtent = createEmpty();
   sources.forEach(function(src, i, arr) {
-    extend2(sourceDataExtent, src.extent);
+    extend(sourceDataExtent, src.extent);
   });
   let stitchContext;
   const stitchScale = pixelRatio / sourceResolution;
@@ -20134,7 +20355,7 @@ var CanvasLayerRenderer = class extends Layer_default2 {
     }
     const layerClassName = this.getLayer().getClassName();
     let container, context;
-    if (target && target.className === layerClassName && (!backgroundColor || target && target.style.backgroundColor && equals(
+    if (target && target.className === layerClassName && (!backgroundColor || target && target.style.backgroundColor && equals3(
       asArray(target.style.backgroundColor),
       asArray(backgroundColor)
     ))) {
@@ -20955,7 +21176,7 @@ var CanvasTileLayerRenderer = class extends Layer_default3 {
       this.drawTile(tile, frameState, x, y, w, h, gutter, true, void 0);
     }
     this.renderedResolution = tileResolution;
-    this.extentChanged = !this.renderedExtent_ || !equals2(this.renderedExtent_, canvasExtent);
+    this.extentChanged = !this.renderedExtent_ || !equals(this.renderedExtent_, canvasExtent);
     this.renderedExtent_ = canvasExtent;
     this.renderedPixelRatio = pixelRatio;
     this.postRender(this.context, frameState);
@@ -23660,31 +23881,6 @@ var Translate = class extends Pointer_default {
 };
 var Translate_default = Translate;
 
-// js/coords.js
-function project(lat, lon) {
-  return fromLonLat2([lon, lat]);
-}
-function unproject(coordinate) {
-  const [lon, lat] = toLonLat2(coordinate);
-  return { lat: round(lat), lon: round(lon) };
-}
-function extentToBbox(extent) {
-  const [minX, minY, maxX, maxY] = extent;
-  const southWest = unproject([minX, minY]);
-  const northEast = unproject([maxX, maxY]);
-  const bbox = {
-    south: southWest.lat,
-    west: southWest.lon,
-    north: northEast.lat,
-    east: northEast.lon
-  };
-  if (bbox.west > bbox.east) bbox.crosses_antimeridian = true;
-  return bbox;
-}
-function round(value) {
-  return Math.round(value * 1e7) / 1e7;
-}
-
 // node_modules/ol/render/VectorContext.js
 var VectorContext = class {
   /**
@@ -24315,7 +24511,7 @@ var CanvasBuilder = class extends VectorContext_default {
     const lineWidth = state.lineWidth;
     const miterLimit = state.miterLimit;
     const strokeOffset = state.strokeOffset;
-    if (state.currentStrokeStyle != strokeStyle || state.currentLineCap != lineCap || lineDash != state.currentLineDash && !equals(state.currentLineDash, lineDash) || state.currentLineDashOffset != lineDashOffset || state.currentLineJoin != lineJoin || state.currentLineWidth != lineWidth || state.currentMiterLimit != miterLimit || state.currentStrokeOffset != strokeOffset) {
+    if (state.currentStrokeStyle != strokeStyle || state.currentLineCap != lineCap || lineDash != state.currentLineDash && !equals3(state.currentLineDash, lineDash) || state.currentLineDashOffset != lineDashOffset || state.currentLineJoin != lineJoin || state.currentLineWidth != lineWidth || state.currentMiterLimit != miterLimit || state.currentStrokeOffset != strokeOffset) {
       applyStroke.call(this, state);
       state.currentStrokeStyle = strokeStyle;
       state.currentLineCap = lineCap;
@@ -25881,7 +26077,7 @@ function getSegmenter() {
   }
   return segmenter;
 }
-function drawTextOnPath(flatCoordinates, offset, end, stride, text, startM, maxAngle, scale4, measureAndCacheTextWidth2, font, cache4, rotation, keepUpright = true) {
+function drawTextOnPath(flatCoordinates, offset, end, stride, text, startM, maxAngle, scale4, measureAndCacheTextWidth2, font, cache5, rotation, keepUpright = true) {
   let x2 = flatCoordinates[offset];
   let y2 = flatCoordinates[offset + 1];
   let x1 = 0;
@@ -25905,7 +26101,7 @@ function drawTextOnPath(flatCoordinates, offset, end, stride, text, startM, maxA
   const beginY = lerp(y1, y2, interpolate);
   const startOffset = offset - stride;
   const startLength = segmentM;
-  const endM = startM + scale4 * measureAndCacheTextWidth2(font, text, cache4);
+  const endM = startM + scale4 * measureAndCacheTextWidth2(font, text, cache5);
   while (offset < end - stride && segmentM + segmentLength < endM) {
     advance();
   }
@@ -25962,7 +26158,7 @@ function drawTextOnPath(flatCoordinates, offset, end, stride, text, startM, maxA
     let charLength = 0;
     for (; i < ii; ++i) {
       const index = reverse ? ii - i - 1 : i;
-      const len = scale4 * measureAndCacheTextWidth2(font, segments[index], cache4);
+      const len = scale4 * measureAndCacheTextWidth2(font, segments[index], cache5);
       if (offset + stride < end && segmentM + segmentLength < startM + charLength + len / 2) {
         break;
       }
@@ -26417,7 +26613,7 @@ var Executor = class {
   execute_(context, scaledCanvasSize, transform2, instructions, snapToPixel, featureCallback, hitExtent, declutterTree) {
     const zIndexContext = this.zIndexContext_;
     let pixelCoordinates;
-    if (this.pixelCoordinates_ && equals(transform2, this.renderedTransform_)) {
+    if (this.pixelCoordinates_ && equals3(transform2, this.renderedTransform_)) {
       pixelCoordinates = this.pixelCoordinates_;
     } else {
       if (!this.pixelCoordinates_) {
@@ -27327,7 +27523,7 @@ var ExecutorGroup = class {
    * @return {boolean} Is empty.
    */
   isEmpty() {
-    return isEmpty(this.executorsByZIndex_);
+    return isEmpty2(this.executorsByZIndex_);
   }
   /**
    * @param {CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D} targetContext Context.
@@ -28163,7 +28359,7 @@ var CanvasImmediateRenderer = class extends VectorContext_default {
         contextStrokeState.lineCap = strokeState.lineCap;
         context.lineCap = strokeState.lineCap;
       }
-      if (!equals(contextStrokeState.lineDash, strokeState.lineDash)) {
+      if (!equals3(contextStrokeState.lineDash, strokeState.lineDash)) {
         context.setLineDash(
           contextStrokeState.lineDash = strokeState.lineDash
         );
@@ -29158,7 +29354,7 @@ var CanvasVectorLayerRenderer = class extends Layer_default3 {
     this.extendX_ = false;
     if (canWrapX) {
       const sourceExtent = vectorSource.getExtent();
-      if (sourceExtent && !isEmpty2(sourceExtent)) {
+      if (sourceExtent && !isEmpty(sourceExtent)) {
         this.extendX_ = sourceExtent[0] < projectionExtent[0] || sourceExtent[2] > projectionExtent[2];
       }
     }
@@ -29192,7 +29388,7 @@ var CanvasVectorLayerRenderer = class extends Layer_default3 {
       }
     }
     if (this.ready && this.renderedResolution_ == resolution && this.renderedPixelRatio_ === pixelRatio && this.renderedRevision_ == vectorLayerRevision && this.renderedRenderOrder_ == vectorLayerRenderOrder && this.renderedFrameDeclutter_ === !!frameState.declutter && containsExtent(this.wrappedRenderedExtent_, extent)) {
-      if (!equals(this.renderedExtent_, renderedExtent)) {
+      if (!equals3(this.renderedExtent_, renderedExtent)) {
         this.hitDetectionImageData_ = null;
         this.renderedExtent_ = renderedExtent;
       }
@@ -29350,20 +29546,20 @@ var Vector_default = VectorLayer;
 
 // node_modules/ol/featureloader.js
 var withCredentials = false;
-function loadFeaturesXhr(url, format, extent, resolution, projection, success, failure) {
+function loadFeaturesXhr(url, format2, extent, resolution, projection, success, failure) {
   const xhr2 = new XMLHttpRequest();
   xhr2.open(
     "GET",
     typeof url === "function" ? url(extent, resolution, projection) : url,
     true
   );
-  if (format.getType() == "arraybuffer") {
+  if (format2.getType() == "arraybuffer") {
     xhr2.responseType = "arraybuffer";
   }
   xhr2.withCredentials = withCredentials;
   xhr2.onload = function(event) {
     if (!xhr2.status || xhr2.status >= 200 && xhr2.status < 300) {
-      const type = format.getType();
+      const type = format2.getType();
       try {
         let source;
         if (type == "text" || type == "json") {
@@ -29377,11 +29573,11 @@ function loadFeaturesXhr(url, format, extent, resolution, projection, success, f
         if (source) {
           success(
             /** @type {Array<FeatureType>} */
-            format.readFeatures(source, {
+            format2.readFeatures(source, {
               extent,
               featureProjection: projection
             }),
-            format.readProjection(source)
+            format2.readProjection(source)
           );
         } else {
           failure();
@@ -29396,11 +29592,11 @@ function loadFeaturesXhr(url, format, extent, resolution, projection, success, f
   xhr2.onerror = failure;
   xhr2.send();
 }
-function xhr(url, format) {
+function xhr(url, format2) {
   return function(extent, resolution, projection, success, failure) {
     loadFeaturesXhr(
       url,
-      format,
+      format2,
       extent,
       resolution,
       projection,
@@ -29468,9 +29664,874 @@ function interpolatePoint(flatCoordinates, offset, end, stride, fraction, dest, 
   }
   return dest;
 }
+function lineStringCoordinateAtM(flatCoordinates, offset, end, stride, m, extrapolate) {
+  if (end == offset) {
+    return null;
+  }
+  let coordinate;
+  if (m < flatCoordinates[offset + stride - 1]) {
+    if (extrapolate) {
+      coordinate = flatCoordinates.slice(offset, offset + stride);
+      coordinate[stride - 1] = m;
+      return coordinate;
+    }
+    return null;
+  }
+  if (flatCoordinates[end - 1] < m) {
+    if (extrapolate) {
+      coordinate = flatCoordinates.slice(end - stride, end);
+      coordinate[stride - 1] = m;
+      return coordinate;
+    }
+    return null;
+  }
+  if (m == flatCoordinates[offset + stride - 1]) {
+    return flatCoordinates.slice(offset, offset + stride);
+  }
+  let lo = offset / stride;
+  let hi = end / stride;
+  while (lo < hi) {
+    const mid = lo + hi >> 1;
+    if (m < flatCoordinates[(mid + 1) * stride - 1]) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  const m0 = flatCoordinates[lo * stride - 1];
+  if (m == m0) {
+    return flatCoordinates.slice((lo - 1) * stride, (lo - 1) * stride + stride);
+  }
+  const m1 = flatCoordinates[(lo + 1) * stride - 1];
+  const t = (m - m0) / (m1 - m0);
+  coordinate = [];
+  for (let i = 0; i < stride - 1; ++i) {
+    coordinate.push(
+      lerp(
+        flatCoordinates[(lo - 1) * stride + i],
+        flatCoordinates[lo * stride + i],
+        t
+      )
+    );
+  }
+  coordinate.push(m);
+  return coordinate;
+}
+function lineStringsCoordinateAtM(flatCoordinates, offset, ends, stride, m, extrapolate, interpolate) {
+  if (interpolate) {
+    return lineStringCoordinateAtM(
+      flatCoordinates,
+      offset,
+      ends[ends.length - 1],
+      stride,
+      m,
+      extrapolate
+    );
+  }
+  let coordinate;
+  if (m < flatCoordinates[stride - 1]) {
+    if (extrapolate) {
+      coordinate = flatCoordinates.slice(0, stride);
+      coordinate[stride - 1] = m;
+      return coordinate;
+    }
+    return null;
+  }
+  if (flatCoordinates[flatCoordinates.length - 1] < m) {
+    if (extrapolate) {
+      coordinate = flatCoordinates.slice(flatCoordinates.length - stride);
+      coordinate[stride - 1] = m;
+      return coordinate;
+    }
+    return null;
+  }
+  for (let i = 0, ii = ends.length; i < ii; ++i) {
+    const end = ends[i];
+    if (offset == end) {
+      continue;
+    }
+    if (m < flatCoordinates[offset + stride - 1]) {
+      return null;
+    }
+    if (m <= flatCoordinates[end - 1]) {
+      return lineStringCoordinateAtM(
+        flatCoordinates,
+        offset,
+        end,
+        stride,
+        m,
+        false
+      );
+    }
+    offset = end;
+  }
+  return null;
+}
+
+// node_modules/ol/geom/LineString.js
+var LineString = class _LineString extends SimpleGeometry_default {
+  /**
+   * @param {Array<import("../coordinate.js").Coordinate>|Array<number>} coordinates Coordinates.
+   *     For internal use, flat coordinates in combination with `layout` are also accepted.
+   * @param {import("./Geometry.js").GeometryLayout} [layout] Layout.
+   */
+  constructor(coordinates2, layout) {
+    super();
+    this.flatMidpoint_ = null;
+    this.flatMidpointRevision_ = -1;
+    this.maxDelta_ = -1;
+    this.maxDeltaRevision_ = -1;
+    if (layout !== void 0 && !Array.isArray(coordinates2[0])) {
+      this.setFlatCoordinates(
+        layout,
+        /** @type {Array<number>} */
+        coordinates2
+      );
+    } else {
+      this.setCoordinates(
+        /** @type {Array<import("../coordinate.js").Coordinate>} */
+        coordinates2,
+        layout
+      );
+    }
+  }
+  /**
+   * Append the passed coordinate to the coordinates of the linestring.
+   * @param {import("../coordinate.js").Coordinate} coordinate Coordinate.
+   * @api
+   */
+  appendCoordinate(coordinate) {
+    extend2(this.flatCoordinates, coordinate);
+    this.changed();
+  }
+  /**
+   * Make a complete copy of the geometry.
+   * @return {!LineString} Clone.
+   * @api
+   * @override
+   */
+  clone() {
+    const lineString = new _LineString(
+      this.flatCoordinates.slice(),
+      this.layout
+    );
+    lineString.applyProperties(this);
+    return lineString;
+  }
+  /**
+   * @param {number} x X.
+   * @param {number} y Y.
+   * @param {import("../coordinate.js").Coordinate} closestPoint Closest point.
+   * @param {number} minSquaredDistance Minimum squared distance.
+   * @return {number} Minimum squared distance.
+   * @override
+   */
+  closestPointXY(x, y, closestPoint, minSquaredDistance) {
+    if (minSquaredDistance < closestSquaredDistanceXY(this.getExtent(), x, y)) {
+      return minSquaredDistance;
+    }
+    if (this.maxDeltaRevision_ != this.getRevision()) {
+      this.maxDelta_ = Math.sqrt(
+        maxSquaredDelta(
+          this.flatCoordinates,
+          0,
+          this.flatCoordinates.length,
+          this.stride,
+          0
+        )
+      );
+      this.maxDeltaRevision_ = this.getRevision();
+    }
+    return assignClosestPoint(
+      this.flatCoordinates,
+      0,
+      this.flatCoordinates.length,
+      this.stride,
+      this.maxDelta_,
+      false,
+      x,
+      y,
+      closestPoint,
+      minSquaredDistance
+    );
+  }
+  /**
+   * Iterate over each segment, calling the provided callback.
+   * If the callback returns a truthy value the function returns that
+   * value immediately. Otherwise the function returns `false`.
+   *
+   * @param {function(this: S, import("../coordinate.js").Coordinate, import("../coordinate.js").Coordinate): T} callback Function
+   *     called for each segment. The function will receive two arguments, the start and end coordinates of the segment.
+   * @return {T|boolean} Value.
+   * @template T,S
+   * @api
+   */
+  forEachSegment(callback) {
+    return forEach(
+      this.flatCoordinates,
+      0,
+      this.flatCoordinates.length,
+      this.stride,
+      callback
+    );
+  }
+  /**
+   * Returns the coordinate at `m` using linear interpolation, or `null` if no
+   * such coordinate exists.
+   *
+   * `extrapolate` controls extrapolation beyond the range of Ms in the
+   * MultiLineString. If `extrapolate` is `true` then Ms less than the first
+   * M will return the first coordinate and Ms greater than the last M will
+   * return the last coordinate.
+   *
+   * @param {number} m M.
+   * @param {boolean} [extrapolate] Extrapolate. Default is `false`.
+   * @return {import("../coordinate.js").Coordinate|null} Coordinate.
+   * @api
+   */
+  getCoordinateAtM(m, extrapolate) {
+    if (this.layout != "XYM" && this.layout != "XYZM") {
+      return null;
+    }
+    extrapolate = extrapolate !== void 0 ? extrapolate : false;
+    return lineStringCoordinateAtM(
+      this.flatCoordinates,
+      0,
+      this.flatCoordinates.length,
+      this.stride,
+      m,
+      extrapolate
+    );
+  }
+  /**
+   * Return the coordinates of the linestring.
+   * @return {Array<import("../coordinate.js").Coordinate>} Coordinates.
+   * @api
+   * @override
+   */
+  getCoordinates() {
+    return inflateCoordinates(
+      this.flatCoordinates,
+      0,
+      this.flatCoordinates.length,
+      this.stride
+    );
+  }
+  /**
+   * Return the coordinate at the provided fraction along the linestring.
+   * The `fraction` is a number between 0 and 1, where 0 is the start of the
+   * linestring and 1 is the end.
+   * @param {number} fraction Fraction.
+   * @param {import("../coordinate.js").Coordinate} [dest] Optional coordinate whose values will
+   *     be modified. If not provided, a new coordinate will be returned.
+   * @return {import("../coordinate.js").Coordinate} Coordinate of the interpolated point.
+   * @api
+   */
+  getCoordinateAt(fraction, dest) {
+    return interpolatePoint(
+      this.flatCoordinates,
+      0,
+      this.flatCoordinates.length,
+      this.stride,
+      fraction,
+      dest,
+      this.stride
+    );
+  }
+  /**
+   * Return the length of the linestring on projected plane.
+   * @return {number} Length (on projected plane).
+   * @api
+   */
+  getLength() {
+    return lineStringLength(
+      this.flatCoordinates,
+      0,
+      this.flatCoordinates.length,
+      this.stride
+    );
+  }
+  /**
+   * @return {Array<number>} Flat midpoint.
+   */
+  getFlatMidpoint() {
+    if (this.flatMidpointRevision_ != this.getRevision()) {
+      this.flatMidpoint_ = this.getCoordinateAt(
+        0.5,
+        this.flatMidpoint_ ?? void 0
+      );
+      this.flatMidpointRevision_ = this.getRevision();
+    }
+    return (
+      /** @type {Array<number>} */
+      this.flatMidpoint_
+    );
+  }
+  /**
+   * @param {number} squaredTolerance Squared tolerance.
+   * @return {LineString} Simplified LineString.
+   * @protected
+   * @override
+   */
+  getSimplifiedGeometryInternal(squaredTolerance) {
+    const simplifiedFlatCoordinates = [];
+    simplifiedFlatCoordinates.length = douglasPeucker(
+      this.flatCoordinates,
+      0,
+      this.flatCoordinates.length,
+      this.stride,
+      squaredTolerance,
+      simplifiedFlatCoordinates,
+      0
+    );
+    return new _LineString(simplifiedFlatCoordinates, "XY");
+  }
+  /**
+   * Get the type of this geometry.
+   * @return {import("./Geometry.js").Type} Geometry type.
+   * @api
+   * @override
+   */
+  getType() {
+    return "LineString";
+  }
+  /**
+   * Test if the geometry and the passed extent intersect.
+   * @param {import("../extent.js").Extent} extent Extent.
+   * @return {boolean} `true` if the geometry and the extent intersect.
+   * @api
+   * @override
+   */
+  intersectsExtent(extent) {
+    return intersectsLineString(
+      this.flatCoordinates,
+      0,
+      this.flatCoordinates.length,
+      this.stride,
+      extent,
+      this.getExtent()
+    );
+  }
+  /**
+   * Set the coordinates of the linestring.
+   * @param {!Array<import("../coordinate.js").Coordinate>} coordinates Coordinates.
+   * @param {import("./Geometry.js").GeometryLayout} [layout] Layout.
+   * @api
+   * @override
+   */
+  setCoordinates(coordinates2, layout) {
+    this.setLayout(layout, coordinates2, 1);
+    if (!this.flatCoordinates) {
+      this.flatCoordinates = [];
+    }
+    this.flatCoordinates.length = deflateCoordinates(
+      this.flatCoordinates,
+      0,
+      coordinates2,
+      this.stride
+    );
+    this.changed();
+  }
+};
+var LineString_default = LineString;
+
+// node_modules/ol/geom/MultiLineString.js
+var MultiLineString = class _MultiLineString extends SimpleGeometry_default {
+  /**
+   * @param {Array<Array<import("../coordinate.js").Coordinate>|LineString>|Array<number>} coordinates
+   *     Coordinates or LineString geometries. (For internal use, flat coordinates in
+   *     combination with `layout` and `ends` are also accepted.)
+   * @param {import("./Geometry.js").GeometryLayout} [layout] Layout.
+   * @param {Array<number>} [ends] Flat coordinate ends for internal use.
+   */
+  constructor(coordinates2, layout, ends) {
+    super();
+    this.ends_ = [];
+    this.maxDelta_ = -1;
+    this.maxDeltaRevision_ = -1;
+    if (Array.isArray(coordinates2[0])) {
+      this.setCoordinates(
+        /** @type {Array<Array<import("../coordinate.js").Coordinate>>} */
+        coordinates2,
+        layout
+      );
+    } else if (layout !== void 0 && ends) {
+      this.setFlatCoordinates(
+        layout,
+        /** @type {Array<number>} */
+        coordinates2
+      );
+      this.ends_ = ends;
+    } else {
+      const lineStrings = (
+        /** @type {Array<LineString>} */
+        coordinates2
+      );
+      const flatCoordinates = [];
+      const ends2 = [];
+      for (let i = 0, ii = lineStrings.length; i < ii; ++i) {
+        const lineString = lineStrings[i];
+        extend2(flatCoordinates, lineString.getFlatCoordinates());
+        ends2.push(flatCoordinates.length);
+      }
+      const layout2 = lineStrings.length === 0 ? this.getLayout() : lineStrings[0].getLayout();
+      this.setFlatCoordinates(layout2, flatCoordinates);
+      this.ends_ = ends2;
+    }
+  }
+  /**
+   * Append the passed linestring to the multilinestring.
+   * @param {LineString} lineString LineString.
+   * @api
+   */
+  appendLineString(lineString) {
+    extend2(this.flatCoordinates, lineString.getFlatCoordinates().slice());
+    this.ends_.push(this.flatCoordinates.length);
+    this.changed();
+  }
+  /**
+   * Make a complete copy of the geometry.
+   * @return {!MultiLineString} Clone.
+   * @api
+   * @override
+   */
+  clone() {
+    const multiLineString = new _MultiLineString(
+      this.flatCoordinates.slice(),
+      this.layout,
+      this.ends_.slice()
+    );
+    multiLineString.applyProperties(this);
+    return multiLineString;
+  }
+  /**
+   * @param {number} x X.
+   * @param {number} y Y.
+   * @param {import("../coordinate.js").Coordinate} closestPoint Closest point.
+   * @param {number} minSquaredDistance Minimum squared distance.
+   * @return {number} Minimum squared distance.
+   * @override
+   */
+  closestPointXY(x, y, closestPoint, minSquaredDistance) {
+    if (minSquaredDistance < closestSquaredDistanceXY(this.getExtent(), x, y)) {
+      return minSquaredDistance;
+    }
+    if (this.maxDeltaRevision_ != this.getRevision()) {
+      this.maxDelta_ = Math.sqrt(
+        arrayMaxSquaredDelta(
+          this.flatCoordinates,
+          0,
+          this.ends_,
+          this.stride,
+          0
+        )
+      );
+      this.maxDeltaRevision_ = this.getRevision();
+    }
+    return assignClosestArrayPoint(
+      this.flatCoordinates,
+      0,
+      this.ends_,
+      this.stride,
+      this.maxDelta_,
+      false,
+      x,
+      y,
+      closestPoint,
+      minSquaredDistance
+    );
+  }
+  /**
+   * Returns the coordinate at `m` using linear interpolation, or `null` if no
+   * such coordinate exists.
+   *
+   * `extrapolate` controls extrapolation beyond the range of Ms in the
+   * MultiLineString. If `extrapolate` is `true` then Ms less than the first
+   * M will return the first coordinate and Ms greater than the last M will
+   * return the last coordinate.
+   *
+   * `interpolate` controls interpolation between consecutive LineStrings
+   * within the MultiLineString. If `interpolate` is `true` the coordinates
+   * will be linearly interpolated between the last coordinate of one LineString
+   * and the first coordinate of the next LineString.  If `interpolate` is
+   * `false` then the function will return `null` for Ms falling between
+   * LineStrings.
+   *
+   * @param {number} m M.
+   * @param {boolean} [extrapolate] Extrapolate. Default is `false`.
+   * @param {boolean} [interpolate] Interpolate. Default is `false`.
+   * @return {import("../coordinate.js").Coordinate|null} Coordinate.
+   * @api
+   */
+  getCoordinateAtM(m, extrapolate, interpolate) {
+    if (this.layout != "XYM" && this.layout != "XYZM" || this.flatCoordinates.length === 0) {
+      return null;
+    }
+    extrapolate = extrapolate !== void 0 ? extrapolate : false;
+    interpolate = interpolate !== void 0 ? interpolate : false;
+    return lineStringsCoordinateAtM(
+      this.flatCoordinates,
+      0,
+      this.ends_,
+      this.stride,
+      m,
+      extrapolate,
+      interpolate
+    );
+  }
+  /**
+   * Return the coordinates of the multilinestring.
+   * @return {Array<Array<import("../coordinate.js").Coordinate>>} Coordinates.
+   * @api
+   * @override
+   */
+  getCoordinates() {
+    return inflateCoordinatesArray(
+      this.flatCoordinates,
+      0,
+      this.ends_,
+      this.stride
+    );
+  }
+  /**
+   * @return {Array<number>} Ends.
+   */
+  getEnds() {
+    return this.ends_;
+  }
+  /**
+   * Return the linestring at the specified index.
+   * @param {number} index Index.
+   * @return {LineString} LineString.
+   * @api
+   */
+  getLineString(index) {
+    if (index < 0 || this.ends_.length <= index) {
+      return null;
+    }
+    return new LineString_default(
+      this.flatCoordinates.slice(
+        index === 0 ? 0 : this.ends_[index - 1],
+        this.ends_[index]
+      ),
+      this.layout
+    );
+  }
+  /**
+   * Return the linestrings of this multilinestring.
+   * @return {Array<LineString>} LineStrings.
+   * @api
+   */
+  getLineStrings() {
+    const flatCoordinates = this.flatCoordinates;
+    const ends = this.ends_;
+    const layout = this.layout;
+    const lineStrings = [];
+    let offset = 0;
+    for (let i = 0, ii = ends.length; i < ii; ++i) {
+      const end = ends[i];
+      const lineString = new LineString_default(
+        flatCoordinates.slice(offset, end),
+        layout
+      );
+      lineStrings.push(lineString);
+      offset = end;
+    }
+    return lineStrings;
+  }
+  /**
+   * Return the sum of all line string lengths
+   * @return {number} Length (on projected plane).
+   * @api
+   */
+  getLength() {
+    const ends = this.ends_;
+    let start = 0;
+    let length = 0;
+    for (let i = 0, ii = ends.length; i < ii; ++i) {
+      length += lineStringLength(
+        this.flatCoordinates,
+        start,
+        ends[i],
+        this.stride
+      );
+      start = ends[i];
+    }
+    return length;
+  }
+  /**
+   * @return {Array<number>} Flat midpoints.
+   */
+  getFlatMidpoints() {
+    const midpoints = [];
+    const flatCoordinates = this.flatCoordinates;
+    let offset = 0;
+    const ends = this.ends_;
+    const stride = this.stride;
+    for (let i = 0, ii = ends.length; i < ii; ++i) {
+      const end = ends[i];
+      const midpoint = interpolatePoint(
+        flatCoordinates,
+        offset,
+        end,
+        stride,
+        0.5
+      );
+      extend2(midpoints, midpoint);
+      offset = end;
+    }
+    return midpoints;
+  }
+  /**
+   * @param {number} squaredTolerance Squared tolerance.
+   * @return {MultiLineString} Simplified MultiLineString.
+   * @protected
+   * @override
+   */
+  getSimplifiedGeometryInternal(squaredTolerance) {
+    const simplifiedFlatCoordinates = [];
+    const simplifiedEnds = [];
+    simplifiedFlatCoordinates.length = douglasPeuckerArray(
+      this.flatCoordinates,
+      0,
+      this.ends_,
+      this.stride,
+      squaredTolerance,
+      simplifiedFlatCoordinates,
+      0,
+      simplifiedEnds
+    );
+    return new _MultiLineString(simplifiedFlatCoordinates, "XY", simplifiedEnds);
+  }
+  /**
+   * Get the type of this geometry.
+   * @return {import("./Geometry.js").Type} Geometry type.
+   * @api
+   * @override
+   */
+  getType() {
+    return "MultiLineString";
+  }
+  /**
+   * Test if the geometry and the passed extent intersect.
+   * @param {import("../extent.js").Extent} extent Extent.
+   * @return {boolean} `true` if the geometry and the extent intersect.
+   * @api
+   * @override
+   */
+  intersectsExtent(extent) {
+    return intersectsLineStringArray(
+      this.flatCoordinates,
+      0,
+      this.ends_,
+      this.stride,
+      extent
+    );
+  }
+  /**
+   * Set the coordinates of the multilinestring.
+   * @param {!Array<Array<import("../coordinate.js").Coordinate>>} coordinates Coordinates.
+   * @param {import("./Geometry.js").GeometryLayout} [layout] Layout.
+   * @api
+   * @override
+   */
+  setCoordinates(coordinates2, layout) {
+    this.setLayout(layout, coordinates2, 2);
+    if (!this.flatCoordinates) {
+      this.flatCoordinates = [];
+    }
+    const ends = deflateCoordinatesArray(
+      this.flatCoordinates,
+      0,
+      coordinates2,
+      this.stride,
+      this.ends_
+    );
+    this.flatCoordinates.length = ends.length === 0 ? 0 : ends[ends.length - 1];
+    this.changed();
+  }
+};
+var MultiLineString_default = MultiLineString;
+
+// node_modules/ol/geom/MultiPoint.js
+var MultiPoint = class _MultiPoint extends SimpleGeometry_default {
+  /**
+   * @param {Array<import("../coordinate.js").Coordinate>|Array<number>} coordinates Coordinates.
+   *     For internal use, flat coordinates in combination with `layout` are also accepted.
+   * @param {import("./Geometry.js").GeometryLayout} [layout] Layout.
+   */
+  constructor(coordinates2, layout) {
+    super();
+    if (layout && !Array.isArray(coordinates2[0])) {
+      this.setFlatCoordinates(
+        layout,
+        /** @type {Array<number>} */
+        coordinates2
+      );
+    } else {
+      this.setCoordinates(
+        /** @type {Array<import("../coordinate.js").Coordinate>} */
+        coordinates2,
+        layout
+      );
+    }
+  }
+  /**
+   * Append the passed point to this multipoint.
+   * @param {Point} point Point.
+   * @api
+   */
+  appendPoint(point) {
+    extend2(this.flatCoordinates, point.getFlatCoordinates());
+    this.changed();
+  }
+  /**
+   * Make a complete copy of the geometry.
+   * @return {!MultiPoint} Clone.
+   * @api
+   * @override
+   */
+  clone() {
+    const multiPoint = new _MultiPoint(
+      this.flatCoordinates.slice(),
+      this.layout
+    );
+    multiPoint.applyProperties(this);
+    return multiPoint;
+  }
+  /**
+   * @param {number} x X.
+   * @param {number} y Y.
+   * @param {import("../coordinate.js").Coordinate} closestPoint Closest point.
+   * @param {number} minSquaredDistance Minimum squared distance.
+   * @return {number} Minimum squared distance.
+   * @override
+   */
+  closestPointXY(x, y, closestPoint, minSquaredDistance) {
+    if (minSquaredDistance < closestSquaredDistanceXY(this.getExtent(), x, y)) {
+      return minSquaredDistance;
+    }
+    const flatCoordinates = this.flatCoordinates;
+    const stride = this.stride;
+    for (let i = 0, ii = flatCoordinates.length; i < ii; i += stride) {
+      const squaredDistance2 = squaredDistance(
+        x,
+        y,
+        flatCoordinates[i],
+        flatCoordinates[i + 1]
+      );
+      if (squaredDistance2 < minSquaredDistance) {
+        minSquaredDistance = squaredDistance2;
+        for (let j = 0; j < stride; ++j) {
+          closestPoint[j] = flatCoordinates[i + j];
+        }
+        closestPoint.length = stride;
+      }
+    }
+    return minSquaredDistance;
+  }
+  /**
+   * Return the coordinates of the multipoint.
+   * @return {Array<import("../coordinate.js").Coordinate>} Coordinates.
+   * @api
+   * @override
+   */
+  getCoordinates() {
+    return inflateCoordinates(
+      this.flatCoordinates,
+      0,
+      this.flatCoordinates.length,
+      this.stride
+    );
+  }
+  /**
+   * Return the point at the specified index.
+   * @param {number} index Index.
+   * @return {Point} Point.
+   * @api
+   */
+  getPoint(index) {
+    const n = this.flatCoordinates.length / this.stride;
+    if (index < 0 || n <= index) {
+      return null;
+    }
+    return new Point_default(
+      this.flatCoordinates.slice(
+        index * this.stride,
+        (index + 1) * this.stride
+      ),
+      this.layout
+    );
+  }
+  /**
+   * Return the points of this multipoint.
+   * @return {Array<Point>} Points.
+   * @api
+   */
+  getPoints() {
+    const flatCoordinates = this.flatCoordinates;
+    const layout = this.layout;
+    const stride = this.stride;
+    const points = [];
+    for (let i = 0, ii = flatCoordinates.length; i < ii; i += stride) {
+      const point = new Point_default(flatCoordinates.slice(i, i + stride), layout);
+      points.push(point);
+    }
+    return points;
+  }
+  /**
+   * Get the type of this geometry.
+   * @return {import("./Geometry.js").Type} Geometry type.
+   * @api
+   * @override
+   */
+  getType() {
+    return "MultiPoint";
+  }
+  /**
+   * Test if the geometry and the passed extent intersect.
+   * @param {import("../extent.js").Extent} extent Extent.
+   * @return {boolean} `true` if the geometry and the extent intersect.
+   * @api
+   * @override
+   */
+  intersectsExtent(extent) {
+    const flatCoordinates = this.flatCoordinates;
+    const stride = this.stride;
+    for (let i = 0, ii = flatCoordinates.length; i < ii; i += stride) {
+      const x = flatCoordinates[i];
+      const y = flatCoordinates[i + 1];
+      if (containsXY(extent, x, y)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  /**
+   * Set the coordinates of the multipoint.
+   * @param {!Array<import("../coordinate.js").Coordinate>} coordinates Coordinates.
+   * @param {import("./Geometry.js").GeometryLayout} [layout] Layout.
+   * @api
+   * @override
+   */
+  setCoordinates(coordinates2, layout) {
+    this.setLayout(layout, coordinates2, 1);
+    if (!this.flatCoordinates) {
+      this.flatCoordinates = [];
+    }
+    this.flatCoordinates.length = deflateCoordinates(
+      this.flatCoordinates,
+      0,
+      coordinates2,
+      this.stride
+    );
+    this.changed();
+  }
+};
+var MultiPoint_default = MultiPoint;
 
 // node_modules/ol/geom/flat/center.js
-function linearRingss(flatCoordinates, offset, endss, stride) {
+function linearRingss2(flatCoordinates, offset, endss, stride) {
   const flatCenters = [];
   let extent = createEmpty();
   for (let i = 0, ii = endss.length; i < ii; ++i) {
@@ -29486,6 +30547,401 @@ function linearRingss(flatCoordinates, offset, endss, stride) {
   }
   return flatCenters;
 }
+
+// node_modules/ol/geom/MultiPolygon.js
+var MultiPolygon = class _MultiPolygon extends SimpleGeometry_default {
+  /**
+   * @param {Array<Array<Array<import("../coordinate.js").Coordinate>>|Polygon>|Array<number>} coordinates Coordinates.
+   *     For internal use, flat coordinates in combination with `layout` and `endss` are also accepted.
+   * @param {import("./Geometry.js").GeometryLayout} [layout] Layout.
+   * @param {Array<Array<number>>} [endss] Array of ends for internal use with flat coordinates.
+   */
+  constructor(coordinates2, layout, endss) {
+    super();
+    this.endss_ = [];
+    this.flatInteriorPointsRevision_ = -1;
+    this.flatInteriorPoints_ = null;
+    this.maxDelta_ = -1;
+    this.maxDeltaRevision_ = -1;
+    this.orientedRevision_ = -1;
+    this.orientedFlatCoordinates_ = null;
+    if (!endss && !Array.isArray(coordinates2[0])) {
+      const polygons = (
+        /** @type {Array<Polygon>} */
+        coordinates2
+      );
+      const flatCoordinates = [];
+      const thisEndss = [];
+      for (let i = 0, ii = polygons.length; i < ii; ++i) {
+        const polygon = polygons[i];
+        const offset = flatCoordinates.length;
+        const ends = polygon.getEnds();
+        for (let j = 0, jj = ends.length; j < jj; ++j) {
+          ends[j] += offset;
+        }
+        extend2(flatCoordinates, polygon.getFlatCoordinates());
+        thisEndss.push(ends);
+      }
+      layout = polygons.length === 0 ? this.getLayout() : polygons[0].getLayout();
+      coordinates2 = flatCoordinates;
+      endss = thisEndss;
+    }
+    if (layout !== void 0 && endss) {
+      this.setFlatCoordinates(
+        layout,
+        /** @type {Array<number>} */
+        coordinates2
+      );
+      this.endss_ = endss;
+    } else {
+      this.setCoordinates(
+        /** @type {Array<Array<Array<import("../coordinate.js").Coordinate>>>} */
+        coordinates2,
+        layout
+      );
+    }
+  }
+  /**
+   * Append the passed polygon to this multipolygon.
+   * @param {Polygon} polygon Polygon.
+   * @api
+   */
+  appendPolygon(polygon) {
+    let ends;
+    if (!this.flatCoordinates) {
+      this.flatCoordinates = polygon.getFlatCoordinates().slice();
+      ends = polygon.getEnds().slice();
+      this.endss_.push();
+    } else {
+      const offset = this.flatCoordinates.length;
+      extend2(this.flatCoordinates, polygon.getFlatCoordinates());
+      ends = polygon.getEnds().slice();
+      for (let i = 0, ii = ends.length; i < ii; ++i) {
+        ends[i] += offset;
+      }
+    }
+    this.endss_.push(ends);
+    this.changed();
+  }
+  /**
+   * Make a complete copy of the geometry.
+   * @return {!MultiPolygon} Clone.
+   * @api
+   * @override
+   */
+  clone() {
+    const len = this.endss_.length;
+    const newEndss = new Array(len);
+    for (let i = 0; i < len; ++i) {
+      newEndss[i] = this.endss_[i].slice();
+    }
+    const multiPolygon = new _MultiPolygon(
+      this.flatCoordinates.slice(),
+      this.layout,
+      newEndss
+    );
+    multiPolygon.applyProperties(this);
+    return multiPolygon;
+  }
+  /**
+   * @param {number} x X.
+   * @param {number} y Y.
+   * @param {import("../coordinate.js").Coordinate} closestPoint Closest point.
+   * @param {number} minSquaredDistance Minimum squared distance.
+   * @return {number} Minimum squared distance.
+   * @override
+   */
+  closestPointXY(x, y, closestPoint, minSquaredDistance) {
+    if (minSquaredDistance < closestSquaredDistanceXY(this.getExtent(), x, y)) {
+      return minSquaredDistance;
+    }
+    if (this.maxDeltaRevision_ != this.getRevision()) {
+      this.maxDelta_ = Math.sqrt(
+        multiArrayMaxSquaredDelta(
+          this.flatCoordinates,
+          0,
+          this.endss_,
+          this.stride,
+          0
+        )
+      );
+      this.maxDeltaRevision_ = this.getRevision();
+    }
+    return assignClosestMultiArrayPoint(
+      this.getOrientedFlatCoordinates(),
+      0,
+      this.endss_,
+      this.stride,
+      this.maxDelta_,
+      true,
+      x,
+      y,
+      closestPoint,
+      minSquaredDistance
+    );
+  }
+  /**
+   * @param {number} x X.
+   * @param {number} y Y.
+   * @return {boolean} Contains (x, y).
+   * @override
+   */
+  containsXY(x, y) {
+    return linearRingssContainsXY(
+      this.getOrientedFlatCoordinates(),
+      0,
+      this.endss_,
+      this.stride,
+      x,
+      y
+    );
+  }
+  /**
+   * Return the area of the multipolygon on projected plane.
+   * @return {number} Area (on projected plane).
+   * @api
+   */
+  getArea() {
+    return linearRingss(
+      this.getOrientedFlatCoordinates(),
+      0,
+      this.endss_,
+      this.stride
+    );
+  }
+  /**
+   * Get the coordinate array for this geometry.  This array has the structure
+   * of a GeoJSON coordinate array for multi-polygons.
+   *
+   * @param {boolean} [right] Orient coordinates according to the right-hand
+   *     rule (counter-clockwise for exterior and clockwise for interior rings).
+   *     If `false`, coordinates will be oriented according to the left-hand rule
+   *     (clockwise for exterior and counter-clockwise for interior rings).
+   *     By default, coordinate orientation will depend on how the geometry was
+   *     constructed.
+   * @return {Array<Array<Array<import("../coordinate.js").Coordinate>>>} Coordinates.
+   * @api
+   * @override
+   */
+  getCoordinates(right) {
+    let flatCoordinates;
+    if (right !== void 0) {
+      flatCoordinates = this.getOrientedFlatCoordinates().slice();
+      orientLinearRingsArray(
+        flatCoordinates,
+        0,
+        this.endss_,
+        this.stride,
+        right
+      );
+    } else {
+      flatCoordinates = this.flatCoordinates;
+    }
+    return inflateMultiCoordinatesArray(
+      flatCoordinates,
+      0,
+      this.endss_,
+      this.stride
+    );
+  }
+  /**
+   * @return {Array<Array<number>>} Endss.
+   */
+  getEndss() {
+    return this.endss_;
+  }
+  /**
+   * @return {Array<number>} Flat interior points.
+   */
+  getFlatInteriorPoints() {
+    if (this.flatInteriorPointsRevision_ != this.getRevision()) {
+      const flatCenters = linearRingss2(
+        this.flatCoordinates,
+        0,
+        this.endss_,
+        this.stride
+      );
+      this.flatInteriorPoints_ = getInteriorPointsOfMultiArray(
+        this.getOrientedFlatCoordinates(),
+        0,
+        this.endss_,
+        this.stride,
+        flatCenters
+      );
+      this.flatInteriorPointsRevision_ = this.getRevision();
+    }
+    return (
+      /** @type {Array<number>} */
+      this.flatInteriorPoints_
+    );
+  }
+  /**
+   * Return the interior points as {@link module:ol/geom/MultiPoint~MultiPoint multipoint}.
+   * @return {MultiPoint} Interior points as XYM coordinates, where M is
+   * the length of the horizontal intersection that the point belongs to.
+   * @api
+   */
+  getInteriorPoints() {
+    return new MultiPoint_default(this.getFlatInteriorPoints().slice(), "XYM");
+  }
+  /**
+   * @return {Array<number>} Oriented flat coordinates.
+   */
+  getOrientedFlatCoordinates() {
+    if (this.orientedRevision_ != this.getRevision()) {
+      const flatCoordinates = this.flatCoordinates;
+      if (linearRingssAreOriented(flatCoordinates, 0, this.endss_, this.stride)) {
+        this.orientedFlatCoordinates_ = flatCoordinates;
+      } else {
+        this.orientedFlatCoordinates_ = flatCoordinates.slice();
+        this.orientedFlatCoordinates_.length = orientLinearRingsArray(
+          this.orientedFlatCoordinates_,
+          0,
+          this.endss_,
+          this.stride
+        );
+      }
+      this.orientedRevision_ = this.getRevision();
+    }
+    return (
+      /** @type {Array<number>} */
+      this.orientedFlatCoordinates_
+    );
+  }
+  /**
+   * @param {number} squaredTolerance Squared tolerance.
+   * @return {MultiPolygon} Simplified MultiPolygon.
+   * @protected
+   * @override
+   */
+  getSimplifiedGeometryInternal(squaredTolerance) {
+    const simplifiedFlatCoordinates = [];
+    const simplifiedEndss = [];
+    simplifiedFlatCoordinates.length = quantizeMultiArray(
+      this.flatCoordinates,
+      0,
+      this.endss_,
+      this.stride,
+      Math.sqrt(squaredTolerance),
+      simplifiedFlatCoordinates,
+      0,
+      simplifiedEndss
+    );
+    return new _MultiPolygon(simplifiedFlatCoordinates, "XY", simplifiedEndss);
+  }
+  /**
+   * Return the polygon at the specified index.
+   * @param {number} index Index.
+   * @return {Polygon} Polygon.
+   * @api
+   */
+  getPolygon(index) {
+    if (index < 0 || this.endss_.length <= index) {
+      return null;
+    }
+    let offset;
+    if (index === 0) {
+      offset = 0;
+    } else {
+      const prevEnds = this.endss_[index - 1];
+      offset = prevEnds[prevEnds.length - 1];
+    }
+    const ends = this.endss_[index].slice();
+    const end = ends[ends.length - 1];
+    if (offset !== 0) {
+      for (let i = 0, ii = ends.length; i < ii; ++i) {
+        ends[i] -= offset;
+      }
+    }
+    return new Polygon_default(
+      this.flatCoordinates.slice(offset, end),
+      this.layout,
+      ends
+    );
+  }
+  /**
+   * Return the polygons of this multipolygon.
+   * @return {Array<Polygon>} Polygons.
+   * @api
+   */
+  getPolygons() {
+    const layout = this.layout;
+    const flatCoordinates = this.flatCoordinates;
+    const endss = this.endss_;
+    const polygons = [];
+    let offset = 0;
+    for (let i = 0, ii = endss.length; i < ii; ++i) {
+      const ends = endss[i].slice();
+      const end = ends[ends.length - 1];
+      if (offset !== 0) {
+        for (let j = 0, jj = ends.length; j < jj; ++j) {
+          ends[j] -= offset;
+        }
+      }
+      const polygon = new Polygon_default(
+        flatCoordinates.slice(offset, end),
+        layout,
+        ends
+      );
+      polygons.push(polygon);
+      offset = end;
+    }
+    return polygons;
+  }
+  /**
+   * Get the type of this geometry.
+   * @return {import("./Geometry.js").Type} Geometry type.
+   * @api
+   * @override
+   */
+  getType() {
+    return "MultiPolygon";
+  }
+  /**
+   * Test if the geometry and the passed extent intersect.
+   * @param {import("../extent.js").Extent} extent Extent.
+   * @return {boolean} `true` if the geometry and the extent intersect.
+   * @api
+   * @override
+   */
+  intersectsExtent(extent) {
+    return intersectsLinearRingMultiArray(
+      this.getOrientedFlatCoordinates(),
+      0,
+      this.endss_,
+      this.stride,
+      extent
+    );
+  }
+  /**
+   * Set the coordinates of the multipolygon.
+   * @param {!Array<Array<Array<import("../coordinate.js").Coordinate>>>} coordinates Coordinates.
+   * @param {import("./Geometry.js").GeometryLayout} [layout] Layout.
+   * @api
+   * @override
+   */
+  setCoordinates(coordinates2, layout) {
+    this.setLayout(layout, coordinates2, 3);
+    if (!this.flatCoordinates) {
+      this.flatCoordinates = [];
+    }
+    const endss = deflateMultiCoordinatesArray(
+      this.flatCoordinates,
+      0,
+      coordinates2,
+      this.stride,
+      this.endss_
+    );
+    if (endss.length === 0) {
+      this.flatCoordinates.length = 0;
+    } else {
+      const lastEnds = endss[endss.length - 1];
+      this.flatCoordinates.length = lastEnds.length === 0 ? 0 : lastEnds[lastEnds.length - 1];
+    }
+    this.changed();
+  }
+};
+var MultiPolygon_default = MultiPolygon;
 
 // node_modules/ol/render/Feature.js
 var tmpTransform2 = create();
@@ -29561,7 +31017,7 @@ var RenderFeature = class _RenderFeature {
   getFlatInteriorPoints() {
     if (!this.flatInteriorPoints_) {
       const ends = inflateEnds(this.flatCoordinates_, this.ends_);
-      const flatCenters = linearRingss(
+      const flatCenters = linearRingss2(
         this.flatCoordinates_,
         0,
         ends,
@@ -29613,7 +31069,7 @@ var RenderFeature = class _RenderFeature {
           this.stride_,
           0.5
         );
-        extend(this.flatMidpoints_, midpoint);
+        extend2(this.flatMidpoints_, midpoint);
         offset = end;
       }
     }
@@ -29896,7 +31352,7 @@ var RBush2 = class {
   update(extent, value) {
     const item = this.items_[getUid(value)];
     const bbox = [item.minX, item.minY, item.maxX, item.maxY];
-    if (!equals2(bbox, extent)) {
+    if (!equals(bbox, extent)) {
       this.remove(value);
       this.insert(extent, value);
     }
@@ -29970,7 +31426,7 @@ var RBush2 = class {
    * @return {boolean} Is empty.
    */
   isEmpty() {
-    return isEmpty(this.items_);
+    return isEmpty2(this.items_);
   }
   /**
    * Remove all values from the RBush.
@@ -30482,8 +31938,8 @@ var VectorSource = class extends Source_default {
       features = this.featuresCollection_.getArray().slice(0);
     } else if (this.featuresRtree_) {
       features = this.featuresRtree_.getAll();
-      if (!isEmpty(this.nullGeometryFeatures_)) {
-        extend(features, Object.values(this.nullGeometryFeatures_));
+      if (!isEmpty2(this.nullGeometryFeatures_)) {
+        extend2(features, Object.values(this.nullGeometryFeatures_));
       }
     }
     return features;
@@ -30710,7 +32166,7 @@ var VectorSource = class extends Source_default {
    */
   isEmpty() {
     if (this.featuresRtree_) {
-      return this.featuresRtree_.isEmpty() && isEmpty(this.nullGeometryFeatures_);
+      return this.featuresRtree_.isEmpty() && isEmpty2(this.nullGeometryFeatures_);
     }
     if (this.featuresCollection_) {
       return this.featuresCollection_.getLength() === 0;
@@ -30936,6 +32392,7 @@ var cache3 = /* @__PURE__ */ new Map();
 var CACHE_LIMIT = 512;
 function styleFor(marker) {
   const key = [
+    marker.emoji || "",
     marker.icon || "",
     marker.color || DEFAULT_COLOR,
     marker.scale || 1,
@@ -30951,24 +32408,41 @@ function styleFor(marker) {
 }
 function buildStyle2(marker) {
   const scale4 = marker.scale || 1;
-  const image = marker.icon ? new Icon_default({ src: marker.icon, anchor: [0.5, 1], scale: scale4 }) : new Icon_default({ src: pinDataUri(marker.color || DEFAULT_COLOR), anchor: [0.5, 1], scale: scale4 });
-  const style = new Style_default({ image });
+  const styles = marker.emoji ? [new Style_default({ text: emojiText(marker.emoji, scale4) })] : [new Style_default({ image: pinImage(marker, scale4) })];
   if (marker.label) {
-    style.setText(
-      new Text_default({
-        text: marker.label,
-        font: "500 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
-        offsetY: 8,
-        textBaseline: "top",
-        fill: new Fill_default({ color: "#111827" }),
-        // A halo rather than a background box: legible over any tile, without
-        // drawing a rectangle over the map.
-        stroke: new Stroke_default({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
-        overflow: true
-      })
-    );
+    const label = labelText(marker.label);
+    if (marker.emoji) {
+      styles.push(new Style_default({ text: label }));
+    } else {
+      styles[0].setText(label);
+    }
   }
-  return style;
+  return styles;
+}
+function pinImage(marker, scale4) {
+  return marker.icon ? new Icon_default({ src: marker.icon, anchor: [0.5, 1], scale: scale4 }) : new Icon_default({ src: pinDataUri(marker.color || DEFAULT_COLOR), anchor: [0.5, 1], scale: scale4 });
+}
+function emojiText(emoji, scale4) {
+  return new Text_default({
+    text: emoji,
+    font: `${Math.round(22 * scale4)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`,
+    // Sit the glyph on the coordinate the way a pin's tip does.
+    textBaseline: "bottom",
+    offsetY: 4
+  });
+}
+function labelText(text) {
+  return new Text_default({
+    text,
+    font: "500 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
+    offsetY: 8,
+    textBaseline: "top",
+    fill: new Fill_default({ color: "#111827" }),
+    // A halo rather than a background box: legible over any tile, without
+    // drawing a rectangle over the map.
+    stroke: new Stroke_default({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
+    overflow: true
+  });
 }
 function pinDataUri(color) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="36" viewBox="0 0 26 36">
@@ -31036,6 +32510,10 @@ var MarkerLayer = class {
   markerFor(feature) {
     return feature && feature.get(ROVER_KEY);
   }
+  markerById(id) {
+    const entry = this.entries.get(String(id));
+    return entry && entry.marker;
+  }
   /**
    * Drop the cached geometry hash for a feature the client moved on its own.
    *
@@ -31064,8 +32542,1364 @@ function appearanceOf(marker) {
   return [
     marker.label || "",
     marker.color || "",
+    marker.emoji || "",
     marker.icon || "",
     marker.scale || ""
+  ].join("|");
+}
+
+// node_modules/ol/geom/GeometryCollection.js
+var GeometryCollection = class _GeometryCollection extends Geometry_default {
+  /**
+   * @param {Array<Geometry>} geometries Geometries.
+   */
+  constructor(geometries) {
+    super();
+    this.geometries_ = geometries;
+    this.changeEventsKeys_ = [];
+    this.listenGeometriesChange_();
+  }
+  /**
+   * @private
+   */
+  unlistenGeometriesChange_() {
+    this.changeEventsKeys_.forEach(unlistenByKey);
+    this.changeEventsKeys_.length = 0;
+  }
+  /**
+   * @private
+   */
+  listenGeometriesChange_() {
+    const geometries = this.geometries_;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      this.changeEventsKeys_.push(
+        listen(geometries[i], EventType_default.CHANGE, this.changed, this)
+      );
+    }
+  }
+  /**
+   * Make a complete copy of the geometry.
+   * @return {!GeometryCollection} Clone.
+   * @api
+   * @override
+   */
+  clone() {
+    const geometryCollection = new _GeometryCollection(
+      cloneGeometries(this.geometries_)
+    );
+    geometryCollection.applyProperties(this);
+    return geometryCollection;
+  }
+  /**
+   * @param {number} x X.
+   * @param {number} y Y.
+   * @param {import("../coordinate.js").Coordinate} closestPoint Closest point.
+   * @param {number} minSquaredDistance Minimum squared distance.
+   * @return {number} Minimum squared distance.
+   * @override
+   */
+  closestPointXY(x, y, closestPoint, minSquaredDistance) {
+    if (minSquaredDistance < closestSquaredDistanceXY(this.getExtent(), x, y)) {
+      return minSquaredDistance;
+    }
+    const geometries = this.geometries_;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      minSquaredDistance = geometries[i].closestPointXY(
+        x,
+        y,
+        closestPoint,
+        minSquaredDistance
+      );
+    }
+    return minSquaredDistance;
+  }
+  /**
+   * @param {number} x X.
+   * @param {number} y Y.
+   * @return {boolean} Contains (x, y).
+   * @override
+   */
+  containsXY(x, y) {
+    const geometries = this.geometries_;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      if (geometries[i].containsXY(x, y)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  /**
+   * @param {import("../extent.js").Extent} extent Extent.
+   * @protected
+   * @return {import("../extent.js").Extent} extent Extent.
+   * @override
+   */
+  computeExtent(extent) {
+    createOrUpdateEmpty(extent);
+    const geometries = this.geometries_;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      extend(extent, geometries[i].getExtent());
+    }
+    return extent;
+  }
+  /**
+   * Return the geometries that make up this geometry collection.
+   * @return {Array<Geometry>} Geometries.
+   * @api
+   */
+  getGeometries() {
+    return cloneGeometries(this.geometries_);
+  }
+  /**
+   * @return {Array<Geometry>} Geometries.
+   */
+  getGeometriesArray() {
+    return this.geometries_;
+  }
+  /**
+   * @return {Array<Geometry>} Geometries.
+   */
+  getGeometriesArrayRecursive() {
+    let geometriesArray = [];
+    const geometries = this.geometries_;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      if (geometries[i].getType() === this.getType()) {
+        geometriesArray = geometriesArray.concat(
+          /** @type {GeometryCollection} */
+          geometries[i].getGeometriesArrayRecursive()
+        );
+      } else {
+        geometriesArray.push(geometries[i]);
+      }
+    }
+    return geometriesArray;
+  }
+  /**
+   * Create a simplified version of this geometry using the Douglas Peucker algorithm.
+   * @param {number} squaredTolerance Squared tolerance.
+   * @return {GeometryCollection} Simplified GeometryCollection.
+   * @override
+   */
+  getSimplifiedGeometry(squaredTolerance) {
+    if (this.simplifiedGeometryRevision !== this.getRevision()) {
+      this.simplifiedGeometryMaxMinSquaredTolerance = 0;
+      this.simplifiedGeometryRevision = this.getRevision();
+    }
+    if (squaredTolerance < 0 || this.simplifiedGeometryMaxMinSquaredTolerance !== 0 && squaredTolerance < this.simplifiedGeometryMaxMinSquaredTolerance) {
+      return this;
+    }
+    const simplifiedGeometries = [];
+    const geometries = this.geometries_;
+    let simplified = false;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      const geometry = geometries[i];
+      const simplifiedGeometry = geometry.getSimplifiedGeometry(squaredTolerance);
+      simplifiedGeometries.push(simplifiedGeometry);
+      if (simplifiedGeometry !== geometry) {
+        simplified = true;
+      }
+    }
+    if (simplified) {
+      const simplifiedGeometryCollection = new _GeometryCollection(
+        simplifiedGeometries
+      );
+      return simplifiedGeometryCollection;
+    }
+    this.simplifiedGeometryMaxMinSquaredTolerance = squaredTolerance;
+    return this;
+  }
+  /**
+   * Get the type of this geometry.
+   * @return {import("./Geometry.js").Type} Geometry type.
+   * @api
+   * @override
+   */
+  getType() {
+    return "GeometryCollection";
+  }
+  /**
+   * Test if the geometry and the passed extent intersect.
+   * @param {import("../extent.js").Extent} extent Extent.
+   * @return {boolean} `true` if the geometry and the extent intersect.
+   * @api
+   * @override
+   */
+  intersectsExtent(extent) {
+    const geometries = this.geometries_;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      if (geometries[i].intersectsExtent(extent)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  /**
+   * @return {boolean} Is empty.
+   */
+  isEmpty() {
+    return this.geometries_.length === 0;
+  }
+  /**
+   * Rotate the geometry around a given coordinate. This modifies the geometry
+   * coordinates in place.
+   * @param {number} angle Rotation angle in radians.
+   * @param {import("../coordinate.js").Coordinate} anchor The rotation center.
+   * @api
+   * @override
+   */
+  rotate(angle, anchor) {
+    const geometries = this.geometries_;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      geometries[i].rotate(angle, anchor);
+    }
+    this.changed();
+  }
+  /**
+   * Scale the geometry (with an optional origin).  This modifies the geometry
+   * coordinates in place.
+   * @abstract
+   * @param {number} sx The scaling factor in the x-direction.
+   * @param {number} [sy] The scaling factor in the y-direction (defaults to sx).
+   * @param {import("../coordinate.js").Coordinate} [anchor] The scale origin (defaults to the center
+   *     of the geometry extent).
+   * @api
+   * @override
+   */
+  scale(sx, sy, anchor) {
+    if (!anchor) {
+      anchor = getCenter(this.getExtent());
+    }
+    const geometries = this.geometries_;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      geometries[i].scale(sx, sy, anchor);
+    }
+    this.changed();
+  }
+  /**
+   * Set the geometries that make up this geometry collection.
+   * @param {Array<Geometry>} geometries Geometries.
+   * @api
+   */
+  setGeometries(geometries) {
+    this.setGeometriesArray(cloneGeometries(geometries));
+  }
+  /**
+   * @param {Array<Geometry>} geometries Geometries.
+   */
+  setGeometriesArray(geometries) {
+    this.unlistenGeometriesChange_();
+    this.geometries_ = geometries;
+    this.listenGeometriesChange_();
+    this.changed();
+  }
+  /**
+   * Apply a transform function to the coordinates of the geometry.
+   * The geometry is modified in place.
+   * If you do not want the geometry modified in place, first `clone()` it and
+   * then use this function on the clone.
+   * @param {import("../proj.js").TransformFunction} transformFn Transform function.
+   * Called with a flat array of geometry coordinates.
+   * @api
+   * @override
+   */
+  applyTransform(transformFn) {
+    const geometries = this.geometries_;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      geometries[i].applyTransform(transformFn);
+    }
+    this.changed();
+  }
+  /**
+   * Translate the geometry.  This modifies the geometry coordinates in place.  If
+   * instead you want a new geometry, first `clone()` this geometry.
+   * @param {number} deltaX Delta X.
+   * @param {number} deltaY Delta Y.
+   * @api
+   * @override
+   */
+  translate(deltaX, deltaY) {
+    const geometries = this.geometries_;
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      geometries[i].translate(deltaX, deltaY);
+    }
+    this.changed();
+  }
+  /**
+   * Clean up.
+   * @override
+   */
+  disposeInternal() {
+    this.unlistenGeometriesChange_();
+    super.disposeInternal();
+  }
+};
+function cloneGeometries(geometries) {
+  return geometries.map((geometry) => geometry.clone());
+}
+var GeometryCollection_default = GeometryCollection;
+
+// node_modules/ol/format/Feature.js
+var FeatureFormat = class {
+  constructor() {
+    this.dataProjection = void 0;
+    this.defaultFeatureProjection = void 0;
+    this.featureClass = /** @type {FeatureToFeatureClass<FeatureType>} */
+    Feature_default;
+    this.supportedMediaTypes = null;
+  }
+  /**
+   * Adds the data projection to the read options.
+   * @param {Document|Element|Object|string} source Source.
+   * @param {ReadOptions} [options] Options.
+   * @return {ReadOptions|undefined} Options.
+   * @protected
+   */
+  getReadOptions(source, options) {
+    if (options) {
+      let dataProjection = options.dataProjection ? get3(options.dataProjection) : this.readProjection(source);
+      if (options.extent && dataProjection && dataProjection.getUnits() === "tile-pixels") {
+        dataProjection = get3(dataProjection);
+        dataProjection.setWorldExtent(options.extent);
+      }
+      options = {
+        dataProjection,
+        featureProjection: options.featureProjection
+      };
+    }
+    return this.adaptOptions(options);
+  }
+  /**
+   * Sets the `dataProjection` on the options, if no `dataProjection`
+   * is set.
+   * @param {WriteOptions|ReadOptions|undefined} options
+   *     Options.
+   * @protected
+   * @return {WriteOptions|ReadOptions|undefined}
+   *     Updated options.
+   */
+  adaptOptions(options) {
+    return Object.assign(
+      {
+        dataProjection: this.dataProjection,
+        featureProjection: this.defaultFeatureProjection,
+        featureClass: this.featureClass
+      },
+      options
+    );
+  }
+  /**
+   * @abstract
+   * @return {Type} The format type.
+   */
+  getType() {
+    return abstract();
+  }
+  /**
+   * Read a single feature from a source.
+   *
+   * @abstract
+   * @param {Document|Element|Object|string} source Source.
+   * @param {ReadOptions} [options] Read options.
+   * @return {FeatureType|Array<FeatureType>} Feature.
+   */
+  readFeature(source, options) {
+    return abstract();
+  }
+  /**
+   * Read all features from a source.
+   *
+   * @abstract
+   * @param {Document|Element|ArrayBuffer|Object|string} source Source.
+   * @param {ReadOptions} [options] Read options.
+   * @return {Array<FeatureType>} Features.
+   */
+  readFeatures(source, options) {
+    return abstract();
+  }
+  /**
+   * Read a single geometry from a source.
+   *
+   * @abstract
+   * @param {Document|Element|Object|string} source Source.
+   * @param {ReadOptions} [options] Read options.
+   * @return {import("../geom/Geometry.js").default} Geometry.
+   */
+  readGeometry(source, options) {
+    return abstract();
+  }
+  /**
+   * Read the projection from a source.
+   *
+   * @abstract
+   * @param {Document|Element|Object|string} source Source.
+   * @return {import("../proj/Projection.js").default|undefined} Projection.
+   */
+  readProjection(source) {
+    return abstract();
+  }
+  /**
+   * Encode a feature in this format.
+   *
+   * @abstract
+   * @param {Feature} feature Feature.
+   * @param {WriteOptions} [options] Write options.
+   * @return {string|ArrayBuffer} Result.
+   */
+  writeFeature(feature, options) {
+    return abstract();
+  }
+  /**
+   * Encode an array of features in this format.
+   *
+   * @abstract
+   * @param {Array<Feature>} features Features.
+   * @param {WriteOptions} [options] Write options.
+   * @return {string|ArrayBuffer} Result.
+   */
+  writeFeatures(features, options) {
+    return abstract();
+  }
+  /**
+   * Write a single geometry in this format.
+   *
+   * @abstract
+   * @param {import("../geom/Geometry.js").default} geometry Geometry.
+   * @param {WriteOptions} [options] Write options.
+   * @return {string|ArrayBuffer} Result.
+   */
+  writeGeometry(geometry, options) {
+    return abstract();
+  }
+};
+var Feature_default3 = FeatureFormat;
+function transformGeometryWithOptions(geometry, write, options) {
+  const featureProjection = options ? get3(options.featureProjection) : null;
+  const dataProjection = options ? get3(options.dataProjection) : null;
+  let transformed = geometry;
+  if (featureProjection && dataProjection && !equivalent(featureProjection, dataProjection)) {
+    if (write) {
+      transformed = /** @type {T} */
+      geometry.clone();
+    }
+    const fromProjection = write ? featureProjection : dataProjection;
+    const toProjection = write ? dataProjection : featureProjection;
+    if (fromProjection.getUnits() === "tile-pixels") {
+      transformed.transform(fromProjection, toProjection);
+    } else {
+      transformed.applyTransform(getTransform(fromProjection, toProjection));
+    }
+  }
+  if (write && options && /** @type {WriteOptions} */
+  options.decimals !== void 0) {
+    const power = Math.pow(
+      10,
+      /** @type {WriteOptions} */
+      options.decimals
+    );
+    const transform2 = function(coordinates2) {
+      for (let i = 0, ii = coordinates2.length; i < ii; ++i) {
+        coordinates2[i] = Math.round(coordinates2[i] * power) / power;
+      }
+      return coordinates2;
+    };
+    if (transformed === geometry) {
+      transformed = /** @type {T} */
+      geometry.clone();
+    }
+    transformed.applyTransform(transform2);
+  }
+  return transformed;
+}
+var GeometryConstructor = {
+  Point: Point_default,
+  LineString: LineString_default,
+  Polygon: Polygon_default,
+  MultiPoint: MultiPoint_default,
+  MultiLineString: MultiLineString_default,
+  MultiPolygon: MultiPolygon_default
+};
+function orientFlatCoordinates(flatCoordinates, ends, stride) {
+  if (Array.isArray(ends[0])) {
+    if (!linearRingssAreOriented(flatCoordinates, 0, ends, stride)) {
+      flatCoordinates = flatCoordinates.slice();
+      orientLinearRingsArray(flatCoordinates, 0, ends, stride);
+    }
+    return flatCoordinates;
+  }
+  if (!linearRingsAreOriented(flatCoordinates, 0, ends, stride)) {
+    flatCoordinates = flatCoordinates.slice();
+    orientLinearRings(flatCoordinates, 0, ends, stride);
+  }
+  return flatCoordinates;
+}
+function createRenderFeature(object, options) {
+  const geometry = object.geometry;
+  if (!geometry) {
+    return [];
+  }
+  if (Array.isArray(geometry)) {
+    return geometry.map((geometry2) => createRenderFeature({ ...object, geometry: geometry2 })).flat();
+  }
+  const geometryType = geometry.type === "MultiPolygon" ? "Polygon" : geometry.type;
+  if (geometryType === "GeometryCollection" || geometryType === "Circle") {
+    throw new Error("Unsupported geometry type: " + geometryType);
+  }
+  const stride = geometry.layout.length;
+  return transformGeometryWithOptions(
+    new Feature_default2(
+      geometryType,
+      geometryType === "Polygon" ? orientFlatCoordinates(geometry.flatCoordinates, geometry.ends, stride) : geometry.flatCoordinates,
+      geometry.ends?.flat(),
+      stride,
+      object.properties || {},
+      object.id
+    ).enableSimplifyTransformed(),
+    false,
+    options
+  );
+}
+function createGeometry(object, options) {
+  if (!object) {
+    return null;
+  }
+  if (Array.isArray(object)) {
+    const geometries = object.map(
+      (geometry) => createGeometry(geometry, options)
+    );
+    return new GeometryCollection_default(geometries);
+  }
+  const Geometry2 = GeometryConstructor[object.type];
+  return transformGeometryWithOptions(
+    new Geometry2(object.flatCoordinates, object.layout || "XY", object.ends),
+    false,
+    options
+  );
+}
+
+// node_modules/ol/format/JSONFeature.js
+var JSONFeature = class extends Feature_default3 {
+  constructor() {
+    super();
+  }
+  /**
+   * @return {import("./Feature.js").Type} Format.
+   * @override
+   */
+  getType() {
+    return "json";
+  }
+  /**
+   * Read a feature.  Only works for a single feature. Use `readFeatures` to
+   * read a feature collection.
+   *
+   * @param {ArrayBuffer|Document|Element|Object|string} source Source.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @return {FeatureType|Array<FeatureType>} Feature.
+   * @api
+   * @override
+   */
+  readFeature(source, options) {
+    return this.readFeatureFromObject(
+      getObject(source),
+      this.getReadOptions(source, options)
+    );
+  }
+  /**
+   * Read all features.  Works with both a single feature and a feature
+   * collection.
+   *
+   * @param {ArrayBuffer|Document|Element|Object|string} source Source.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @return {Array<FeatureType>} Features.
+   * @api
+   * @override
+   */
+  readFeatures(source, options) {
+    return this.readFeaturesFromObject(
+      getObject(source),
+      this.getReadOptions(source, options)
+    );
+  }
+  /**
+   * @abstract
+   * @param {Object} object Object.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @protected
+   * @return {FeatureType|Array<FeatureType>} Feature.
+   */
+  readFeatureFromObject(object, options) {
+    return abstract();
+  }
+  /**
+   * @abstract
+   * @param {Object} object Object.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @protected
+   * @return {Array<FeatureType>} Features.
+   */
+  readFeaturesFromObject(object, options) {
+    return abstract();
+  }
+  /**
+   * Read a geometry.
+   *
+   * @param {ArrayBuffer|Document|Element|Object|string} source Source.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @return {import("../geom/Geometry.js").default} Geometry.
+   * @api
+   * @override
+   */
+  readGeometry(source, options) {
+    return this.readGeometryFromObject(
+      getObject(source),
+      this.getReadOptions(source, options)
+    );
+  }
+  /**
+   * @abstract
+   * @param {Object} object Object.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @protected
+   * @return {import("../geom/Geometry.js").default} Geometry.
+   */
+  readGeometryFromObject(object, options) {
+    return abstract();
+  }
+  /**
+   * Read the projection.
+   *
+   * @param {ArrayBuffer|Document|Element|Object|string} source Source.
+   * @return {import("../proj/Projection.js").default} Projection.
+   * @api
+   * @override
+   */
+  readProjection(source) {
+    return this.readProjectionFromObject(getObject(source));
+  }
+  /**
+   * @abstract
+   * @param {Object} object Object.
+   * @protected
+   * @return {import("../proj/Projection.js").default} Projection.
+   */
+  readProjectionFromObject(object) {
+    return abstract();
+  }
+  /**
+   * Encode a feature as string.
+   *
+   * @param {import("../Feature.js").default} feature Feature.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {string} Encoded feature.
+   * @api
+   * @override
+   */
+  writeFeature(feature, options) {
+    return JSON.stringify(this.writeFeatureObject(feature, options));
+  }
+  /**
+   * @abstract
+   * @param {import("../Feature.js").default} feature Feature.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {Object} Object.
+   */
+  writeFeatureObject(feature, options) {
+    return abstract();
+  }
+  /**
+   * Encode an array of features as string.
+   *
+   * @param {Array<import("../Feature.js").default>} features Features.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {string} Encoded features.
+   * @api
+   * @override
+   */
+  writeFeatures(features, options) {
+    return JSON.stringify(this.writeFeaturesObject(features, options));
+  }
+  /**
+   * @abstract
+   * @param {Array<import("../Feature.js").default>} features Features.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {Object} Object.
+   */
+  writeFeaturesObject(features, options) {
+    return abstract();
+  }
+  /**
+   * Encode a geometry as string.
+   *
+   * @param {import("../geom/Geometry.js").default} geometry Geometry.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {string} Encoded geometry.
+   * @api
+   * @override
+   */
+  writeGeometry(geometry, options) {
+    return JSON.stringify(this.writeGeometryObject(geometry, options));
+  }
+  /**
+   * @abstract
+   * @param {import("../geom/Geometry.js").default} geometry Geometry.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {Object} Object.
+   */
+  writeGeometryObject(geometry, options) {
+    return abstract();
+  }
+};
+function getObject(source) {
+  if (typeof source === "string") {
+    const object = JSON.parse(source);
+    return object ? (
+      /** @type {Object} */
+      object
+    ) : null;
+  }
+  if (source !== null) {
+    return source;
+  }
+  return null;
+}
+var JSONFeature_default = JSONFeature;
+
+// node_modules/ol/format/GeoJSON.js
+var GeoJSON = class extends JSONFeature_default {
+  /**
+   * @param {Options<FeatureType>} [options] Options.
+   */
+  constructor(options) {
+    options = options ? options : {};
+    super();
+    this.dataProjection = get3(
+      options.dataProjection ? options.dataProjection : "EPSG:4326"
+    );
+    if (options.featureProjection) {
+      this.defaultFeatureProjection = get3(options.featureProjection);
+    }
+    if (options.featureClass) {
+      this.featureClass = options.featureClass;
+    }
+    this.geometryName_ = options.geometryName;
+    this.extractGeometryName_ = options.extractGeometryName;
+    this.supportedMediaTypes = [
+      "application/geo+json",
+      "application/vnd.geo+json"
+    ];
+  }
+  /**
+   * @param {Object} object Object.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @protected
+   * @return {FeatureType|Array<FeatureType>} Feature.
+   * @override
+   */
+  readFeatureFromObject(object, options) {
+    let geoJSONFeature = null;
+    if (object["type"] === "Feature") {
+      geoJSONFeature = /** @type {GeoJSONFeature} */
+      object;
+    } else {
+      geoJSONFeature = {
+        "type": "Feature",
+        "geometry": (
+          /** @type {GeoJSONGeometry} */
+          object
+        ),
+        "properties": null
+      };
+    }
+    const geometry = readGeometryInternal(geoJSONFeature["geometry"], options);
+    if (this.featureClass === Feature_default2) {
+      return (
+        /** @type {FeatureType|Array<FeatureType>} */
+        createRenderFeature(
+          {
+            geometry,
+            id: geoJSONFeature["id"],
+            properties: geoJSONFeature["properties"]
+          },
+          options
+        )
+      );
+    }
+    const FeatureClass = (
+      /** @type {typeof import("../Feature.js").default} */
+      this.featureClass
+    );
+    const feature = new FeatureClass();
+    if (this.geometryName_) {
+      feature.setGeometryName(this.geometryName_);
+    } else if (this.extractGeometryName_ && geoJSONFeature["geometry_name"]) {
+      feature.setGeometryName(geoJSONFeature["geometry_name"]);
+    }
+    feature.setGeometry(createGeometry(geometry, options));
+    if ("id" in geoJSONFeature) {
+      feature.setId(geoJSONFeature["id"]);
+    }
+    if (geoJSONFeature["properties"]) {
+      feature.setProperties(geoJSONFeature["properties"], true);
+    }
+    return (
+      /** @type {FeatureType|Array<FeatureType>} */
+      feature
+    );
+  }
+  /**
+   * @param {Object} object Object.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @protected
+   * @return {Array<FeatureType>} Features.
+   * @override
+   */
+  readFeaturesFromObject(object, options) {
+    const geoJSONObject = (
+      /** @type {GeoJSONObject} */
+      object
+    );
+    let features = null;
+    if (geoJSONObject["type"] === "FeatureCollection") {
+      const geoJSONFeatureCollection = (
+        /** @type {GeoJSONFeatureCollection} */
+        object
+      );
+      features = [];
+      const geoJSONFeatures = geoJSONFeatureCollection["features"];
+      for (let i = 0, ii = geoJSONFeatures.length; i < ii; ++i) {
+        const featureObject = this.readFeatureFromObject(
+          geoJSONFeatures[i],
+          options
+        );
+        if (!featureObject) {
+          continue;
+        }
+        features.push(featureObject);
+      }
+    } else {
+      features = [this.readFeatureFromObject(object, options)];
+    }
+    return (
+      /** @type {Array<FeatureType>} */
+      features.flat()
+    );
+  }
+  /**
+   * @param {GeoJSONGeometry} object Object.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @protected
+   * @return {import("../geom/Geometry.js").default} Geometry.
+   * @override
+   */
+  readGeometryFromObject(object, options) {
+    return readGeometry(object, options);
+  }
+  /**
+   * @param {Object} object Object.
+   * @protected
+   * @return {import("../proj/Projection.js").default} Projection.
+   * @override
+   */
+  readProjectionFromObject(object) {
+    const crs = object["crs"];
+    let projection;
+    if (crs) {
+      if (crs["type"] == "name") {
+        projection = get3(crs["properties"]["name"]);
+      } else if (crs["type"] === "EPSG") {
+        projection = get3("EPSG:" + crs["properties"]["code"]);
+      } else {
+        throw new Error("Unknown SRS type");
+      }
+    } else {
+      projection = this.dataProjection;
+    }
+    return (
+      /** @type {import("../proj/Projection.js").default} */
+      projection
+    );
+  }
+  /**
+   * Encode a feature as a GeoJSON Feature object.
+   *
+   * @param {import("../Feature.js").default} feature Feature.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {GeoJSONFeature} Object.
+   * @api
+   * @override
+   */
+  writeFeatureObject(feature, options) {
+    options = this.adaptOptions(options);
+    const object = {
+      "type": "Feature",
+      geometry: null,
+      properties: null
+    };
+    const id = feature.getId();
+    if (id !== void 0) {
+      object.id = id;
+    }
+    if (!feature.hasProperties()) {
+      return object;
+    }
+    const properties = feature.getProperties();
+    const geometry = feature.getGeometry();
+    if (geometry) {
+      object.geometry = writeGeometry(geometry, options);
+      delete properties[feature.getGeometryName()];
+    }
+    if (!isEmpty2(properties)) {
+      object.properties = properties;
+    }
+    return object;
+  }
+  /**
+   * Encode an array of features as a GeoJSON object.
+   *
+   * @param {Array<import("../Feature.js").default>} features Features.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {GeoJSONFeatureCollection} GeoJSON Object.
+   * @api
+   * @override
+   */
+  writeFeaturesObject(features, options) {
+    options = this.adaptOptions(options);
+    const objects = [];
+    for (let i = 0, ii = features.length; i < ii; ++i) {
+      objects.push(this.writeFeatureObject(features[i], options));
+    }
+    return {
+      type: "FeatureCollection",
+      features: objects
+    };
+  }
+  /**
+   * Encode a geometry as a GeoJSON object.
+   *
+   * @param {import("../geom/Geometry.js").default} geometry Geometry.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {GeoJSONGeometry|GeoJSONGeometryCollection} Object.
+   * @api
+   * @override
+   */
+  writeGeometryObject(geometry, options) {
+    return writeGeometry(geometry, this.adaptOptions(options));
+  }
+};
+function readGeometryInternal(object, options) {
+  if (!object) {
+    return null;
+  }
+  let geometry;
+  switch (object["type"]) {
+    case "Point": {
+      geometry = readPointGeometry(
+        /** @type {GeoJSONPoint} */
+        object
+      );
+      break;
+    }
+    case "LineString": {
+      geometry = readLineStringGeometry(
+        /** @type {GeoJSONLineString} */
+        object
+      );
+      break;
+    }
+    case "Polygon": {
+      geometry = readPolygonGeometry(
+        /** @type {GeoJSONPolygon} */
+        object
+      );
+      break;
+    }
+    case "MultiPoint": {
+      geometry = readMultiPointGeometry(
+        /** @type {GeoJSONMultiPoint} */
+        object
+      );
+      break;
+    }
+    case "MultiLineString": {
+      geometry = readMultiLineStringGeometry(
+        /** @type {GeoJSONMultiLineString} */
+        object
+      );
+      break;
+    }
+    case "MultiPolygon": {
+      geometry = readMultiPolygonGeometry(
+        /** @type {GeoJSONMultiPolygon} */
+        object
+      );
+      break;
+    }
+    case "GeometryCollection": {
+      geometry = readGeometryCollectionGeometry(
+        /** @type {GeoJSONGeometryCollection} */
+        object
+      );
+      break;
+    }
+    default: {
+      throw new Error("Unsupported GeoJSON type: " + object["type"]);
+    }
+  }
+  return geometry;
+}
+function readGeometry(object, options) {
+  const geometryObject = readGeometryInternal(object, options);
+  return createGeometry(geometryObject, options);
+}
+function readGeometryCollectionGeometry(object, options) {
+  const geometries = object["geometries"].map(
+    /**
+     * @param {GeoJSONGeometry} geometry Geometry.
+     * @return {import("./Feature.js").GeometryObject} geometry Geometry.
+     */
+    function(geometry) {
+      return readGeometryInternal(geometry, options);
+    }
+  );
+  return geometries;
+}
+function readPointGeometry(object) {
+  const flatCoordinates = object["coordinates"];
+  return {
+    type: "Point",
+    flatCoordinates,
+    layout: getLayoutForStride(flatCoordinates.length)
+  };
+}
+function readLineStringGeometry(object) {
+  const coordinates2 = object["coordinates"];
+  const flatCoordinates = coordinates2.flat();
+  return {
+    type: "LineString",
+    flatCoordinates,
+    ends: [flatCoordinates.length],
+    layout: getLayoutForStride(coordinates2[0]?.length || 2)
+  };
+}
+function readMultiLineStringGeometry(object) {
+  const coordinates2 = object["coordinates"];
+  const stride = coordinates2[0]?.[0]?.length || 2;
+  const flatCoordinates = [];
+  const ends = deflateCoordinatesArray(flatCoordinates, 0, coordinates2, stride);
+  return {
+    type: "MultiLineString",
+    flatCoordinates,
+    ends,
+    layout: getLayoutForStride(stride)
+  };
+}
+function readMultiPointGeometry(object) {
+  const coordinates2 = object["coordinates"];
+  return {
+    type: "MultiPoint",
+    flatCoordinates: coordinates2.flat(),
+    layout: getLayoutForStride(coordinates2[0]?.length || 2)
+  };
+}
+function readMultiPolygonGeometry(object) {
+  const coordinates2 = object["coordinates"];
+  const flatCoordinates = [];
+  const stride = coordinates2[0]?.[0]?.[0].length || 2;
+  const endss = deflateMultiCoordinatesArray(
+    flatCoordinates,
+    0,
+    coordinates2,
+    stride
+  );
+  return {
+    type: "MultiPolygon",
+    flatCoordinates,
+    ends: endss,
+    layout: getLayoutForStride(stride)
+  };
+}
+function readPolygonGeometry(object) {
+  const coordinates2 = object["coordinates"];
+  const flatCoordinates = [];
+  const stride = coordinates2[0]?.[0]?.length;
+  const ends = deflateCoordinatesArray(flatCoordinates, 0, coordinates2, stride);
+  return {
+    type: "Polygon",
+    flatCoordinates,
+    ends,
+    layout: getLayoutForStride(stride)
+  };
+}
+function writeGeometry(geometry, options) {
+  geometry = transformGeometryWithOptions(geometry, true, options);
+  const type = geometry.getType();
+  let geoJSON;
+  switch (type) {
+    case "Point": {
+      geoJSON = writePointGeometry(
+        /** @type {import("../geom/Point.js").default} */
+        geometry,
+        options
+      );
+      break;
+    }
+    case "LineString": {
+      geoJSON = writeLineStringGeometry(
+        /** @type {import("../geom/LineString.js").default} */
+        geometry,
+        options
+      );
+      break;
+    }
+    case "Polygon": {
+      geoJSON = writePolygonGeometry(
+        /** @type {import("../geom/Polygon.js").default} */
+        geometry,
+        options
+      );
+      break;
+    }
+    case "MultiPoint": {
+      geoJSON = writeMultiPointGeometry(
+        /** @type {import("../geom/MultiPoint.js").default} */
+        geometry,
+        options
+      );
+      break;
+    }
+    case "MultiLineString": {
+      geoJSON = writeMultiLineStringGeometry(
+        /** @type {import("../geom/MultiLineString.js").default} */
+        geometry,
+        options
+      );
+      break;
+    }
+    case "MultiPolygon": {
+      geoJSON = writeMultiPolygonGeometry(
+        /** @type {import("../geom/MultiPolygon.js").default} */
+        geometry,
+        options
+      );
+      break;
+    }
+    case "GeometryCollection": {
+      geoJSON = writeGeometryCollectionGeometry(
+        /** @type {import("../geom/GeometryCollection.js").default} */
+        geometry,
+        options
+      );
+      break;
+    }
+    case "Circle": {
+      geoJSON = {
+        type: "GeometryCollection",
+        geometries: []
+      };
+      break;
+    }
+    default: {
+      throw new Error("Unsupported geometry type: " + type);
+    }
+  }
+  return geoJSON;
+}
+function writeGeometryCollectionGeometry(geometry, options) {
+  options = Object.assign({}, options);
+  delete options.featureProjection;
+  const geometries = geometry.getGeometriesArray().map(function(geometry2) {
+    return writeGeometry(geometry2, options);
+  });
+  return {
+    type: "GeometryCollection",
+    geometries
+  };
+}
+function writeLineStringGeometry(geometry, options) {
+  return {
+    type: "LineString",
+    coordinates: geometry.getCoordinates()
+  };
+}
+function writeMultiLineStringGeometry(geometry, options) {
+  return {
+    type: "MultiLineString",
+    coordinates: geometry.getCoordinates()
+  };
+}
+function writeMultiPointGeometry(geometry, options) {
+  return {
+    type: "MultiPoint",
+    coordinates: geometry.getCoordinates()
+  };
+}
+function writeMultiPolygonGeometry(geometry, options) {
+  let right;
+  if (options) {
+    right = options.rightHanded;
+  }
+  return {
+    type: "MultiPolygon",
+    coordinates: geometry.getCoordinates(right)
+  };
+}
+function writePointGeometry(geometry, options) {
+  return {
+    type: "Point",
+    coordinates: geometry.getCoordinates()
+  };
+}
+function writePolygonGeometry(geometry, options) {
+  let right;
+  if (options) {
+    right = options.rightHanded;
+  }
+  return {
+    type: "Polygon",
+    coordinates: geometry.getCoordinates(right)
+  };
+}
+var GeoJSON_default = GeoJSON;
+
+// js/shapes.js
+var SHAPE_KEY = "roverShape";
+var DEFAULT_COLOR2 = "#2563eb";
+var DEFAULT_WIDTH = 2;
+var DEFAULT_FILL_OPACITY = 0.12;
+var CACHE_LIMIT2 = 256;
+var cache4 = /* @__PURE__ */ new Map();
+var format = new GeoJSON_default({
+  dataProjection: "EPSG:4326",
+  featureProjection: "EPSG:3857"
+});
+var ShapeLayer = class {
+  constructor() {
+    this.source = new Vector_default2({ wrapX: false });
+    this.layer = new Vector_default({
+      source: this.source,
+      // Above the tiles, below the markers: an outline should never swallow the
+      // pin that sits on it.
+      zIndex: 5,
+      updateWhileAnimating: false,
+      updateWhileInteracting: false
+    });
+    this.entries = /* @__PURE__ */ new Map();
+  }
+  reconcile(shapes) {
+    const seen = /* @__PURE__ */ new Set();
+    const added = [];
+    for (const shape of shapes) {
+      const key = String(shape.id);
+      seen.add(key);
+      const rev = String(shape.rev);
+      const appearanceHash = appearanceOf2(shape);
+      const entry = this.entries.get(key);
+      if (!entry) {
+        added.push(...this.build(key, shape, rev, appearanceHash));
+        continue;
+      }
+      if (entry.rev !== rev) {
+        entry.features.forEach((feature) => this.source.removeFeature(feature));
+        added.push(...this.build(key, shape, rev, appearanceHash));
+        continue;
+      }
+      if (entry.appearanceHash !== appearanceHash) {
+        const style = styleForShape(shape);
+        entry.features.forEach((feature) => feature.setStyle(style));
+        entry.appearanceHash = appearanceHash;
+      }
+      entry.shape = shape;
+      entry.features.forEach(
+        (feature) => feature.setProperties({ [SHAPE_KEY]: shape }, true)
+      );
+    }
+    for (const [key, entry] of this.entries) {
+      if (!seen.has(key)) {
+        entry.features.forEach((feature) => this.source.removeFeature(feature));
+        this.entries.delete(key);
+      }
+    }
+    if (added.length > 0) this.source.addFeatures(added);
+  }
+  build(key, shape, rev, appearanceHash) {
+    const features = readGeometry2(shape);
+    const style = styleForShape(shape);
+    features.forEach((feature, index) => {
+      feature.setId(`${key}:${index}`);
+      feature.setStyle(style);
+      feature.setProperties({ [SHAPE_KEY]: shape }, true);
+    });
+    this.entries.set(key, { features, shape, rev, appearanceHash });
+    return features;
+  }
+  shapeFor(feature) {
+    return feature && feature.get(SHAPE_KEY);
+  }
+  get extent() {
+    return this.entries.size > 0 ? this.source.getExtent() : null;
+  }
+  dispose() {
+    this.source.clear();
+    this.entries.clear();
+  }
+};
+function readGeometry2(shape) {
+  try {
+    return format.readFeatures(shape.geometry);
+  } catch (error) {
+    console.error(`[rover] shape ${shape.id} has unreadable geometry:`, error, shape.geometry);
+    return [];
+  }
+}
+function styleForShape(shape) {
+  const key = appearanceOf2(shape);
+  let style = cache4.get(key);
+  if (!style) {
+    style = buildStyle3(shape);
+    if (cache4.size >= CACHE_LIMIT2) cache4.delete(cache4.keys().next().value);
+    cache4.set(key, style);
+  }
+  return style;
+}
+function buildStyle3(shape) {
+  const color = shape.color || DEFAULT_COLOR2;
+  const opacity = shape.fill_opacity ?? DEFAULT_FILL_OPACITY;
+  const style = new Style_default({
+    stroke: new Stroke_default({ color, width: shape.width || DEFAULT_WIDTH }),
+    fill: new Fill_default({ color: withOpacity(shape.fill_color || color, opacity) })
+  });
+  if (shape.label) {
+    style.setText(
+      new Text_default({
+        text: shape.label,
+        font: "500 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
+        fill: new Fill_default({ color: "#111827" }),
+        stroke: new Stroke_default({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
+        overflow: true
+      })
+    );
+  }
+  return style;
+}
+function withOpacity(color, opacity) {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color);
+  if (!hex) return color;
+  let digits = hex[1];
+  if (digits.length === 3) digits = digits.split("").map((d) => d + d).join("");
+  return [
+    parseInt(digits.slice(0, 2), 16),
+    parseInt(digits.slice(2, 4), 16),
+    parseInt(digits.slice(4, 6), 16),
+    opacity
+  ];
+}
+function appearanceOf2(shape) {
+  return [
+    shape.color || "",
+    shape.width || "",
+    shape.fill_color || "",
+    shape.fill_opacity ?? "",
+    shape.label || ""
   ].join("|");
 }
 
@@ -31082,12 +33916,14 @@ var RoverMap = class {
     });
     this.hasFitted = false;
     this.quietUntil = 0;
+    this.listeners = {};
     this.markerLayer = new MarkerLayer();
+    this.shapeLayer = new ShapeLayer();
     this.tileLayer = new Tile_default3({ zIndex: 0 });
     this.applyTiles(this.config.tiles);
     this.map = new Map_default2({
       target: element,
-      layers: [this.tileLayer, this.markerLayer.layer],
+      layers: [this.tileLayer, this.shapeLayer.layer, this.markerLayer.layer],
       controls: buildControls(this.config),
       interactions: buildInteractions(this.config),
       view: new View_default({
@@ -31106,6 +33942,10 @@ var RoverMap = class {
   // -- updates from the server ---------------------------------------------
   setMarkers(markers) {
     this.markerLayer.reconcile(markers);
+    this.maybeFit();
+  }
+  setShapes(shapes) {
+    this.shapeLayer.reconcile(shapes);
     this.maybeFit();
   }
   setConfig(config) {
@@ -31133,7 +33973,7 @@ var RoverMap = class {
       if (!mode) return;
       if (mode === "once" && this.hasFitted) return;
     }
-    const extent = this.markerLayer.extent;
+    const extent = this.contentExtent;
     if (!extent || !Number.isFinite(extent[0])) return;
     const duration = this.hasFitted ? ANIMATION_MS : 0;
     this.hasFitted = true;
@@ -31142,11 +33982,22 @@ var RoverMap = class {
     this.map.getView().fit(extent, {
       size: this.map.getSize(),
       padding: [padding, padding, padding, padding],
-      // A single marker has a zero-width extent; fitting it literally would zoom
-      // to the maximum. Cap it at something a human would have chosen.
-      maxZoom: 16,
+      // A lone marker has a zero-width extent; fitting it literally would zoom to
+      // the maximum, so cap it at something a human would have chosen. A polygon
+      // has real width and should be fitted for what it is — capping it would
+      // leave a small parcel as a speck in the middle of a region.
+      maxZoom: isPunctual(extent) ? 16 : void 0,
       duration
     });
+  }
+  // Markers and shapes together: a parcel outline with no pin on it still frames.
+  get contentExtent() {
+    const extents = [this.shapeLayer.extent, this.markerLayer.extent].filter(Boolean);
+    if (extents.length === 0) return null;
+    if (extents.length === 1) return extents[0];
+    const union = createEmpty();
+    extents.forEach((extent) => extend(union, extent));
+    return union;
   }
   beQuiet(duration) {
     this.quietUntil = now() + duration + 120;
@@ -31224,11 +34075,11 @@ var RoverMap = class {
     this.map.on("pointermove", (event) => {
       if (this.config.interactive === false) return;
       if (event.dragging) return this.hideTooltip();
-      const feature = this.featureAt(event.pixel);
-      const marker = this.markerLayer.markerFor(feature);
-      this.map.getTargetElement().style.cursor = marker ? "pointer" : "";
+      const { marker, markerFeature, shape } = this.featureAt(event.pixel);
+      const clickableShape = shape && (this.config.events || {}).shapeClick;
+      this.map.getTargetElement().style.cursor = marker || clickableShape ? "pointer" : "";
       if (marker) {
-        this.showTooltip(marker, feature.getGeometry().getCoordinates());
+        this.showTooltip(marker, markerFeature.getGeometry().getCoordinates());
       } else {
         this.hideTooltip();
       }
@@ -31236,8 +34087,8 @@ var RoverMap = class {
     this.map.getViewport().addEventListener("pointerleave", () => this.hideTooltip());
     this.map.on("singleclick", (event) => {
       if (this.config.interactive === false) return;
-      const feature = this.featureAt(event.pixel);
-      const marker = this.markerLayer.markerFor(feature);
+      const { marker, shape } = this.featureAt(event.pixel);
+      const { lat, lon } = unproject(event.coordinate);
       if (marker) {
         this.emit("markerClick", {
           id: marker.id,
@@ -31245,8 +34096,9 @@ var RoverMap = class {
           lon: marker.lon,
           data: marker.data ?? null
         });
+      } else if (shape) {
+        this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null });
       } else {
-        const { lat, lon } = unproject(event.coordinate);
         this.emit("mapClick", { lat, lon });
       }
     });
@@ -31261,15 +34113,44 @@ var RoverMap = class {
       });
     });
   }
+  // Returns whichever of the two layers is under the pixel. Markers win ties:
+  // they are drawn on top, and a pin sitting inside its own parcel outline should
+  // answer the click. forEachFeatureAtPixel iterates topmost-first, so stopping
+  // as soon as a marker is found is enough to enforce that.
   featureAt(pixel) {
-    return this.map.forEachFeatureAtPixel(pixel, (feature) => feature, {
-      layerFilter: (layer) => layer === this.markerLayer.layer,
-      hitTolerance: HIT_TOLERANCE
-    });
+    let marker = null;
+    let shape = null;
+    this.map.forEachFeatureAtPixel(
+      pixel,
+      (feature, layer) => {
+        if (layer === this.markerLayer.layer) {
+          marker = marker || feature;
+        } else if (layer === this.shapeLayer.layer) {
+          shape = shape || feature;
+        }
+        return Boolean(marker);
+      },
+      {
+        layerFilter: (layer) => layer === this.markerLayer.layer || layer === this.shapeLayer.layer,
+        hitTolerance: HIT_TOLERANCE
+      }
+    );
+    return {
+      marker: this.markerLayer.markerFor(marker),
+      markerFeature: marker,
+      shape: this.shapeLayer.shapeFor(shape),
+      shapeFeature: shape
+    };
   }
   emit(name, payload) {
     const event = (this.config.events || {})[name];
     if (event) this.push(event, payload);
+    const subscribers = this.listeners[name];
+    if (subscribers) subscribers.forEach((fn) => fn(payload));
+  }
+  on(name, fn) {
+    this.listeners[name] = this.listeners[name] || [];
+    this.listeners[name].push(fn);
   }
   // -- lifecycle ------------------------------------------------------------
   observeResize() {
@@ -31280,6 +34161,7 @@ var RoverMap = class {
   destroy() {
     if (this.resizeObserver) this.resizeObserver.disconnect();
     this.markerLayer.dispose();
+    this.shapeLayer.dispose();
     this.map.setTarget(void 0);
   }
 };
@@ -31313,6 +34195,9 @@ function resolveRetina(url) {
   const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
   return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "");
 }
+function isPunctual(extent) {
+  return extent[0] === extent[2] && extent[1] === extent[3];
+}
 function sameCenter(a, b) {
   return Boolean(a) && Boolean(b) && a[0] === b[0] && a[1] === b[1];
 }
@@ -31333,13 +34218,16 @@ var Rover = {
     this.canvasEl = this.el.querySelector(".rover-map__canvas") || this.el;
     this.configJson = this.el.dataset.rover;
     this.markersJson = this.el.dataset.roverMarkers;
+    this.shapesJson = this.el.dataset.roverShapes;
     this.config = parse2(this.configJson, {}, "data-rover");
     this.map = new RoverMap(
       this.canvasEl,
       this.config,
       (event, payload) => this.emit(event, payload)
     );
+    this.map.setShapes(parse2(this.shapesJson, [], "data-rover-shapes"));
     this.map.setMarkers(parse2(this.markersJson, [], "data-rover-markers"));
+    this.popups = new Popups(this.el, this.map);
   },
   updated() {
     if (!this.map) return;
@@ -31349,14 +34237,22 @@ var Rover = {
       this.config = parse2(configJson, this.config, "data-rover");
       this.map.setConfig(this.config);
     }
+    const shapesJson = this.el.dataset.roverShapes;
+    if (shapesJson !== this.shapesJson) {
+      this.shapesJson = shapesJson;
+      this.map.setShapes(parse2(shapesJson, [], "data-rover-shapes"));
+    }
     const markersJson = this.el.dataset.roverMarkers;
     if (markersJson !== this.markersJson) {
       this.markersJson = markersJson;
       this.map.setMarkers(parse2(markersJson, [], "data-rover-markers"));
     }
+    if (this.popups) this.popups.refresh();
   },
   destroyed() {
+    if (this.popups) this.popups.destroy();
     if (this.map) this.map.destroy();
+    this.popups = null;
     this.map = null;
   },
   emit(event, payload) {
@@ -31386,6 +34282,7 @@ export {
   Rover,
   RoverHooks,
   RoverMap,
+  ShapeLayer,
   index_default as default,
   extentToBbox,
   project,

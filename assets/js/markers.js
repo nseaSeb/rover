@@ -92,6 +92,11 @@ export class MarkerLayer {
     return feature && feature.get(ROVER_KEY)
   }
 
+  markerById(id) {
+    const entry = this.entries.get(String(id))
+    return entry && entry.marker
+  }
+
   /**
    * Drop the cached geometry hash for a feature the client moved on its own.
    *
@@ -124,6 +129,7 @@ function appearanceOf(marker) {
   return [
     marker.label || "",
     marker.color || "",
+    marker.emoji || "",
     marker.icon || "",
     marker.scale || "",
   ].join("|")

@@ -1,3 +1,4 @@
+import { Popups } from "./popups.js"
 import { RoverMap } from "./rover_map.js"
 
 /**
@@ -14,12 +15,16 @@ export const Rover = {
     this.canvasEl = this.el.querySelector(".rover-map__canvas") || this.el
     this.configJson = this.el.dataset.rover
     this.markersJson = this.el.dataset.roverMarkers
+    this.shapesJson = this.el.dataset.roverShapes
 
     this.config = parse(this.configJson, {}, "data-rover")
     this.map = new RoverMap(this.canvasEl, this.config, (event, payload) =>
       this.emit(event, payload)
     )
+    // Shapes first: they sit under the markers, and fitting sees both anyway.
+    this.map.setShapes(parse(this.shapesJson, [], "data-rover-shapes"))
     this.map.setMarkers(parse(this.markersJson, [], "data-rover-markers"))
+    this.popups = new Popups(this.el, this.map)
   },
 
   updated() {
@@ -32,15 +37,25 @@ export const Rover = {
       this.map.setConfig(this.config)
     }
 
+    const shapesJson = this.el.dataset.roverShapes
+    if (shapesJson !== this.shapesJson) {
+      this.shapesJson = shapesJson
+      this.map.setShapes(parse(shapesJson, [], "data-rover-shapes"))
+    }
+
     const markersJson = this.el.dataset.roverMarkers
     if (markersJson !== this.markersJson) {
       this.markersJson = markersJson
       this.map.setMarkers(parse(markersJson, [], "data-rover-markers"))
     }
+
+    if (this.popups) this.popups.refresh()
   },
 
   destroyed() {
+    if (this.popups) this.popups.destroy()
     if (this.map) this.map.destroy()
+    this.popups = null
     this.map = null
   },
 

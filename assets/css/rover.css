@@ -103,6 +103,47 @@
   display: none;
 }
 
+/* --- popups --------------------------------------------------------------- */
+
+/* Positioned by popups.js in the outer container's coordinate space, which lines
+   up with the canvas because .rover-map__canvas is inset: 0. The transform puts
+   the balloon above its marker and centred on it. */
+.rover-popup {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -100%);
+  max-width: 18rem;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: #111827;
+  background: #fff;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 6px 20px rgb(0 0 0 / 0.16);
+}
+
+.rover-popup[hidden] {
+  display: none;
+}
+
+/* The tail. Drawn as a rotated square so it inherits the popup's background in
+   both colour schemes without a second declaration. */
+.rover-popup::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -0.3125rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  transform: translateX(-50%) rotate(45deg);
+  background: inherit;
+  box-shadow: 2px 2px 4px rgb(0 0 0 / 0.08);
+}
+
+.rover-popup [data-rover-popup-close] {
+  cursor: pointer;
+}
+
 /* --- dark scheme ---------------------------------------------------------- */
 
 @media (prefers-color-scheme: dark) {
@@ -131,5 +172,15 @@
 
   .rover-map .ol-attribution a {
     color: #a5b4fc;
+  }
+
+  .rover-popup {
+    color: #e5e7eb;
+    background: #1f2430;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.5);
+  }
+
+  .rover-popup::after {
+    box-shadow: 2px 2px 4px rgb(0 0 0 / 0.25);
   }
 }

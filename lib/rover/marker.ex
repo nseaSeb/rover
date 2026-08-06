@@ -21,6 +21,7 @@ defmodule Rover.Marker do
   | `:lat` / `:lon` | float | **Required.** See `Rover.Geo`. |
   | `:label` | string | Text drawn next to the marker. |
   | `:color` | string | CSS colour of the default pin, e.g. `"#e11d48"`. |
+  | `:emoji` | string | An emoji drawn in place of the pin, e.g. `"🏠"`. |
   | `:icon` | string | URL of an image to use instead of the default pin. |
   | `:scale` | float | Size multiplier applied to the pin or icon. |
   | `:tooltip` | string | Shown on hover. Defaults to `:label`. |
@@ -48,6 +49,7 @@ defmodule Rover.Marker do
           lon: float(),
           label: String.t() | nil,
           color: String.t() | nil,
+          emoji: String.t() | nil,
           icon: String.t() | nil,
           scale: float() | nil,
           tooltip: String.t() | nil,
@@ -62,6 +64,7 @@ defmodule Rover.Marker do
     :lon,
     :label,
     :color,
+    :emoji,
     :icon,
     :scale,
     :tooltip,
@@ -73,6 +76,7 @@ defmodule Rover.Marker do
     id: [:id, "id"],
     label: [:label, :name, :title, "label", "name", "title"],
     color: [:color, "color"],
+    emoji: [:emoji, "emoji"],
     icon: [:icon, "icon"],
     scale: [:scale, "scale"],
     tooltip: [:tooltip, "tooltip"],
@@ -114,6 +118,7 @@ defmodule Rover.Marker do
       lon: lon,
       label: source |> extract(:label, opts) |> to_string_or_nil(),
       color: source |> extract(:color, opts) |> to_string_or_nil(),
+      emoji: source |> extract(:emoji, opts) |> to_string_or_nil(),
       icon: source |> extract(:icon, opts) |> to_string_or_nil(),
       scale: source |> extract(:scale, opts) |> to_float_or_nil(),
       tooltip: source |> extract(:tooltip, opts) |> to_string_or_nil(),

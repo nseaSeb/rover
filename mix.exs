@@ -1,7 +1,7 @@
 defmodule Rover.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
   @source_url "https://github.com/nseaSeb/rover"
 
   def project do
@@ -106,7 +106,7 @@ defmodule Rover.MixProject do
       filter_modules: ~r/^Elixir\.Rover(\.|$)/,
       groups_for_modules: [
         Components: [Rover.Components],
-        Data: [Rover.Marker, Rover.Geo, Rover.Tiles]
+        Data: [Rover.Marker, Rover.Shape, Rover.Geo, Rover.Tiles]
       ]
     ]
   end

@@ -14,11 +14,30 @@ defmodule Rover.Tiles do
   Both OSM and Carto presets point at public demo servers with usage policies
   that forbid heavy traffic; for anything beyond development, point `{:xyz, …}`
   at tiles you are entitled to use.
+
+  ## France
+
+  `:ign_plan` and `:ign_ortho` serve the French Géoportail — the reference plan
+  and the aerial orthophotography, both open data and both intended for
+  production use, which is what sets them apart from the demo endpoints above.
+  `:ign_ortho` over a field is a different conversation with a grower than a road
+  map is.
+
+      <.map id="parcels" tiles={:ign_ortho} shapes={@parcels} />
   """
 
   @osm_attribution ~s(© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors)
   @carto_attribution @osm_attribution <>
                        ~s(, © <a href="https://carto.com/attributions">CARTO</a>)
+  @ign_attribution ~s(© <a href="https://www.ign.fr">IGN-F/Géoportail</a>)
+
+  # France's Géoportail speaks WMTS, but its KVP endpoint takes the tile
+  # coordinates as query parameters — and OpenLayers substitutes {z}/{x}/{y}
+  # anywhere in the URL, query string included, so a plain XYZ source reads it
+  # without a WMTS capabilities round-trip. Note TILEROW is {y} and TILECOL is
+  # {x}: getting that pair backwards yields a map that loads and is wrong.
+  @ign_wmts "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0" <>
+              "&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}"
 
   @presets %{
     osm: %{
@@ -56,6 +75,20 @@ defmodule Rover.Tiles do
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       attributions: "Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
       max_zoom: 19
+    },
+    # The two IGN layers do not agree on a format: the plan is PNG, the
+    # orthophotos are JPEG, and asking for the wrong one gets you an
+    # `InvalidParameterValue` XML document where a tile should be. Both stop at
+    # zoom 19 — 20 is a 404.
+    ign_plan: %{
+      url: @ign_wmts <> "&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&FORMAT=image/png",
+      attributions: @ign_attribution,
+      max_zoom: 19
+    },
+    ign_ortho: %{
+      url: @ign_wmts <> "&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&FORMAT=image/jpeg",
+      attributions: @ign_attribution,
+      max_zoom: 19
     }
   }
 
@@ -67,6 +100,8 @@ defmodule Rover.Tiles do
           | :carto_voyager
           | :opentopomap
           | :esri_world_imagery
+          | :ign_plan
+          | :ign_ortho
 
   @type t :: preset() | :none | {:xyz, String.t()} | {:xyz, String.t(), keyword()}
 

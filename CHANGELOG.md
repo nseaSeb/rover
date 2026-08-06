@@ -4,6 +4,55 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-06
+
+Everything the README called "the obvious next steps", minus clustering.
+
+### Added
+
+- **`Rover.Shape` and the `shapes` attribute** — GeoJSON geometries: outlines,
+  routes, zones. A bare geometry, a `Feature` or a `FeatureCollection`; atom or
+  string keys; or an undecoded JSON string, so `ST_AsGeoJSON` output goes straight
+  in. Styled with `:color`, `:width`, `:fill_color`, `:fill_opacity` and `:label`.
+- Shapes travel in their own `data-rover-shapes` attribute, so a marker that moved
+  does not re-serialise a cadastral outline that did not.
+- Geometry is diffed by a **server-computed `:rev`** (`:erlang.phash2/1` by
+  default, or your own `updated_at`), never by hashing coordinates on the client. A
+  route is thousands of points; hashing it per update is the cost the reconciler
+  exists to avoid.
+- A map with shapes and no markers now frames the geometry. Previously it centred
+  on `{0.0, 0.0}` — a parcel page showed the Gulf of Guinea.
+- **`:emoji` on markers**, drawn as canvas text rather than a DOM overlay, so it
+  keeps the shared style cache, hit testing and reconciliation by identity that a
+  pin has.
+- **A `<:popup>` slot**, rendered once per marker and shown on click with no server
+  round-trip. Closed by `data-rover-popup-close`, a map click, or Escape.
+  Deliberately not an `ol/Overlay`: an Overlay reparents its node into the map
+  viewport, which lives inside `phx-update="ignore"`, and LiveView would then be
+  patching markup it no longer owns. Rover positions server-rendered nodes that
+  never leave the outer element.
+- **`:ign_plan` and `:ign_ortho`** — the French Géoportail's reference plan and
+  aerial orthophotography, both intended for production use rather than the demo
+  endpoints the OSM and Carto presets point at.
+- `on_shape_click`, with markers winning ties: a pin inside its own parcel outline
+  answers the click.
+
+### Changed
+
+- `mix dev` takes `PORT`, and the playground now exercises shapes, emoji, popups
+  and the IGN layers.
+- Fitting spans markers and shapes together, and the zoom cap that keeps a lone
+  marker from filling the screen no longer applies to a polygon — capping a small
+  parcel left it a speck in the middle of a region.
+
+### Bundle size
+
+`priv/static/rover.min.js` grows from 333,765 to 360,062 bytes (98,910 → 104,868
+gzipped): the `ol/format/GeoJSON` reader and the extent helpers. The peer build
+`rover.external.js` grows from 17,246 to 27,319 bytes (5,364 → 7,789 gzipped) —
+shapes and popups are Rover's own code, so leaving `ol` external does not exclude
+them.
+
 ## [0.1.0] - 2026-08-05
 
 ### Added
@@ -71,4 +120,5 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   back as strings and will not match.
 - `fit` governs *re*fitting; the initial framing is separate.
 
+[0.2.0]: https://github.com/nseaSeb/rover/releases/tag/v0.2.0
 [0.1.0]: https://github.com/nseaSeb/rover/releases/tag/v0.1.0

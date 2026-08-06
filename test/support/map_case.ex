@@ -35,6 +35,20 @@ defmodule Rover.MapCase do
   def markers(document), do: decode(document, "data-rover-markers")
 
   @doc """
+  The decoded `data-rover-shapes` list of a rendered map.
+  """
+  def shapes(document), do: decode(document, "data-rover-shapes")
+
+  @doc """
+  The popup nodes of a rendered map, in document order.
+  """
+  def popups(document) do
+    document
+    |> LazyHTML.query("[data-rover-popup-for]")
+    |> LazyHTML.attribute("data-rover-popup-for")
+  end
+
+  @doc """
   The raw value of an attribute on the map container.
   """
   def attribute(document, name) do

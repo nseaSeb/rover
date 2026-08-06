@@ -18,6 +18,7 @@ const CACHE_LIMIT = 512
 
 export function styleFor(marker) {
   const key = [
+    marker.emoji || "",
     marker.icon || "",
     marker.color || DEFAULT_COLOR,
     marker.scale || 1,
@@ -38,31 +39,59 @@ export function styleFor(marker) {
   return style
 }
 
+// Always an array, even for a single style: an emoji marker that also carries a
+// label needs two, because an OpenLayers Style holds at most one Text.
 function buildStyle(marker) {
   const scale = marker.scale || 1
-  const image = marker.icon
-    ? new Icon({ src: marker.icon, anchor: [0.5, 1], scale })
-    : new Icon({ src: pinDataUri(marker.color || DEFAULT_COLOR), anchor: [0.5, 1], scale })
 
-  const style = new Style({ image })
+  const styles = marker.emoji
+    ? [new Style({ text: emojiText(marker.emoji, scale) })]
+    : [new Style({ image: pinImage(marker, scale) })]
 
   if (marker.label) {
-    style.setText(
-      new Text({
-        text: marker.label,
-        font: "500 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
-        offsetY: 8,
-        textBaseline: "top",
-        fill: new Fill({ color: "#111827" }),
-        // A halo rather than a background box: legible over any tile, without
-        // drawing a rectangle over the map.
-        stroke: new Stroke({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
-        overflow: true,
-      })
-    )
+    const label = labelText(marker.label)
+
+    if (marker.emoji) {
+      styles.push(new Style({ text: label }))
+    } else {
+      styles[0].setText(label)
+    }
   }
 
-  return style
+  return styles
+}
+
+function pinImage(marker, scale) {
+  return marker.icon
+    ? new Icon({ src: marker.icon, anchor: [0.5, 1], scale })
+    : new Icon({ src: pinDataUri(marker.color || DEFAULT_COLOR), anchor: [0.5, 1], scale })
+}
+
+// Drawn as canvas text rather than a DOM overlay, so an emoji marker keeps
+// everything a pin has: the shared style cache, hit testing through
+// forEachFeatureAtPixel, and reconciliation by feature identity.
+function emojiText(emoji, scale) {
+  return new Text({
+    text: emoji,
+    font: `${Math.round(22 * scale)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`,
+    // Sit the glyph on the coordinate the way a pin's tip does.
+    textBaseline: "bottom",
+    offsetY: 4,
+  })
+}
+
+function labelText(text) {
+  return new Text({
+    text,
+    font: "500 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
+    offsetY: 8,
+    textBaseline: "top",
+    fill: new Fill({ color: "#111827" }),
+    // A halo rather than a background box: legible over any tile, without
+    // drawing a rectangle over the map.
+    stroke: new Stroke({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
+    overflow: true,
+  })
 }
 
 function pinDataUri(color) {
