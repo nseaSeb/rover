@@ -26,6 +26,30 @@ defmodule Rover.ComponentsTest do
       </.map>
       """
     end
+
+    def render_both(assigns) do
+      assigns = Map.new(assigns)
+
+      both(assigns)
+      |> Phoenix.HTML.Safe.to_iodata()
+      |> IO.iodata_to_binary()
+      |> LazyHTML.from_fragment()
+    end
+
+    # A marker and a shape deliberately sharing id 1, which is the collision the
+    # namespaced keys exist for.
+    def both(assigns) do
+      ~H"""
+      <.map id="clients" markers={@markers} shapes={@shapes}>
+        <:popup :let={marker}>
+          <span class="marker-popup">{marker.label}</span>
+        </:popup>
+        <:shape_popup :let={shape}>
+          <span class="shape-popup">{shape.label}</span>
+        </:shape_popup>
+      </.map>
+      """
+    end
   end
 
   @lyon [
@@ -465,7 +489,7 @@ defmodule Rover.ComponentsTest do
     test "renders one hidden node per marker, keyed by marker id" do
       document = PopupHost.render_popups(markers: @lyon)
 
-      assert popups(document) == ["1", "2"]
+      assert popups(document) == ["marker:1", "marker:2"]
 
       nodes = LazyHTML.query(document, "[data-rover-popup-for]")
       # `hidden` is a boolean attribute, so its rendered value is the empty string.
@@ -479,6 +503,37 @@ defmodule Rover.ComponentsTest do
       assert LazyHTML.query(document, ".popup-label") |> LazyHTML.text() == "AtelierDépôt"
     end
 
+    test "a marker and a shape sharing an id get distinct popup nodes" do
+      document =
+        PopupHost.render_both(
+          markers: [%{id: 1, lat: 45.0, lon: 4.0, label: "Marker one"}],
+          shapes: [
+            %{
+              id: 1,
+              label: "Shape one",
+              geometry: %{"type" => "Point", "coordinates" => [4.0, 45.0]}
+            }
+          ]
+        )
+
+      # Without the namespace both nodes answer to the same selector and one of them
+      # silently wins, so clicking the marker could open the shape's card.
+      assert popups(document) == ["marker:1", "shape:1"]
+
+      assert LazyHTML.query(document, ".marker-popup") |> LazyHTML.text() == "Marker one"
+      assert LazyHTML.query(document, ".shape-popup") |> LazyHTML.text() == "Shape one"
+    end
+
+    test "no shape popup nodes without the slot" do
+      document =
+        render_map(
+          markers: @lyon,
+          shapes: [%{id: "p", geometry: %{"type" => "Point", "coordinates" => [4.0, 45.0]}}]
+        )
+
+      assert popups(document) == []
+    end
+
     test "popups live outside the ignored canvas, where LiveView can patch them" do
       # An ol/Overlay would reparent these under the canvas. That subtree is
       # phx-update="ignore", and patching a node LiveView no longer controls is
@@ -489,7 +544,7 @@ defmodule Rover.ComponentsTest do
              |> LazyHTML.attribute("data-rover-popup-for") == []
 
       assert LazyHTML.query(document, ".rover-map > [data-rover-popup-for]")
-             |> LazyHTML.attribute("data-rover-popup-for") == ["1", "2"]
+             |> LazyHTML.attribute("data-rover-popup-for") == ["marker:1", "marker:2"]
     end
   end
 

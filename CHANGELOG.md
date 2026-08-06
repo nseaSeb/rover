@@ -8,6 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A `<:shape_popup>` slot**, anchored where the geometry was clicked rather than at
+  its centroid. Popup keys are now namespaced (`marker:1`, `shape:1`), because a
+  marker and a shape may legitimately share an id and two nodes answering one
+  selector means one of them silently wins.
+- **`:tooltip` on shapes**, shown at the pointer on hover, falling back to `:label`.
+- A shape claims a click when **either** the server or a popup wants it. Keying it on
+  the configured event alone meant a `<:shape_popup>` could never open without an
+  `on_shape_click` handler — while marker popups need no server at all. A shape with
+  neither still claims nothing, so scenery does not swallow `on_map_click`.
 - **`Rover.fly_to/4` and `Rover.fit_to/4`** — imperative view control, for when the
   view is a gesture rather than state. `center` and `zoom` are attributes, so using
   them for "the user clicked a row, take me there" costs you the automatic framing

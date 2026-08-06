@@ -119,20 +119,32 @@ defmodule RoverDev.DemoLive do
         <div>{fmt(marker.lat)}, {fmt(marker.lon)}</div>
         <button data-rover-popup-close>Close</button>
       </:popup>
+      <:shape_popup :let={shape}>
+        <strong>{shape.label || shape.id}</strong>
+        <div>{shape_detail(shape)}</div>
+        <button data-rover-popup-close>Close</button>
+      </:shape_popup>
     </.map>
 
     <p class="subtitle">
-      A second map, sharing the same markers. Commands name their target, so flying
-      the one above must leave this one where it is.
+      A second map, sharing the same markers, with a shape popup and <em>no event handlers at all</em>. Commands name their target, so flying the
+      map above must leave this one where it is — and this parcel's popup must open
+      without the server being involved.
     </p>
 
     <.map
       id="mini"
       markers={@clients}
+      shapes={[parcel()]}
       tiles={:carto_light}
       height="10rem"
       controls={[:attribution]}
-    />
+    >
+      <:shape_popup :let={shape}>
+        <strong>{shape.label}</strong>
+        <div>no handler wired</div>
+      </:shape_popup>
+    </.map>
 
     <div class="log">
       <%= if @log do %>
@@ -319,6 +331,7 @@ defmodule RoverDev.DemoLive do
       fill_opacity: 0.18,
       width: 2,
       label: "AB 214",
+      tooltip: "Parcel AB 214 — click for details",
       data: %{section: "AB"}
     }
   end
@@ -330,9 +343,14 @@ defmodule RoverDev.DemoLive do
       color: "#2563eb",
       width: 4,
       fill_opacity: 0,
+      tooltip: "Delivery route — 5 stops",
       data: %{stops: 5}
     }
   end
+
+  defp shape_detail(%{data: %{section: section}}), do: "section #{section}"
+  defp shape_detail(%{data: %{stops: stops}}), do: "#{stops} stops"
+  defp shape_detail(_shape), do: "no detail"
 
   defp shape_label(shapes) do
     case Enum.map(shapes, & &1.id) |> Enum.sort() do

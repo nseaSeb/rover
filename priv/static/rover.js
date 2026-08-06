@@ -2,17 +2,1474 @@ var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
+// node_modules/ol/console.js
+var levels = {
+  info: 1,
+  warn: 2,
+  error: 3,
+  none: 4
+};
+var level = levels.info;
+function warn(...args) {
+  if (level > levels.warn) {
+    return;
+  }
+  console.warn(...args);
+}
+
+// node_modules/ol/extent/Relationship.js
+var Relationship_default = {
+  UNKNOWN: 0,
+  INTERSECTING: 1,
+  ABOVE: 2,
+  RIGHT: 4,
+  BELOW: 8,
+  LEFT: 16
+};
+
+// node_modules/ol/extent.js
+function boundingExtent(coordinates2) {
+  const extent = createEmpty();
+  for (let i = 0, ii = coordinates2.length; i < ii; ++i) {
+    extendCoordinate(extent, coordinates2[i]);
+  }
+  return extent;
+}
+function _boundingExtentXYs(xs, ys, dest) {
+  const minX = Math.min.apply(null, xs);
+  const minY = Math.min.apply(null, ys);
+  const maxX = Math.max.apply(null, xs);
+  const maxY = Math.max.apply(null, ys);
+  return createOrUpdate(minX, minY, maxX, maxY, dest);
+}
+function buffer(extent, value, dest) {
+  if (dest) {
+    dest[0] = extent[0] - value;
+    dest[1] = extent[1] - value;
+    dest[2] = extent[2] + value;
+    dest[3] = extent[3] + value;
+    return dest;
+  }
+  return [
+    extent[0] - value,
+    extent[1] - value,
+    extent[2] + value,
+    extent[3] + value
+  ];
+}
+function clone(extent, dest) {
+  if (dest) {
+    dest[0] = extent[0];
+    dest[1] = extent[1];
+    dest[2] = extent[2];
+    dest[3] = extent[3];
+    return dest;
+  }
+  return extent.slice();
+}
+function closestSquaredDistanceXY(extent, x, y) {
+  let dx, dy;
+  if (x < extent[0]) {
+    dx = extent[0] - x;
+  } else if (extent[2] < x) {
+    dx = x - extent[2];
+  } else {
+    dx = 0;
+  }
+  if (y < extent[1]) {
+    dy = extent[1] - y;
+  } else if (extent[3] < y) {
+    dy = y - extent[3];
+  } else {
+    dy = 0;
+  }
+  return dx * dx + dy * dy;
+}
+function containsCoordinate(extent, coordinate) {
+  return containsXY(extent, coordinate[0], coordinate[1]);
+}
+function containsExtent(extent1, extent2) {
+  return extent1[0] <= extent2[0] && extent2[2] <= extent1[2] && extent1[1] <= extent2[1] && extent2[3] <= extent1[3];
+}
+function containsXY(extent, x, y) {
+  return extent[0] <= x && x <= extent[2] && extent[1] <= y && y <= extent[3];
+}
+function coordinateRelationship(extent, coordinate) {
+  const minX = extent[0];
+  const minY = extent[1];
+  const maxX = extent[2];
+  const maxY = extent[3];
+  const x = coordinate[0];
+  const y = coordinate[1];
+  let relationship = Relationship_default.UNKNOWN;
+  if (x < minX) {
+    relationship = relationship | Relationship_default.LEFT;
+  } else if (x > maxX) {
+    relationship = relationship | Relationship_default.RIGHT;
+  }
+  if (y < minY) {
+    relationship = relationship | Relationship_default.BELOW;
+  } else if (y > maxY) {
+    relationship = relationship | Relationship_default.ABOVE;
+  }
+  if (relationship === Relationship_default.UNKNOWN) {
+    relationship = Relationship_default.INTERSECTING;
+  }
+  return relationship;
+}
+function createEmpty() {
+  return [Infinity, Infinity, -Infinity, -Infinity];
+}
+function createOrUpdate(minX, minY, maxX, maxY, dest) {
+  if (dest) {
+    dest[0] = minX;
+    dest[1] = minY;
+    dest[2] = maxX;
+    dest[3] = maxY;
+    return dest;
+  }
+  return [minX, minY, maxX, maxY];
+}
+function createOrUpdateEmpty(dest) {
+  return createOrUpdate(Infinity, Infinity, -Infinity, -Infinity, dest);
+}
+function createOrUpdateFromCoordinate(coordinate, dest) {
+  const x = coordinate[0];
+  const y = coordinate[1];
+  return createOrUpdate(x, y, x, y, dest);
+}
+function createOrUpdateFromFlatCoordinates(flatCoordinates, offset, end, stride, dest) {
+  const extent = createOrUpdateEmpty(dest);
+  return extendFlatCoordinates(extent, flatCoordinates, offset, end, stride);
+}
+function equals(extent1, extent2) {
+  return extent1[0] == extent2[0] && extent1[2] == extent2[2] && extent1[1] == extent2[1] && extent1[3] == extent2[3];
+}
+function extend(extent1, extent2) {
+  if (extent2[0] < extent1[0]) {
+    extent1[0] = extent2[0];
+  }
+  if (extent2[2] > extent1[2]) {
+    extent1[2] = extent2[2];
+  }
+  if (extent2[1] < extent1[1]) {
+    extent1[1] = extent2[1];
+  }
+  if (extent2[3] > extent1[3]) {
+    extent1[3] = extent2[3];
+  }
+  return extent1;
+}
+function extendCoordinate(extent, coordinate) {
+  if (coordinate[0] < extent[0]) {
+    extent[0] = coordinate[0];
+  }
+  if (coordinate[0] > extent[2]) {
+    extent[2] = coordinate[0];
+  }
+  if (coordinate[1] < extent[1]) {
+    extent[1] = coordinate[1];
+  }
+  if (coordinate[1] > extent[3]) {
+    extent[3] = coordinate[1];
+  }
+}
+function extendFlatCoordinates(extent, flatCoordinates, offset, end, stride) {
+  for (; offset < end; offset += stride) {
+    extendXY(extent, flatCoordinates[offset], flatCoordinates[offset + 1]);
+  }
+  return extent;
+}
+function extendXY(extent, x, y) {
+  extent[0] = Math.min(extent[0], x);
+  extent[1] = Math.min(extent[1], y);
+  extent[2] = Math.max(extent[2], x);
+  extent[3] = Math.max(extent[3], y);
+}
+function forEachCorner(extent, callback) {
+  let val;
+  val = callback(getBottomLeft(extent));
+  if (val) {
+    return val;
+  }
+  val = callback(getBottomRight(extent));
+  if (val) {
+    return val;
+  }
+  val = callback(getTopRight(extent));
+  if (val) {
+    return val;
+  }
+  val = callback(getTopLeft(extent));
+  if (val) {
+    return val;
+  }
+  return false;
+}
+function getArea(extent) {
+  let area = 0;
+  if (!isEmpty(extent)) {
+    area = getWidth(extent) * getHeight(extent);
+  }
+  return area;
+}
+function getBottomLeft(extent) {
+  return [extent[0], extent[1]];
+}
+function getBottomRight(extent) {
+  return [extent[2], extent[1]];
+}
+function getCenter(extent) {
+  return [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2];
+}
+function getCorner(extent, corner) {
+  let coordinate;
+  if (corner === "bottom-left") {
+    coordinate = getBottomLeft(extent);
+  } else if (corner === "bottom-right") {
+    coordinate = getBottomRight(extent);
+  } else if (corner === "top-left") {
+    coordinate = getTopLeft(extent);
+  } else if (corner === "top-right") {
+    coordinate = getTopRight(extent);
+  } else {
+    throw new Error("Invalid corner");
+  }
+  return coordinate;
+}
+function getForViewAndSize(center, resolution, rotation, size, dest) {
+  const [x0, y0, x1, y1, x2, y2, x3, y3] = getRotatedViewport(
+    center,
+    resolution,
+    rotation,
+    size
+  );
+  return createOrUpdate(
+    Math.min(x0, x1, x2, x3),
+    Math.min(y0, y1, y2, y3),
+    Math.max(x0, x1, x2, x3),
+    Math.max(y0, y1, y2, y3),
+    dest
+  );
+}
+function getRotatedViewport(center, resolution, rotation, size) {
+  const dx = resolution * size[0] / 2;
+  const dy = resolution * size[1] / 2;
+  const cosRotation = Math.cos(rotation);
+  const sinRotation = Math.sin(rotation);
+  const xCos = dx * cosRotation;
+  const xSin = dx * sinRotation;
+  const yCos = dy * cosRotation;
+  const ySin = dy * sinRotation;
+  const x = center[0];
+  const y = center[1];
+  return [
+    x - xCos + ySin,
+    y - xSin - yCos,
+    x - xCos - ySin,
+    y - xSin + yCos,
+    x + xCos - ySin,
+    y + xSin + yCos,
+    x + xCos + ySin,
+    y + xSin - yCos,
+    x - xCos + ySin,
+    y - xSin - yCos
+  ];
+}
+function getHeight(extent) {
+  return extent[3] - extent[1];
+}
+function getIntersection(extent1, extent2, dest) {
+  const intersection = dest ? dest : createEmpty();
+  if (intersects(extent1, extent2)) {
+    if (extent1[0] > extent2[0]) {
+      intersection[0] = extent1[0];
+    } else {
+      intersection[0] = extent2[0];
+    }
+    if (extent1[1] > extent2[1]) {
+      intersection[1] = extent1[1];
+    } else {
+      intersection[1] = extent2[1];
+    }
+    if (extent1[2] < extent2[2]) {
+      intersection[2] = extent1[2];
+    } else {
+      intersection[2] = extent2[2];
+    }
+    if (extent1[3] < extent2[3]) {
+      intersection[3] = extent1[3];
+    } else {
+      intersection[3] = extent2[3];
+    }
+  } else {
+    createOrUpdateEmpty(intersection);
+  }
+  return intersection;
+}
+function getDifference(extent1, extent2) {
+  if (!intersects(extent1, extent2)) {
+    return [extent1.slice()];
+  }
+  if (containsExtent(extent2, extent1)) {
+    return [];
+  }
+  const [x1, y1, x2, y2] = extent1;
+  const ix1 = Math.max(x1, extent2[0]);
+  const iy1 = Math.max(y1, extent2[1]);
+  const ix2 = Math.min(x2, extent2[2]);
+  const iy2 = Math.min(y2, extent2[3]);
+  const result = [];
+  if (ix1 > x1) {
+    result.push([x1, y1, ix1, y2]);
+  }
+  if (ix2 < x2) {
+    result.push([ix2, y1, x2, y2]);
+  }
+  if (iy1 > y1) {
+    result.push([ix1, y1, ix2, iy1]);
+  }
+  if (iy2 < y2) {
+    result.push([ix1, iy2, ix2, y2]);
+  }
+  return result;
+}
+function getTopLeft(extent) {
+  return [extent[0], extent[3]];
+}
+function getTopRight(extent) {
+  return [extent[2], extent[3]];
+}
+function getWidth(extent) {
+  return extent[2] - extent[0];
+}
+function intersects(extent1, extent2) {
+  return extent1[0] <= extent2[2] && extent1[2] >= extent2[0] && extent1[1] <= extent2[3] && extent1[3] >= extent2[1];
+}
+function isEmpty(extent) {
+  return extent[2] < extent[0] || extent[3] < extent[1];
+}
+function returnOrUpdate(extent, dest) {
+  if (dest) {
+    dest[0] = extent[0];
+    dest[1] = extent[1];
+    dest[2] = extent[2];
+    dest[3] = extent[3];
+    return dest;
+  }
+  return extent;
+}
+function intersectsSegment(extent, start, end) {
+  let intersects3 = false;
+  const startRel = coordinateRelationship(extent, start);
+  const endRel = coordinateRelationship(extent, end);
+  if (startRel === Relationship_default.INTERSECTING || endRel === Relationship_default.INTERSECTING) {
+    intersects3 = true;
+  } else {
+    const minX = extent[0];
+    const minY = extent[1];
+    const maxX = extent[2];
+    const maxY = extent[3];
+    const startX = start[0];
+    const startY = start[1];
+    const endX = end[0];
+    const endY = end[1];
+    const slope = (endY - startY) / (endX - startX);
+    let x, y;
+    if (!!(endRel & Relationship_default.ABOVE) && !(startRel & Relationship_default.ABOVE)) {
+      x = endX - (endY - maxY) / slope;
+      intersects3 = x >= minX && x <= maxX;
+    }
+    if (!intersects3 && !!(endRel & Relationship_default.RIGHT) && !(startRel & Relationship_default.RIGHT)) {
+      y = endY - (endX - maxX) * slope;
+      intersects3 = y >= minY && y <= maxY;
+    }
+    if (!intersects3 && !!(endRel & Relationship_default.BELOW) && !(startRel & Relationship_default.BELOW)) {
+      x = endX - (endY - minY) / slope;
+      intersects3 = x >= minX && x <= maxX;
+    }
+    if (!intersects3 && !!(endRel & Relationship_default.LEFT) && !(startRel & Relationship_default.LEFT)) {
+      y = endY - (endX - minX) * slope;
+      intersects3 = y >= minY && y <= maxY;
+    }
+  }
+  return intersects3;
+}
+function applyTransform(extent, transformFn, dest, stops) {
+  if (isEmpty(extent)) {
+    return createOrUpdateEmpty(dest);
+  }
+  let coordinates2 = [];
+  if (stops > 1) {
+    const width = extent[2] - extent[0];
+    const height = extent[3] - extent[1];
+    for (let i = 0; i < stops; ++i) {
+      coordinates2.push(
+        extent[0] + width * i / stops,
+        extent[1],
+        extent[2],
+        extent[1] + height * i / stops,
+        extent[2] - width * i / stops,
+        extent[3],
+        extent[0],
+        extent[3] - height * i / stops
+      );
+    }
+  } else {
+    coordinates2 = [
+      extent[0],
+      extent[1],
+      extent[2],
+      extent[1],
+      extent[2],
+      extent[3],
+      extent[0],
+      extent[3]
+    ];
+  }
+  transformFn(coordinates2, coordinates2, 2);
+  const xs = [];
+  const ys = [];
+  for (let i = 0, l = coordinates2.length; i < l; i += 2) {
+    xs.push(coordinates2[i]);
+    ys.push(coordinates2[i + 1]);
+  }
+  return _boundingExtentXYs(xs, ys, dest);
+}
+function wrapX(extent, projection) {
+  const projectionExtent = projection.getExtent();
+  const center = getCenter(extent);
+  if (projection.canWrapX() && (center[0] < projectionExtent[0] || center[0] >= projectionExtent[2])) {
+    const worldWidth = getWidth(projectionExtent);
+    const worldsAway = Math.floor(
+      (center[0] - projectionExtent[0]) / worldWidth
+    );
+    const offset = worldsAway * worldWidth;
+    extent[0] -= offset;
+    extent[2] -= offset;
+  }
+  return extent;
+}
+function wrapAndSliceX(extent, projection, multiWorld) {
+  if (projection.canWrapX()) {
+    const projectionExtent = projection.getExtent();
+    if (!isFinite(extent[0]) || !isFinite(extent[2])) {
+      return [[projectionExtent[0], extent[1], projectionExtent[2], extent[3]]];
+    }
+    wrapX(extent, projection);
+    const worldWidth = getWidth(projectionExtent);
+    if (getWidth(extent) > worldWidth && !multiWorld) {
+      return [[projectionExtent[0], extent[1], projectionExtent[2], extent[3]]];
+    }
+    if (extent[0] < projectionExtent[0]) {
+      return [
+        [extent[0] + worldWidth, extent[1], projectionExtent[2], extent[3]],
+        [projectionExtent[0], extent[1], extent[2], extent[3]]
+      ];
+    }
+    if (extent[2] > projectionExtent[2]) {
+      return [
+        [extent[0], extent[1], projectionExtent[2], extent[3]],
+        [projectionExtent[0], extent[1], extent[2] - worldWidth, extent[3]]
+      ];
+    }
+  }
+  return [extent];
+}
+function subtractExtents(base, subtract) {
+  let remainder = [base];
+  for (let i = 0, ii = subtract.length; i < ii && remainder.length > 0; ++i) {
+    const next = [];
+    for (let j = 0, jj = remainder.length; j < jj; ++j) {
+      next.push(...getDifference(remainder[j], subtract[i]));
+    }
+    remainder = next;
+  }
+  return remainder;
+}
+
+// node_modules/ol/math.js
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+function squaredSegmentDistance(x, y, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  if (dx !== 0 || dy !== 0) {
+    const t = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy);
+    if (t > 1) {
+      x1 = x2;
+      y1 = y2;
+    } else if (t > 0) {
+      x1 += dx * t;
+      y1 += dy * t;
+    }
+  }
+  return squaredDistance(x, y, x1, y1);
+}
+function squaredDistance(x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return dx * dx + dy * dy;
+}
+function solveLinearSystem(mat) {
+  const n = mat.length;
+  for (let i = 0; i < n; i++) {
+    let maxRow = i;
+    let maxEl = Math.abs(mat[i][i]);
+    for (let r = i + 1; r < n; r++) {
+      const absValue = Math.abs(mat[r][i]);
+      if (absValue > maxEl) {
+        maxEl = absValue;
+        maxRow = r;
+      }
+    }
+    if (maxEl === 0) {
+      return null;
+    }
+    const tmp = mat[maxRow];
+    mat[maxRow] = mat[i];
+    mat[i] = tmp;
+    for (let j = i + 1; j < n; j++) {
+      const coef = -mat[j][i] / mat[i][i];
+      for (let k = i; k < n + 1; k++) {
+        if (i == k) {
+          mat[j][k] = 0;
+        } else {
+          mat[j][k] += coef * mat[i][k];
+        }
+      }
+    }
+  }
+  const x = new Array(n);
+  for (let l = n - 1; l >= 0; l--) {
+    x[l] = mat[l][n] / mat[l][l];
+    for (let m = l - 1; m >= 0; m--) {
+      mat[m][n] -= mat[m][l] * x[l];
+    }
+  }
+  return x;
+}
+function toDegrees(angleInRadians) {
+  return angleInRadians * 180 / Math.PI;
+}
+function toRadians(angleInDegrees) {
+  return angleInDegrees * Math.PI / 180;
+}
+function modulo(a, b) {
+  const r = a % b;
+  return r * b < 0 ? r + b : r;
+}
+function lerp(a, b, x) {
+  return a + x * (b - a);
+}
+function toFixed(n, decimals) {
+  const factor = Math.pow(10, decimals);
+  return Math.round(n * factor) / factor;
+}
+function floor(n, decimals) {
+  return Math.floor(toFixed(n, decimals));
+}
+function ceil(n, decimals) {
+  return Math.ceil(toFixed(n, decimals));
+}
+function wrap(n, min, max) {
+  if (n >= min && n < max) {
+    return n;
+  }
+  const range = max - min;
+  return ((n - min) % range + range) % range + min;
+}
+
+// node_modules/ol/coordinate.js
+function add(coordinate, delta) {
+  coordinate[0] += +delta[0];
+  coordinate[1] += +delta[1];
+  return coordinate;
+}
+function equals2(coordinate1, coordinate2) {
+  let equals4 = true;
+  for (let i = coordinate1.length - 1; i >= 0; --i) {
+    if (coordinate1[i] != coordinate2[i]) {
+      equals4 = false;
+      break;
+    }
+  }
+  return equals4;
+}
+function rotate(coordinate, angle) {
+  const cosAngle = Math.cos(angle);
+  const sinAngle = Math.sin(angle);
+  const x = coordinate[0] * cosAngle - coordinate[1] * sinAngle;
+  const y = coordinate[1] * cosAngle + coordinate[0] * sinAngle;
+  coordinate[0] = x;
+  coordinate[1] = y;
+  return coordinate;
+}
+function scale(coordinate, scale4) {
+  coordinate[0] *= scale4;
+  coordinate[1] *= scale4;
+  return coordinate;
+}
+function wrapX2(coordinate, projection) {
+  if (projection.canWrapX()) {
+    const worldWidth = getWidth(projection.getExtent());
+    const worldsAway = getWorldsAway(coordinate, projection, worldWidth);
+    if (worldsAway) {
+      coordinate[0] -= worldsAway * worldWidth;
+    }
+  }
+  return coordinate;
+}
+function getWorldsAway(coordinate, projection, sourceExtentWidth) {
+  const projectionExtent = projection.getExtent();
+  let worldsAway = 0;
+  if (projection.canWrapX() && (coordinate[0] < projectionExtent[0] || coordinate[0] > projectionExtent[2])) {
+    sourceExtentWidth = sourceExtentWidth || getWidth(projectionExtent);
+    worldsAway = Math.floor(
+      (coordinate[0] - projectionExtent[0]) / sourceExtentWidth
+    );
+  }
+  return worldsAway;
+}
+function angleBetween(p0, pA, pB) {
+  const lenA = Math.sqrt(
+    (pA[0] - p0[0]) * (pA[0] - p0[0]) + (pA[1] - p0[1]) * (pA[1] - p0[1])
+  );
+  const tangentA = [(pA[0] - p0[0]) / lenA, (pA[1] - p0[1]) / lenA];
+  const orthoA = [-tangentA[1], tangentA[0]];
+  const lenB = Math.sqrt(
+    (pB[0] - p0[0]) * (pB[0] - p0[0]) + (pB[1] - p0[1]) * (pB[1] - p0[1])
+  );
+  const tangentB = [(pB[0] - p0[0]) / lenB, (pB[1] - p0[1]) / lenB];
+  let angle = lenA === 0 || lenB === 0 ? 0 : Math.acos(
+    clamp(tangentB[0] * tangentA[0] + tangentB[1] * tangentA[1], -1, 1)
+  );
+  angle = Math.max(angle, 1e-5);
+  const isClockwise = tangentB[0] * orthoA[0] + tangentB[1] * orthoA[1] > 0;
+  return !isClockwise ? Math.PI * 2 - angle : angle;
+}
+
+// node_modules/ol/proj/Units.js
+var METERS_PER_UNIT = {
+  // use the radius of the Normal sphere
+  "radians": 6370997 / (2 * Math.PI),
+  "degrees": 2 * Math.PI * 6370997 / 360,
+  "ft": 0.3048,
+  "m": 1,
+  "us-ft": 1200 / 3937
+};
+
+// node_modules/ol/proj/Projection.js
+var Projection = class {
+  /**
+   * @param {Options} options Projection options.
+   */
+  constructor(options) {
+    this.code_ = options.code;
+    this.units_ = /** @type {import("./Units.js").Units} */
+    options.units;
+    this.extent_ = options.extent !== void 0 ? options.extent : null;
+    this.worldExtent_ = options.worldExtent !== void 0 ? options.worldExtent : null;
+    this.axisOrientation_ = options.axisOrientation !== void 0 ? options.axisOrientation : "enu";
+    this.global_ = options.global !== void 0 ? options.global : false;
+    this.canWrapX_ = !!(this.global_ && this.extent_);
+    this.getPointResolutionFunc_ = options.getPointResolution;
+    this.defaultTileGrid_ = null;
+    this.metersPerUnit_ = options.metersPerUnit;
+  }
+  /**
+   * @return {boolean} The projection is suitable for wrapping the x-axis
+   */
+  canWrapX() {
+    return this.canWrapX_;
+  }
+  /**
+   * Get the code for this projection, e.g. 'EPSG:4326'.
+   * @return {string} Code.
+   * @api
+   */
+  getCode() {
+    return this.code_;
+  }
+  /**
+   * Get the validity extent for this projection.
+   * @return {import("../extent.js").Extent} Extent.
+   * @api
+   */
+  getExtent() {
+    return this.extent_;
+  }
+  /**
+   * Get the units of this projection.
+   * @return {import("./Units.js").Units} Units.
+   * @api
+   */
+  getUnits() {
+    return this.units_;
+  }
+  /**
+   * Get the amount of meters per unit of this projection.  If the projection is
+   * not configured with `metersPerUnit` or a units identifier, the return is
+   * `undefined`.
+   * @return {number|undefined} Meters.
+   * @api
+   */
+  getMetersPerUnit() {
+    return this.metersPerUnit_ || METERS_PER_UNIT[this.units_];
+  }
+  /**
+   * Get the world extent for this projection.
+   * @return {import("../extent.js").Extent} Extent.
+   * @api
+   */
+  getWorldExtent() {
+    return this.worldExtent_;
+  }
+  /**
+   * Get the axis orientation of this projection.
+   * Example values are:
+   * enu - the default easting, northing, elevation.
+   * neu - northing, easting, up - useful for "lat/long" geographic coordinates,
+   *     or south orientated transverse mercator.
+   * wnu - westing, northing, up - some planetary coordinate systems have
+   *     "west positive" coordinate systems
+   * @return {string} Axis orientation.
+   * @api
+   */
+  getAxisOrientation() {
+    return this.axisOrientation_;
+  }
+  /**
+   * Is this projection a global projection which spans the whole world?
+   * @return {boolean} Whether the projection is global.
+   * @api
+   */
+  isGlobal() {
+    return this.global_;
+  }
+  /**
+   * Set if the projection is a global projection which spans the whole world
+   * @param {boolean} global Whether the projection is global.
+   * @api
+   */
+  setGlobal(global) {
+    this.global_ = global;
+    this.canWrapX_ = !!(global && this.extent_);
+  }
+  /**
+   * @return {import("../tilegrid/TileGrid.js").default} The default tile grid.
+   */
+  getDefaultTileGrid() {
+    return this.defaultTileGrid_;
+  }
+  /**
+   * @param {import("../tilegrid/TileGrid.js").default} tileGrid The default tile grid.
+   */
+  setDefaultTileGrid(tileGrid) {
+    this.defaultTileGrid_ = tileGrid;
+  }
+  /**
+   * Set the validity extent for this projection.
+   * @param {import("../extent.js").Extent} extent Extent.
+   * @api
+   */
+  setExtent(extent) {
+    this.extent_ = extent;
+    this.canWrapX_ = !!(this.global_ && extent);
+  }
+  /**
+   * Set the world extent for this projection.
+   * @param {import("../extent.js").Extent} worldExtent World extent
+   *     [minlon, minlat, maxlon, maxlat].
+   * @api
+   */
+  setWorldExtent(worldExtent) {
+    this.worldExtent_ = worldExtent;
+  }
+  /**
+   * Set the getPointResolution function (see {@link module:ol/proj.getPointResolution}
+   * for this projection.
+   * @param {function(number, import("../coordinate.js").Coordinate):number} func Function
+   * @api
+   */
+  setGetPointResolution(func) {
+    this.getPointResolutionFunc_ = func;
+  }
+  /**
+   * Get the custom point resolution function for this projection (if set).
+   * @return {GetPointResolution|undefined} The custom point
+   * resolution function (if set).
+   */
+  getPointResolutionFunc() {
+    return this.getPointResolutionFunc_;
+  }
+};
+var Projection_default = Projection;
+
+// node_modules/ol/proj/epsg3857.js
+var RADIUS = 6378137;
+var HALF_SIZE = Math.PI * RADIUS;
+var EXTENT = [-HALF_SIZE, -HALF_SIZE, HALF_SIZE, HALF_SIZE];
+var WORLD_EXTENT = [-180, -85, 180, 85];
+var MAX_SAFE_Y = RADIUS * Math.log(Math.tan(Math.PI / 2));
+var EPSG3857Projection = class extends Projection_default {
+  /**
+   * @param {string} code Code.
+   */
+  constructor(code) {
+    super({
+      code,
+      units: "m",
+      extent: EXTENT,
+      global: true,
+      worldExtent: WORLD_EXTENT,
+      getPointResolution: function(resolution, point) {
+        return resolution / Math.cosh(point[1] / RADIUS);
+      }
+    });
+  }
+};
+var PROJECTIONS = [
+  new EPSG3857Projection("EPSG:3857"),
+  new EPSG3857Projection("EPSG:102100"),
+  new EPSG3857Projection("EPSG:102113"),
+  new EPSG3857Projection("EPSG:900913"),
+  new EPSG3857Projection("http://www.opengis.net/def/crs/EPSG/0/3857"),
+  new EPSG3857Projection("http://www.opengis.net/gml/srs/epsg.xml#3857")
+];
+function fromEPSG4326(input, output, dimension, stride) {
+  const length = input.length;
+  dimension = dimension > 1 ? dimension : 2;
+  stride = stride ?? dimension;
+  if (output === void 0) {
+    if (dimension > 2) {
+      output = input.slice();
+    } else {
+      output = new Array(length);
+    }
+  }
+  for (let i = 0; i < length; i += stride) {
+    output[i] = HALF_SIZE * input[i] / 180;
+    let y = RADIUS * Math.log(Math.tan(Math.PI * (+input[i + 1] + 90) / 360));
+    if (y > MAX_SAFE_Y) {
+      y = MAX_SAFE_Y;
+    } else if (y < -MAX_SAFE_Y) {
+      y = -MAX_SAFE_Y;
+    }
+    output[i + 1] = y;
+  }
+  return output;
+}
+function toEPSG4326(input, output, dimension, stride) {
+  const length = input.length;
+  dimension = dimension > 1 ? dimension : 2;
+  stride = stride ?? dimension;
+  if (output === void 0) {
+    if (dimension > 2) {
+      output = input.slice();
+    } else {
+      output = new Array(length);
+    }
+  }
+  for (let i = 0; i < length; i += stride) {
+    output[i] = 180 * input[i] / HALF_SIZE;
+    output[i + 1] = 360 * Math.atan(Math.exp(input[i + 1] / RADIUS)) / Math.PI - 90;
+  }
+  return output;
+}
+
+// node_modules/ol/proj/epsg4326.js
+var RADIUS2 = 6378137;
+var EXTENT2 = [-180, -90, 180, 90];
+var METERS_PER_UNIT2 = Math.PI * RADIUS2 / 180;
+var EPSG4326Projection = class extends Projection_default {
+  /**
+   * @param {string} code Code.
+   * @param {string} [axisOrientation] Axis orientation.
+   */
+  constructor(code, axisOrientation) {
+    super({
+      code,
+      units: "degrees",
+      extent: EXTENT2,
+      axisOrientation,
+      global: true,
+      metersPerUnit: METERS_PER_UNIT2,
+      worldExtent: EXTENT2
+    });
+  }
+};
+var PROJECTIONS2 = [
+  new EPSG4326Projection("CRS:84"),
+  new EPSG4326Projection("EPSG:4326", "neu"),
+  new EPSG4326Projection("urn:ogc:def:crs:OGC:1.3:CRS84"),
+  new EPSG4326Projection("urn:ogc:def:crs:OGC:2:84"),
+  new EPSG4326Projection("http://www.opengis.net/def/crs/OGC/1.3/CRS84"),
+  new EPSG4326Projection("http://www.opengis.net/gml/srs/epsg.xml#4326", "neu"),
+  new EPSG4326Projection("http://www.opengis.net/def/crs/EPSG/0/4326", "neu")
+];
+
+// node_modules/ol/proj/projections.js
+var cache = {};
+function get(code) {
+  return cache[code] || cache[code.replace(/urn:(x-)?ogc:def:crs:EPSG:(.*:)?(\w+)$/, "EPSG:$3")] || null;
+}
+function add2(code, projection) {
+  cache[code] = projection;
+}
+
+// node_modules/ol/obj.js
+function clear(object) {
+  for (const property in object) {
+    delete object[property];
+  }
+}
+function isEmpty2(object) {
+  let property;
+  for (property in object) {
+    return false;
+  }
+  return !property;
+}
+
+// node_modules/ol/proj/transforms.js
+var transforms = {};
+function add3(source, destination, transformFn) {
+  const sourceCode = source.getCode();
+  const destinationCode = destination.getCode();
+  if (!(sourceCode in transforms)) {
+    transforms[sourceCode] = {};
+  }
+  transforms[sourceCode][destinationCode] = transformFn;
+}
+function get2(sourceCode, destinationCode) {
+  if (sourceCode in transforms && destinationCode in transforms[sourceCode]) {
+    return transforms[sourceCode][destinationCode];
+  }
+  return null;
+}
+
+// node_modules/ol/proj/utm.js
+var K0 = 0.9996;
+var E = 669438e-8;
+var E2 = E * E;
+var E3 = E2 * E;
+var E_P2 = E / (1 - E);
+var SQRT_E = Math.sqrt(1 - E);
+var _E = (1 - SQRT_E) / (1 + SQRT_E);
+var _E2 = _E * _E;
+var _E3 = _E2 * _E;
+var _E4 = _E3 * _E;
+var _E5 = _E4 * _E;
+var M1 = 1 - E / 4 - 3 * E2 / 64 - 5 * E3 / 256;
+var M2 = 3 * E / 8 + 3 * E2 / 32 + 45 * E3 / 1024;
+var M3 = 15 * E2 / 256 + 45 * E3 / 1024;
+var M4 = 35 * E3 / 3072;
+var P2 = 3 / 2 * _E - 27 / 32 * _E3 + 269 / 512 * _E5;
+var P3 = 21 / 16 * _E2 - 55 / 32 * _E4;
+var P4 = 151 / 96 * _E3 - 417 / 128 * _E5;
+var P5 = 1097 / 512 * _E4;
+var R = 6378137;
+function toLonLat(easting, northing, zone) {
+  const x = easting - 5e5;
+  const y = zone.north ? northing : northing - 1e7;
+  const m = y / K0;
+  const mu = m / (R * M1);
+  const pRad = mu + P2 * Math.sin(2 * mu) + P3 * Math.sin(4 * mu) + P4 * Math.sin(6 * mu) + P5 * Math.sin(8 * mu);
+  const pSin = Math.sin(pRad);
+  const pSin2 = pSin * pSin;
+  const pCos = Math.cos(pRad);
+  const pTan = pSin / pCos;
+  const pTan2 = pTan * pTan;
+  const pTan4 = pTan2 * pTan2;
+  const epSin = 1 - E * pSin2;
+  const epSinSqrt = Math.sqrt(1 - E * pSin2);
+  const n = R / epSinSqrt;
+  const r = (1 - E) / epSin;
+  const c = E_P2 * pCos ** 2;
+  const c2 = c * c;
+  const d = x / (n * K0);
+  const d2 = d * d;
+  const d3 = d2 * d;
+  const d4 = d3 * d;
+  const d5 = d4 * d;
+  const d6 = d5 * d;
+  const latitude = pRad - pTan / r * (d2 / 2 - d4 / 24 * (5 + 3 * pTan2 + 10 * c - 4 * c2 - 9 * E_P2)) + d6 / 720 * (61 + 90 * pTan2 + 298 * c + 45 * pTan4 - 252 * E_P2 - 3 * c2);
+  let longitude = (d - d3 / 6 * (1 + 2 * pTan2 + c) + d5 / 120 * (5 - 2 * c + 28 * pTan2 - 3 * c2 + 8 * E_P2 + 24 * pTan4)) / pCos;
+  longitude = wrap(
+    longitude + toRadians(zoneToCentralLongitude(zone.number)),
+    -Math.PI,
+    Math.PI
+  );
+  return [toDegrees(longitude), toDegrees(latitude)];
+}
+var MIN_LATITUDE = -80;
+var MAX_LATITUDE = 84;
+var MIN_LONGITUDE = -180;
+var MAX_LONGITUDE = 180;
+function fromLonLat(longitude, latitude, zone) {
+  longitude = wrap(longitude, MIN_LONGITUDE, MAX_LONGITUDE);
+  if (latitude < MIN_LATITUDE) {
+    latitude = MIN_LATITUDE;
+  } else if (latitude > MAX_LATITUDE) {
+    latitude = MAX_LATITUDE;
+  }
+  const latRad = toRadians(latitude);
+  const latSin = Math.sin(latRad);
+  const latCos = Math.cos(latRad);
+  const latTan = latSin / latCos;
+  const latTan2 = latTan * latTan;
+  const latTan4 = latTan2 * latTan2;
+  const lonRad = toRadians(longitude);
+  const centralLon = zoneToCentralLongitude(zone.number);
+  const centralLonRad = toRadians(centralLon);
+  const n = R / Math.sqrt(1 - E * latSin ** 2);
+  const c = E_P2 * latCos ** 2;
+  const a = latCos * wrap(lonRad - centralLonRad, -Math.PI, Math.PI);
+  const a22 = a * a;
+  const a3 = a22 * a;
+  const a4 = a3 * a;
+  const a5 = a4 * a;
+  const a6 = a5 * a;
+  const m = R * (M1 * latRad - M2 * Math.sin(2 * latRad) + M3 * Math.sin(4 * latRad) - M4 * Math.sin(6 * latRad));
+  const easting = K0 * n * (a + a3 / 6 * (1 - latTan2 + c) + a5 / 120 * (5 - 18 * latTan2 + latTan4 + 72 * c - 58 * E_P2)) + 5e5;
+  let northing = K0 * (m + n * latTan * (a22 / 2 + a4 / 24 * (5 - latTan2 + 9 * c + 4 * c ** 2) + a6 / 720 * (61 - 58 * latTan2 + latTan4 + 600 * c - 330 * E_P2)));
+  if (!zone.north) {
+    northing += 1e7;
+  }
+  return [easting, northing];
+}
+function zoneToCentralLongitude(zone) {
+  return (zone - 1) * 6 - 180 + 3;
+}
+var epsgRegExes = [
+  /^EPSG:(\d+)$/,
+  /^urn:ogc:def:crs:EPSG::(\d+)$/,
+  /^http:\/\/www\.opengis\.net\/def\/crs\/EPSG\/0\/(\d+)$/
+];
+function zoneFromCode(code) {
+  let epsgId = 0;
+  for (const re of epsgRegExes) {
+    const match = code.match(re);
+    if (match) {
+      epsgId = parseInt(match[1]);
+      break;
+    }
+  }
+  if (!epsgId) {
+    return null;
+  }
+  let number = 0;
+  let north = false;
+  if (epsgId > 32700 && epsgId < 32761) {
+    number = epsgId - 32700;
+  } else if (epsgId > 32600 && epsgId < 32661) {
+    north = true;
+    number = epsgId - 32600;
+  }
+  if (!number) {
+    return null;
+  }
+  return { number, north };
+}
+function makeTransformFunction(transformer, zone) {
+  return function(input, output, dimension, stride) {
+    const length = input.length;
+    dimension = dimension > 1 ? dimension : 2;
+    stride = stride ?? dimension;
+    if (!output) {
+      if (dimension > 2) {
+        output = input.slice();
+      } else {
+        output = new Array(length);
+      }
+    }
+    for (let i = 0; i < length; i += stride) {
+      const x = input[i];
+      const y = input[i + 1];
+      const coord = transformer(x, y, zone);
+      output[i] = coord[0];
+      output[i + 1] = coord[1];
+    }
+    return output;
+  };
+}
+function makeProjection(code) {
+  const zone = zoneFromCode(code);
+  if (!zone) {
+    return null;
+  }
+  return new Projection_default({ code, units: "m" });
+}
+function makeTransforms(projection) {
+  const zone = zoneFromCode(projection.getCode());
+  if (!zone) {
+    return null;
+  }
+  return {
+    forward: makeTransformFunction(fromLonLat, zone),
+    inverse: makeTransformFunction(toLonLat, zone)
+  };
+}
+
+// node_modules/ol/sphere.js
+var DEFAULT_RADIUS = 63710088e-1;
+function getDistance(c1, c2, radius) {
+  radius = radius || DEFAULT_RADIUS;
+  const lat1 = toRadians(c1[1]);
+  const lat2 = toRadians(c2[1]);
+  const deltaLatBy2 = (lat2 - lat1) / 2;
+  const deltaLonBy2 = toRadians(c2[0] - c1[0]) / 2;
+  const a = Math.sin(deltaLatBy2) * Math.sin(deltaLatBy2) + Math.sin(deltaLonBy2) * Math.sin(deltaLonBy2) * Math.cos(lat1) * Math.cos(lat2);
+  return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// node_modules/ol/proj.js
+var transformFactories = [makeTransforms];
+var projectionFactories = [makeProjection];
+var showCoordinateWarning = true;
+function disableCoordinateWarning(disable2) {
+  const hide = disable2 === void 0 ? true : disable2;
+  showCoordinateWarning = !hide;
+}
+function cloneTransform(input, output) {
+  if (output !== void 0) {
+    for (let i = 0, ii = input.length; i < ii; ++i) {
+      output[i] = input[i];
+    }
+    output = output;
+  } else {
+    output = input.slice();
+  }
+  return output;
+}
+function addProjection(projection) {
+  add2(projection.getCode(), projection);
+  add3(projection, projection, cloneTransform);
+}
+function addProjections(projections) {
+  projections.forEach(addProjection);
+}
+function get3(projectionLike) {
+  if (!(typeof projectionLike === "string")) {
+    return projectionLike;
+  }
+  const projection = get(projectionLike);
+  if (projection) {
+    return projection;
+  }
+  for (const makeProjection2 of projectionFactories) {
+    const projection2 = makeProjection2(projectionLike);
+    if (projection2) {
+      return projection2;
+    }
+  }
+  return null;
+}
+function getPointResolution(projection, resolution, point, units) {
+  projection = get3(projection);
+  let pointResolution;
+  const getter = projection.getPointResolutionFunc();
+  if (getter) {
+    pointResolution = getter(resolution, point);
+    if (units && units !== projection.getUnits()) {
+      const metersPerUnit = projection.getMetersPerUnit();
+      if (metersPerUnit) {
+        pointResolution = pointResolution * metersPerUnit / METERS_PER_UNIT[units];
+      }
+    }
+  } else {
+    const projUnits = projection.getUnits();
+    if (projUnits == "degrees" && !units || units == "degrees") {
+      pointResolution = resolution;
+    } else {
+      const toEPSG43262 = getTransformFromProjections(
+        projection,
+        get3("EPSG:4326")
+      );
+      if (!toEPSG43262 && projUnits !== "degrees") {
+        pointResolution = resolution * projection.getMetersPerUnit();
+      } else {
+        let vertices = [
+          point[0] - resolution / 2,
+          point[1],
+          point[0] + resolution / 2,
+          point[1],
+          point[0],
+          point[1] - resolution / 2,
+          point[0],
+          point[1] + resolution / 2
+        ];
+        vertices = toEPSG43262(vertices, vertices, 2);
+        const width = getDistance(vertices.slice(0, 2), vertices.slice(2, 4));
+        const height = getDistance(vertices.slice(4, 6), vertices.slice(6, 8));
+        pointResolution = (width + height) / 2;
+      }
+      const metersPerUnit = units ? METERS_PER_UNIT[units] : projection.getMetersPerUnit();
+      if (metersPerUnit !== void 0) {
+        pointResolution /= metersPerUnit;
+      }
+    }
+  }
+  return pointResolution;
+}
+function addEquivalentProjections(projections) {
+  addProjections(projections);
+  projections.forEach(function(source) {
+    projections.forEach(function(destination) {
+      if (source !== destination) {
+        add3(source, destination, cloneTransform);
+      }
+    });
+  });
+}
+function addEquivalentTransforms(projections1, projections2, forwardTransform, inverseTransform) {
+  projections1.forEach(function(projection1) {
+    projections2.forEach(function(projection2) {
+      add3(projection1, projection2, forwardTransform);
+      add3(projection2, projection1, inverseTransform);
+    });
+  });
+}
+function createProjection(projection, defaultCode) {
+  if (!projection) {
+    return get3(defaultCode);
+  }
+  if (typeof projection === "string") {
+    return get3(projection);
+  }
+  return (
+    /** @type {Projection} */
+    projection
+  );
+}
+function createTransformFromCoordinateTransform(coordTransform) {
+  return (
+    /**
+     * @param {Array<number>} input Input.
+     * @param {Array<number>} [output] Output.
+     * @param {number} [dimension] Dimensions that should be transformed.
+     * @param {number} [stride] Stride.
+     * @return {Array<number>} Output.
+     */
+    (function(input, output, dimension, stride) {
+      const length = input.length;
+      dimension = dimension !== void 0 ? dimension : 2;
+      stride = stride ?? dimension;
+      output = output !== void 0 ? output : new Array(length);
+      for (let i = 0; i < length; i += stride) {
+        const point = coordTransform(input.slice(i, i + dimension));
+        const pointLength = point.length;
+        for (let j = 0, jj = stride; j < jj; ++j) {
+          output[i + j] = j >= pointLength ? input[i + j] : point[j];
+        }
+      }
+      return output;
+    })
+  );
+}
+function fromLonLat2(coordinate, projection) {
+  disableCoordinateWarning();
+  return transform(
+    coordinate,
+    "EPSG:4326",
+    projection !== void 0 ? projection : "EPSG:3857"
+  );
+}
+function toLonLat2(coordinate, projection) {
+  const lonLat = transform(
+    coordinate,
+    projection !== void 0 ? projection : "EPSG:3857",
+    "EPSG:4326"
+  );
+  const lon = lonLat[0];
+  if (lon < -180 || lon > 180) {
+    lonLat[0] = modulo(lon + 180, 360) - 180;
+  }
+  return lonLat;
+}
+function equivalent(projection1, projection2) {
+  if (projection1 === projection2) {
+    return true;
+  }
+  const equalUnits = projection1.getUnits() === projection2.getUnits();
+  if (projection1.getCode() === projection2.getCode()) {
+    return equalUnits;
+  }
+  const transformFunc = getTransformFromProjections(projection1, projection2);
+  return transformFunc === cloneTransform && equalUnits;
+}
+function getTransformFromProjections(source, destination) {
+  const sourceCode = source.getCode();
+  const destinationCode = destination.getCode();
+  let transformFunc = get2(sourceCode, destinationCode);
+  if (transformFunc) {
+    return transformFunc;
+  }
+  let sourceTransforms = null;
+  let destinationTransforms = null;
+  for (const makeTransforms2 of transformFactories) {
+    if (!sourceTransforms) {
+      sourceTransforms = makeTransforms2(source);
+    }
+    if (!destinationTransforms) {
+      destinationTransforms = makeTransforms2(destination);
+    }
+  }
+  if (!sourceTransforms && !destinationTransforms) {
+    return null;
+  }
+  const intermediateCode = "EPSG:4326";
+  if (!destinationTransforms) {
+    const toDestination = get2(intermediateCode, destinationCode);
+    if (toDestination) {
+      transformFunc = composeTransformFuncs(
+        sourceTransforms.inverse,
+        toDestination
+      );
+    }
+  } else if (!sourceTransforms) {
+    const fromSource = get2(sourceCode, intermediateCode);
+    if (fromSource) {
+      transformFunc = composeTransformFuncs(
+        fromSource,
+        destinationTransforms.forward
+      );
+    }
+  } else {
+    transformFunc = composeTransformFuncs(
+      sourceTransforms.inverse,
+      destinationTransforms.forward
+    );
+  }
+  if (transformFunc) {
+    addProjection(source);
+    addProjection(destination);
+    add3(source, destination, transformFunc);
+  }
+  return transformFunc;
+}
+function composeTransformFuncs(t1, t2) {
+  return function(input, output, dimensions, stride) {
+    output = t1(input, output, dimensions, stride);
+    return t2(output, output, dimensions, stride);
+  };
+}
+function getTransform(source, destination) {
+  const sourceProjection = get3(source);
+  const destinationProjection = get3(destination);
+  return getTransformFromProjections(sourceProjection, destinationProjection);
+}
+function transform(coordinate, source, destination) {
+  const transformFunc = getTransform(source, destination);
+  if (!transformFunc) {
+    const sourceCode = get3(source).getCode();
+    const destinationCode = get3(destination).getCode();
+    throw new Error(
+      `No transform available between ${sourceCode} and ${destinationCode}`
+    );
+  }
+  return transformFunc(coordinate, void 0, coordinate.length);
+}
+function transformExtent(extent, source, destination, stops) {
+  const transformFunc = getTransform(source, destination);
+  return applyTransform(extent, transformFunc, void 0, stops);
+}
+var userProjection = null;
+function getUserProjection() {
+  return userProjection;
+}
+function toUserCoordinate(coordinate, sourceProjection) {
+  if (!userProjection) {
+    return coordinate;
+  }
+  return transform(coordinate, sourceProjection, userProjection);
+}
+function fromUserCoordinate(coordinate, destProjection) {
+  if (!userProjection) {
+    if (showCoordinateWarning && !equals2(coordinate, [0, 0]) && coordinate[0] >= -180 && coordinate[0] <= 180 && coordinate[1] >= -90 && coordinate[1] <= 90) {
+      showCoordinateWarning = false;
+      warn(
+        "Call useGeographic() from ol/proj once to work with [longitude, latitude] coordinates."
+      );
+    }
+    return coordinate;
+  }
+  return transform(coordinate, userProjection, destProjection);
+}
+function toUserExtent(extent, sourceProjection) {
+  if (!userProjection) {
+    return extent;
+  }
+  return transformExtent(extent, sourceProjection, userProjection);
+}
+function fromUserExtent(extent, destProjection) {
+  if (!userProjection) {
+    return extent;
+  }
+  return transformExtent(extent, userProjection, destProjection);
+}
+function toUserResolution(resolution, sourceProjection) {
+  if (!userProjection) {
+    return resolution;
+  }
+  const sourceMetersPerUnit = get3(sourceProjection).getMetersPerUnit();
+  const userMetersPerUnit = userProjection.getMetersPerUnit();
+  return sourceMetersPerUnit && userMetersPerUnit ? resolution * sourceMetersPerUnit / userMetersPerUnit : resolution;
+}
+function addCommon() {
+  addEquivalentProjections(PROJECTIONS);
+  addEquivalentProjections(PROJECTIONS2);
+  addEquivalentTransforms(
+    PROJECTIONS2,
+    PROJECTIONS,
+    fromEPSG4326,
+    toEPSG4326
+  );
+}
+addCommon();
+
+// js/coords.js
+function project(lat, lon) {
+  return fromLonLat2([lon, lat]);
+}
+function unproject(coordinate) {
+  const [lon, lat] = toLonLat2(coordinate);
+  return { lat: round(lat), lon: round(lon) };
+}
+function extentToBbox(extent) {
+  const [minX, minY, maxX, maxY] = extent;
+  const southWest = unproject([minX, minY]);
+  const northEast = unproject([maxX, maxY]);
+  const bbox = {
+    south: southWest.lat,
+    west: southWest.lon,
+    north: northEast.lat,
+    east: northEast.lon
+  };
+  if (bbox.west > bbox.east) bbox.crosses_antimeridian = true;
+  return bbox;
+}
+function round(value) {
+  return Math.round(value * 1e7) / 1e7;
+}
+
 // js/popups.js
 var OFFSET_PX = 44;
+var SHAPE_OFFSET_PX = 12;
 var BELOW_OFFSET_PX = 8;
 var Popups = class {
   constructor(rootEl, roverMap) {
     this.root = rootEl;
     this.roverMap = roverMap;
-    this.openId = null;
-    roverMap.on("markerClick", ({ id }) => this.open(id));
+    this.current = null;
+    roverMap.on("markerClick", ({ id }) => this.open("marker", id));
+    roverMap.on(
+      "shapeClick",
+      ({ id, lat, lon }) => this.open("shape", id, project(lat, lon))
+    );
     roverMap.on("mapClick", () => this.close());
-    roverMap.on("shapeClick", () => this.close());
     this.onPostrender = () => this.position();
     roverMap.map.on("postrender", this.onPostrender);
     this.onKeydown = (event) => {
@@ -24,32 +1481,52 @@ var Popups = class {
     };
     this.root.addEventListener("click", this.onClick);
   }
-  open(id) {
-    const node = this.nodeFor(id);
-    if (!node) return;
+  open(kind, id, coordinate) {
+    const key = `${kind}:${id}`;
+    const node = this.nodeFor(key);
     this.close();
-    this.openId = String(id);
+    if (!node) return;
+    this.current = { kind, id: String(id), key, coordinate };
     node.hidden = false;
     this.position();
   }
   close() {
-    if (this.openId === null) return;
-    const node = this.nodeFor(this.openId);
+    if (!this.current) return;
+    const node = this.nodeFor(this.current.key);
     if (node) node.hidden = true;
-    this.openId = null;
+    this.current = null;
+  }
+  /**
+   * Where the open popup should point, in map coordinates.
+   *
+   * A marker is read from its *feature*, not from the marker the server sent: a
+   * drag moves the geometry on the client while the server's lat/lon stays put, and
+   * the popup should follow the pin the user is holding.
+   *
+   * A shape is anchored where it was clicked. Pointing at the centroid of a long
+   * route or a large parcel would point at nothing the user did.
+   */
+  anchor() {
+    if (!this.current) return null;
+    if (this.current.kind === "marker") {
+      const feature = this.roverMap.markerLayer.featureById(this.current.id);
+      return feature ? feature.getGeometry().getCoordinates() : null;
+    }
+    return this.roverMap.shapeLayer.entries.has(this.current.id) ? this.current.coordinate : null;
   }
   position() {
-    if (this.openId === null) return;
-    const node = this.nodeFor(this.openId);
-    const feature = this.roverMap.markerLayer.featureById(this.openId);
-    if (!node || !feature) return this.close();
-    const pixel = this.roverMap.map.getPixelFromCoordinate(feature.getGeometry().getCoordinates());
+    if (!this.current) return;
+    const node = this.nodeFor(this.current.key);
+    const coordinate = this.anchor();
+    if (!node || !coordinate) return this.close();
+    const pixel = this.roverMap.map.getPixelFromCoordinate(coordinate);
     if (!pixel) return;
+    const offset = this.current.kind === "marker" ? OFFSET_PX : SHAPE_OFFSET_PX;
     const [x, y] = pixel;
-    const below = y - OFFSET_PX - node.offsetHeight < 0;
+    const below = y - offset - node.offsetHeight < 0;
     node.classList.toggle("rover-popup--below", below);
     node.style.left = `${Math.round(x)}px`;
-    node.style.top = `${Math.round(below ? y + BELOW_OFFSET_PX : y - OFFSET_PX)}px`;
+    node.style.top = `${Math.round(below ? y + BELOW_OFFSET_PX : y - offset)}px`;
   }
   /**
    * Called after LiveView patches the element.
@@ -59,14 +1536,14 @@ var Popups = class {
    * disappears while this class still believes it is open. Re-assert it.
    */
   refresh() {
-    if (this.openId === null) return;
-    const node = this.nodeFor(this.openId);
+    if (!this.current) return;
+    const node = this.nodeFor(this.current.key);
     if (!node) return this.close();
     node.hidden = false;
     this.position();
   }
-  nodeFor(id) {
-    return this.root.querySelector(`[data-rover-popup-for="${cssEscape(String(id))}"]`);
+  nodeFor(key) {
+    return this.root.querySelector(`[data-rover-popup-for="${cssEscape(key)}"]`);
   }
   destroy() {
     document.removeEventListener("keydown", this.onKeydown);
@@ -103,20 +1580,6 @@ var ObjectEventType_default = {
    */
   PROPERTYCHANGE: "propertychange"
 };
-
-// node_modules/ol/obj.js
-function clear(object) {
-  for (const property in object) {
-    delete object[property];
-  }
-}
-function isEmpty(object) {
-  let property;
-  for (property in object) {
-    return false;
-  }
-  return !property;
-}
 
 // node_modules/ol/events.js
 function listen(target, type, listener, thisArg, once) {
@@ -287,14 +1750,14 @@ function reverseSubArray(arr, begin, end) {
     --end;
   }
 }
-function extend(arr, data) {
+function extend2(arr, data) {
   const extension = Array.isArray(data) ? data : [data];
   const length = extension.length;
   for (let i = 0; i < length; i++) {
     arr[arr.length] = extension[i];
   }
 }
-function equals(arr1, arr2) {
+function equals3(arr1, arr2) {
   const len1 = arr1.length;
   if (len1 !== arr2.length) {
     return false;
@@ -332,7 +1795,7 @@ function memoizeOne(fn) {
   let lastThis;
   return function() {
     const nextArgs = Array.prototype.slice.call(arguments);
-    if (!lastArgs || this !== lastThis || !equals(nextArgs, lastArgs)) {
+    if (!lastArgs || this !== lastThis || !equals3(nextArgs, lastArgs)) {
       lastThis = this;
       lastArgs = nextArgs;
       lastResult = fn.apply(this, arguments);
@@ -800,7 +2263,7 @@ var BaseObject = class extends Observable_default {
     if (this.values_ && key in this.values_) {
       const oldValue = this.values_[key];
       delete this.values_[key];
-      if (isEmpty(this.values_)) {
+      if (isEmpty2(this.values_)) {
         this.values_ = null;
       }
       if (!silent) {
@@ -1849,99 +3312,6 @@ var ViewProperty_default = {
   ROTATION: "rotation"
 };
 
-// node_modules/ol/math.js
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-function squaredSegmentDistance(x, y, x1, y1, x2, y2) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  if (dx !== 0 || dy !== 0) {
-    const t = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy);
-    if (t > 1) {
-      x1 = x2;
-      y1 = y2;
-    } else if (t > 0) {
-      x1 += dx * t;
-      y1 += dy * t;
-    }
-  }
-  return squaredDistance(x, y, x1, y1);
-}
-function squaredDistance(x1, y1, x2, y2) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  return dx * dx + dy * dy;
-}
-function solveLinearSystem(mat) {
-  const n = mat.length;
-  for (let i = 0; i < n; i++) {
-    let maxRow = i;
-    let maxEl = Math.abs(mat[i][i]);
-    for (let r = i + 1; r < n; r++) {
-      const absValue = Math.abs(mat[r][i]);
-      if (absValue > maxEl) {
-        maxEl = absValue;
-        maxRow = r;
-      }
-    }
-    if (maxEl === 0) {
-      return null;
-    }
-    const tmp = mat[maxRow];
-    mat[maxRow] = mat[i];
-    mat[i] = tmp;
-    for (let j = i + 1; j < n; j++) {
-      const coef = -mat[j][i] / mat[i][i];
-      for (let k = i; k < n + 1; k++) {
-        if (i == k) {
-          mat[j][k] = 0;
-        } else {
-          mat[j][k] += coef * mat[i][k];
-        }
-      }
-    }
-  }
-  const x = new Array(n);
-  for (let l = n - 1; l >= 0; l--) {
-    x[l] = mat[l][n] / mat[l][l];
-    for (let m = l - 1; m >= 0; m--) {
-      mat[m][n] -= mat[m][l] * x[l];
-    }
-  }
-  return x;
-}
-function toDegrees(angleInRadians) {
-  return angleInRadians * 180 / Math.PI;
-}
-function toRadians(angleInDegrees) {
-  return angleInDegrees * Math.PI / 180;
-}
-function modulo(a, b) {
-  const r = a % b;
-  return r * b < 0 ? r + b : r;
-}
-function lerp(a, b, x) {
-  return a + x * (b - a);
-}
-function toFixed(n, decimals) {
-  const factor = Math.pow(10, decimals);
-  return Math.round(n * factor) / factor;
-}
-function floor(n, decimals) {
-  return Math.floor(toFixed(n, decimals));
-}
-function ceil(n, decimals) {
-  return Math.ceil(toFixed(n, decimals));
-}
-function wrap(n, min, max) {
-  if (n >= min && n < max) {
-    return n;
-  }
-  const range = max - min;
-  return ((n - min) % range + range) % range + min;
-}
-
 // node_modules/ol/centerconstraint.js
 function createExtent(extent, onlyCenter, smooth) {
   return (
@@ -1991,546 +3361,6 @@ function none(center) {
   return center;
 }
 
-// node_modules/ol/extent/Relationship.js
-var Relationship_default = {
-  UNKNOWN: 0,
-  INTERSECTING: 1,
-  ABOVE: 2,
-  RIGHT: 4,
-  BELOW: 8,
-  LEFT: 16
-};
-
-// node_modules/ol/extent.js
-function boundingExtent(coordinates2) {
-  const extent = createEmpty();
-  for (let i = 0, ii = coordinates2.length; i < ii; ++i) {
-    extendCoordinate(extent, coordinates2[i]);
-  }
-  return extent;
-}
-function _boundingExtentXYs(xs, ys, dest) {
-  const minX = Math.min.apply(null, xs);
-  const minY = Math.min.apply(null, ys);
-  const maxX = Math.max.apply(null, xs);
-  const maxY = Math.max.apply(null, ys);
-  return createOrUpdate(minX, minY, maxX, maxY, dest);
-}
-function buffer(extent, value, dest) {
-  if (dest) {
-    dest[0] = extent[0] - value;
-    dest[1] = extent[1] - value;
-    dest[2] = extent[2] + value;
-    dest[3] = extent[3] + value;
-    return dest;
-  }
-  return [
-    extent[0] - value,
-    extent[1] - value,
-    extent[2] + value,
-    extent[3] + value
-  ];
-}
-function clone(extent, dest) {
-  if (dest) {
-    dest[0] = extent[0];
-    dest[1] = extent[1];
-    dest[2] = extent[2];
-    dest[3] = extent[3];
-    return dest;
-  }
-  return extent.slice();
-}
-function closestSquaredDistanceXY(extent, x, y) {
-  let dx, dy;
-  if (x < extent[0]) {
-    dx = extent[0] - x;
-  } else if (extent[2] < x) {
-    dx = x - extent[2];
-  } else {
-    dx = 0;
-  }
-  if (y < extent[1]) {
-    dy = extent[1] - y;
-  } else if (extent[3] < y) {
-    dy = y - extent[3];
-  } else {
-    dy = 0;
-  }
-  return dx * dx + dy * dy;
-}
-function containsCoordinate(extent, coordinate) {
-  return containsXY(extent, coordinate[0], coordinate[1]);
-}
-function containsExtent(extent1, extent2) {
-  return extent1[0] <= extent2[0] && extent2[2] <= extent1[2] && extent1[1] <= extent2[1] && extent2[3] <= extent1[3];
-}
-function containsXY(extent, x, y) {
-  return extent[0] <= x && x <= extent[2] && extent[1] <= y && y <= extent[3];
-}
-function coordinateRelationship(extent, coordinate) {
-  const minX = extent[0];
-  const minY = extent[1];
-  const maxX = extent[2];
-  const maxY = extent[3];
-  const x = coordinate[0];
-  const y = coordinate[1];
-  let relationship = Relationship_default.UNKNOWN;
-  if (x < minX) {
-    relationship = relationship | Relationship_default.LEFT;
-  } else if (x > maxX) {
-    relationship = relationship | Relationship_default.RIGHT;
-  }
-  if (y < minY) {
-    relationship = relationship | Relationship_default.BELOW;
-  } else if (y > maxY) {
-    relationship = relationship | Relationship_default.ABOVE;
-  }
-  if (relationship === Relationship_default.UNKNOWN) {
-    relationship = Relationship_default.INTERSECTING;
-  }
-  return relationship;
-}
-function createEmpty() {
-  return [Infinity, Infinity, -Infinity, -Infinity];
-}
-function createOrUpdate(minX, minY, maxX, maxY, dest) {
-  if (dest) {
-    dest[0] = minX;
-    dest[1] = minY;
-    dest[2] = maxX;
-    dest[3] = maxY;
-    return dest;
-  }
-  return [minX, minY, maxX, maxY];
-}
-function createOrUpdateEmpty(dest) {
-  return createOrUpdate(Infinity, Infinity, -Infinity, -Infinity, dest);
-}
-function createOrUpdateFromCoordinate(coordinate, dest) {
-  const x = coordinate[0];
-  const y = coordinate[1];
-  return createOrUpdate(x, y, x, y, dest);
-}
-function createOrUpdateFromFlatCoordinates(flatCoordinates, offset, end, stride, dest) {
-  const extent = createOrUpdateEmpty(dest);
-  return extendFlatCoordinates(extent, flatCoordinates, offset, end, stride);
-}
-function equals2(extent1, extent2) {
-  return extent1[0] == extent2[0] && extent1[2] == extent2[2] && extent1[1] == extent2[1] && extent1[3] == extent2[3];
-}
-function extend2(extent1, extent2) {
-  if (extent2[0] < extent1[0]) {
-    extent1[0] = extent2[0];
-  }
-  if (extent2[2] > extent1[2]) {
-    extent1[2] = extent2[2];
-  }
-  if (extent2[1] < extent1[1]) {
-    extent1[1] = extent2[1];
-  }
-  if (extent2[3] > extent1[3]) {
-    extent1[3] = extent2[3];
-  }
-  return extent1;
-}
-function extendCoordinate(extent, coordinate) {
-  if (coordinate[0] < extent[0]) {
-    extent[0] = coordinate[0];
-  }
-  if (coordinate[0] > extent[2]) {
-    extent[2] = coordinate[0];
-  }
-  if (coordinate[1] < extent[1]) {
-    extent[1] = coordinate[1];
-  }
-  if (coordinate[1] > extent[3]) {
-    extent[3] = coordinate[1];
-  }
-}
-function extendFlatCoordinates(extent, flatCoordinates, offset, end, stride) {
-  for (; offset < end; offset += stride) {
-    extendXY(extent, flatCoordinates[offset], flatCoordinates[offset + 1]);
-  }
-  return extent;
-}
-function extendXY(extent, x, y) {
-  extent[0] = Math.min(extent[0], x);
-  extent[1] = Math.min(extent[1], y);
-  extent[2] = Math.max(extent[2], x);
-  extent[3] = Math.max(extent[3], y);
-}
-function forEachCorner(extent, callback) {
-  let val;
-  val = callback(getBottomLeft(extent));
-  if (val) {
-    return val;
-  }
-  val = callback(getBottomRight(extent));
-  if (val) {
-    return val;
-  }
-  val = callback(getTopRight(extent));
-  if (val) {
-    return val;
-  }
-  val = callback(getTopLeft(extent));
-  if (val) {
-    return val;
-  }
-  return false;
-}
-function getArea(extent) {
-  let area = 0;
-  if (!isEmpty2(extent)) {
-    area = getWidth(extent) * getHeight(extent);
-  }
-  return area;
-}
-function getBottomLeft(extent) {
-  return [extent[0], extent[1]];
-}
-function getBottomRight(extent) {
-  return [extent[2], extent[1]];
-}
-function getCenter(extent) {
-  return [(extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2];
-}
-function getCorner(extent, corner) {
-  let coordinate;
-  if (corner === "bottom-left") {
-    coordinate = getBottomLeft(extent);
-  } else if (corner === "bottom-right") {
-    coordinate = getBottomRight(extent);
-  } else if (corner === "top-left") {
-    coordinate = getTopLeft(extent);
-  } else if (corner === "top-right") {
-    coordinate = getTopRight(extent);
-  } else {
-    throw new Error("Invalid corner");
-  }
-  return coordinate;
-}
-function getForViewAndSize(center, resolution, rotation, size, dest) {
-  const [x0, y0, x1, y1, x2, y2, x3, y3] = getRotatedViewport(
-    center,
-    resolution,
-    rotation,
-    size
-  );
-  return createOrUpdate(
-    Math.min(x0, x1, x2, x3),
-    Math.min(y0, y1, y2, y3),
-    Math.max(x0, x1, x2, x3),
-    Math.max(y0, y1, y2, y3),
-    dest
-  );
-}
-function getRotatedViewport(center, resolution, rotation, size) {
-  const dx = resolution * size[0] / 2;
-  const dy = resolution * size[1] / 2;
-  const cosRotation = Math.cos(rotation);
-  const sinRotation = Math.sin(rotation);
-  const xCos = dx * cosRotation;
-  const xSin = dx * sinRotation;
-  const yCos = dy * cosRotation;
-  const ySin = dy * sinRotation;
-  const x = center[0];
-  const y = center[1];
-  return [
-    x - xCos + ySin,
-    y - xSin - yCos,
-    x - xCos - ySin,
-    y - xSin + yCos,
-    x + xCos - ySin,
-    y + xSin + yCos,
-    x + xCos + ySin,
-    y + xSin - yCos,
-    x - xCos + ySin,
-    y - xSin - yCos
-  ];
-}
-function getHeight(extent) {
-  return extent[3] - extent[1];
-}
-function getIntersection(extent1, extent2, dest) {
-  const intersection = dest ? dest : createEmpty();
-  if (intersects(extent1, extent2)) {
-    if (extent1[0] > extent2[0]) {
-      intersection[0] = extent1[0];
-    } else {
-      intersection[0] = extent2[0];
-    }
-    if (extent1[1] > extent2[1]) {
-      intersection[1] = extent1[1];
-    } else {
-      intersection[1] = extent2[1];
-    }
-    if (extent1[2] < extent2[2]) {
-      intersection[2] = extent1[2];
-    } else {
-      intersection[2] = extent2[2];
-    }
-    if (extent1[3] < extent2[3]) {
-      intersection[3] = extent1[3];
-    } else {
-      intersection[3] = extent2[3];
-    }
-  } else {
-    createOrUpdateEmpty(intersection);
-  }
-  return intersection;
-}
-function getDifference(extent1, extent2) {
-  if (!intersects(extent1, extent2)) {
-    return [extent1.slice()];
-  }
-  if (containsExtent(extent2, extent1)) {
-    return [];
-  }
-  const [x1, y1, x2, y2] = extent1;
-  const ix1 = Math.max(x1, extent2[0]);
-  const iy1 = Math.max(y1, extent2[1]);
-  const ix2 = Math.min(x2, extent2[2]);
-  const iy2 = Math.min(y2, extent2[3]);
-  const result = [];
-  if (ix1 > x1) {
-    result.push([x1, y1, ix1, y2]);
-  }
-  if (ix2 < x2) {
-    result.push([ix2, y1, x2, y2]);
-  }
-  if (iy1 > y1) {
-    result.push([ix1, y1, ix2, iy1]);
-  }
-  if (iy2 < y2) {
-    result.push([ix1, iy2, ix2, y2]);
-  }
-  return result;
-}
-function getTopLeft(extent) {
-  return [extent[0], extent[3]];
-}
-function getTopRight(extent) {
-  return [extent[2], extent[3]];
-}
-function getWidth(extent) {
-  return extent[2] - extent[0];
-}
-function intersects(extent1, extent2) {
-  return extent1[0] <= extent2[2] && extent1[2] >= extent2[0] && extent1[1] <= extent2[3] && extent1[3] >= extent2[1];
-}
-function isEmpty2(extent) {
-  return extent[2] < extent[0] || extent[3] < extent[1];
-}
-function returnOrUpdate(extent, dest) {
-  if (dest) {
-    dest[0] = extent[0];
-    dest[1] = extent[1];
-    dest[2] = extent[2];
-    dest[3] = extent[3];
-    return dest;
-  }
-  return extent;
-}
-function intersectsSegment(extent, start, end) {
-  let intersects3 = false;
-  const startRel = coordinateRelationship(extent, start);
-  const endRel = coordinateRelationship(extent, end);
-  if (startRel === Relationship_default.INTERSECTING || endRel === Relationship_default.INTERSECTING) {
-    intersects3 = true;
-  } else {
-    const minX = extent[0];
-    const minY = extent[1];
-    const maxX = extent[2];
-    const maxY = extent[3];
-    const startX = start[0];
-    const startY = start[1];
-    const endX = end[0];
-    const endY = end[1];
-    const slope = (endY - startY) / (endX - startX);
-    let x, y;
-    if (!!(endRel & Relationship_default.ABOVE) && !(startRel & Relationship_default.ABOVE)) {
-      x = endX - (endY - maxY) / slope;
-      intersects3 = x >= minX && x <= maxX;
-    }
-    if (!intersects3 && !!(endRel & Relationship_default.RIGHT) && !(startRel & Relationship_default.RIGHT)) {
-      y = endY - (endX - maxX) * slope;
-      intersects3 = y >= minY && y <= maxY;
-    }
-    if (!intersects3 && !!(endRel & Relationship_default.BELOW) && !(startRel & Relationship_default.BELOW)) {
-      x = endX - (endY - minY) / slope;
-      intersects3 = x >= minX && x <= maxX;
-    }
-    if (!intersects3 && !!(endRel & Relationship_default.LEFT) && !(startRel & Relationship_default.LEFT)) {
-      y = endY - (endX - minX) * slope;
-      intersects3 = y >= minY && y <= maxY;
-    }
-  }
-  return intersects3;
-}
-function applyTransform(extent, transformFn, dest, stops) {
-  if (isEmpty2(extent)) {
-    return createOrUpdateEmpty(dest);
-  }
-  let coordinates2 = [];
-  if (stops > 1) {
-    const width = extent[2] - extent[0];
-    const height = extent[3] - extent[1];
-    for (let i = 0; i < stops; ++i) {
-      coordinates2.push(
-        extent[0] + width * i / stops,
-        extent[1],
-        extent[2],
-        extent[1] + height * i / stops,
-        extent[2] - width * i / stops,
-        extent[3],
-        extent[0],
-        extent[3] - height * i / stops
-      );
-    }
-  } else {
-    coordinates2 = [
-      extent[0],
-      extent[1],
-      extent[2],
-      extent[1],
-      extent[2],
-      extent[3],
-      extent[0],
-      extent[3]
-    ];
-  }
-  transformFn(coordinates2, coordinates2, 2);
-  const xs = [];
-  const ys = [];
-  for (let i = 0, l = coordinates2.length; i < l; i += 2) {
-    xs.push(coordinates2[i]);
-    ys.push(coordinates2[i + 1]);
-  }
-  return _boundingExtentXYs(xs, ys, dest);
-}
-function wrapX(extent, projection) {
-  const projectionExtent = projection.getExtent();
-  const center = getCenter(extent);
-  if (projection.canWrapX() && (center[0] < projectionExtent[0] || center[0] >= projectionExtent[2])) {
-    const worldWidth = getWidth(projectionExtent);
-    const worldsAway = Math.floor(
-      (center[0] - projectionExtent[0]) / worldWidth
-    );
-    const offset = worldsAway * worldWidth;
-    extent[0] -= offset;
-    extent[2] -= offset;
-  }
-  return extent;
-}
-function wrapAndSliceX(extent, projection, multiWorld) {
-  if (projection.canWrapX()) {
-    const projectionExtent = projection.getExtent();
-    if (!isFinite(extent[0]) || !isFinite(extent[2])) {
-      return [[projectionExtent[0], extent[1], projectionExtent[2], extent[3]]];
-    }
-    wrapX(extent, projection);
-    const worldWidth = getWidth(projectionExtent);
-    if (getWidth(extent) > worldWidth && !multiWorld) {
-      return [[projectionExtent[0], extent[1], projectionExtent[2], extent[3]]];
-    }
-    if (extent[0] < projectionExtent[0]) {
-      return [
-        [extent[0] + worldWidth, extent[1], projectionExtent[2], extent[3]],
-        [projectionExtent[0], extent[1], extent[2], extent[3]]
-      ];
-    }
-    if (extent[2] > projectionExtent[2]) {
-      return [
-        [extent[0], extent[1], projectionExtent[2], extent[3]],
-        [projectionExtent[0], extent[1], extent[2] - worldWidth, extent[3]]
-      ];
-    }
-  }
-  return [extent];
-}
-function subtractExtents(base, subtract) {
-  let remainder = [base];
-  for (let i = 0, ii = subtract.length; i < ii && remainder.length > 0; ++i) {
-    const next = [];
-    for (let j = 0, jj = remainder.length; j < jj; ++j) {
-      next.push(...getDifference(remainder[j], subtract[i]));
-    }
-    remainder = next;
-  }
-  return remainder;
-}
-
-// node_modules/ol/coordinate.js
-function add(coordinate, delta) {
-  coordinate[0] += +delta[0];
-  coordinate[1] += +delta[1];
-  return coordinate;
-}
-function equals3(coordinate1, coordinate2) {
-  let equals4 = true;
-  for (let i = coordinate1.length - 1; i >= 0; --i) {
-    if (coordinate1[i] != coordinate2[i]) {
-      equals4 = false;
-      break;
-    }
-  }
-  return equals4;
-}
-function rotate(coordinate, angle) {
-  const cosAngle = Math.cos(angle);
-  const sinAngle = Math.sin(angle);
-  const x = coordinate[0] * cosAngle - coordinate[1] * sinAngle;
-  const y = coordinate[1] * cosAngle + coordinate[0] * sinAngle;
-  coordinate[0] = x;
-  coordinate[1] = y;
-  return coordinate;
-}
-function scale(coordinate, scale4) {
-  coordinate[0] *= scale4;
-  coordinate[1] *= scale4;
-  return coordinate;
-}
-function wrapX2(coordinate, projection) {
-  if (projection.canWrapX()) {
-    const worldWidth = getWidth(projection.getExtent());
-    const worldsAway = getWorldsAway(coordinate, projection, worldWidth);
-    if (worldsAway) {
-      coordinate[0] -= worldsAway * worldWidth;
-    }
-  }
-  return coordinate;
-}
-function getWorldsAway(coordinate, projection, sourceExtentWidth) {
-  const projectionExtent = projection.getExtent();
-  let worldsAway = 0;
-  if (projection.canWrapX() && (coordinate[0] < projectionExtent[0] || coordinate[0] > projectionExtent[2])) {
-    sourceExtentWidth = sourceExtentWidth || getWidth(projectionExtent);
-    worldsAway = Math.floor(
-      (coordinate[0] - projectionExtent[0]) / sourceExtentWidth
-    );
-  }
-  return worldsAway;
-}
-function angleBetween(p0, pA, pB) {
-  const lenA = Math.sqrt(
-    (pA[0] - p0[0]) * (pA[0] - p0[0]) + (pA[1] - p0[1]) * (pA[1] - p0[1])
-  );
-  const tangentA = [(pA[0] - p0[0]) / lenA, (pA[1] - p0[1]) / lenA];
-  const orthoA = [-tangentA[1], tangentA[0]];
-  const lenB = Math.sqrt(
-    (pB[0] - p0[0]) * (pB[0] - p0[0]) + (pB[1] - p0[1]) * (pB[1] - p0[1])
-  );
-  const tangentB = [(pB[0] - p0[0]) / lenB, (pB[1] - p0[1]) / lenB];
-  let angle = lenA === 0 || lenB === 0 ? 0 : Math.acos(
-    clamp(tangentB[0] * tangentA[0] + tangentB[1] * tangentA[1], -1, 1)
-  );
-  angle = Math.max(angle, 1e-5);
-  const isClockwise = tangentB[0] * orthoA[0] + tangentB[1] * orthoA[1] > 0;
-  return !isClockwise ? Math.PI * 2 - angle : angle;
-}
-
 // node_modules/ol/easing.js
 function easeIn(t) {
   return Math.pow(t, 3);
@@ -2544,787 +3374,6 @@ function inAndOut(t) {
 function linear(t) {
   return t;
 }
-
-// node_modules/ol/sphere.js
-var DEFAULT_RADIUS = 63710088e-1;
-function getDistance(c1, c2, radius) {
-  radius = radius || DEFAULT_RADIUS;
-  const lat1 = toRadians(c1[1]);
-  const lat2 = toRadians(c2[1]);
-  const deltaLatBy2 = (lat2 - lat1) / 2;
-  const deltaLonBy2 = toRadians(c2[0] - c1[0]) / 2;
-  const a = Math.sin(deltaLatBy2) * Math.sin(deltaLatBy2) + Math.sin(deltaLonBy2) * Math.sin(deltaLonBy2) * Math.cos(lat1) * Math.cos(lat2);
-  return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// node_modules/ol/console.js
-var levels = {
-  info: 1,
-  warn: 2,
-  error: 3,
-  none: 4
-};
-var level = levels.info;
-function warn(...args) {
-  if (level > levels.warn) {
-    return;
-  }
-  console.warn(...args);
-}
-
-// node_modules/ol/proj/Units.js
-var METERS_PER_UNIT = {
-  // use the radius of the Normal sphere
-  "radians": 6370997 / (2 * Math.PI),
-  "degrees": 2 * Math.PI * 6370997 / 360,
-  "ft": 0.3048,
-  "m": 1,
-  "us-ft": 1200 / 3937
-};
-
-// node_modules/ol/proj/Projection.js
-var Projection = class {
-  /**
-   * @param {Options} options Projection options.
-   */
-  constructor(options) {
-    this.code_ = options.code;
-    this.units_ = /** @type {import("./Units.js").Units} */
-    options.units;
-    this.extent_ = options.extent !== void 0 ? options.extent : null;
-    this.worldExtent_ = options.worldExtent !== void 0 ? options.worldExtent : null;
-    this.axisOrientation_ = options.axisOrientation !== void 0 ? options.axisOrientation : "enu";
-    this.global_ = options.global !== void 0 ? options.global : false;
-    this.canWrapX_ = !!(this.global_ && this.extent_);
-    this.getPointResolutionFunc_ = options.getPointResolution;
-    this.defaultTileGrid_ = null;
-    this.metersPerUnit_ = options.metersPerUnit;
-  }
-  /**
-   * @return {boolean} The projection is suitable for wrapping the x-axis
-   */
-  canWrapX() {
-    return this.canWrapX_;
-  }
-  /**
-   * Get the code for this projection, e.g. 'EPSG:4326'.
-   * @return {string} Code.
-   * @api
-   */
-  getCode() {
-    return this.code_;
-  }
-  /**
-   * Get the validity extent for this projection.
-   * @return {import("../extent.js").Extent} Extent.
-   * @api
-   */
-  getExtent() {
-    return this.extent_;
-  }
-  /**
-   * Get the units of this projection.
-   * @return {import("./Units.js").Units} Units.
-   * @api
-   */
-  getUnits() {
-    return this.units_;
-  }
-  /**
-   * Get the amount of meters per unit of this projection.  If the projection is
-   * not configured with `metersPerUnit` or a units identifier, the return is
-   * `undefined`.
-   * @return {number|undefined} Meters.
-   * @api
-   */
-  getMetersPerUnit() {
-    return this.metersPerUnit_ || METERS_PER_UNIT[this.units_];
-  }
-  /**
-   * Get the world extent for this projection.
-   * @return {import("../extent.js").Extent} Extent.
-   * @api
-   */
-  getWorldExtent() {
-    return this.worldExtent_;
-  }
-  /**
-   * Get the axis orientation of this projection.
-   * Example values are:
-   * enu - the default easting, northing, elevation.
-   * neu - northing, easting, up - useful for "lat/long" geographic coordinates,
-   *     or south orientated transverse mercator.
-   * wnu - westing, northing, up - some planetary coordinate systems have
-   *     "west positive" coordinate systems
-   * @return {string} Axis orientation.
-   * @api
-   */
-  getAxisOrientation() {
-    return this.axisOrientation_;
-  }
-  /**
-   * Is this projection a global projection which spans the whole world?
-   * @return {boolean} Whether the projection is global.
-   * @api
-   */
-  isGlobal() {
-    return this.global_;
-  }
-  /**
-   * Set if the projection is a global projection which spans the whole world
-   * @param {boolean} global Whether the projection is global.
-   * @api
-   */
-  setGlobal(global) {
-    this.global_ = global;
-    this.canWrapX_ = !!(global && this.extent_);
-  }
-  /**
-   * @return {import("../tilegrid/TileGrid.js").default} The default tile grid.
-   */
-  getDefaultTileGrid() {
-    return this.defaultTileGrid_;
-  }
-  /**
-   * @param {import("../tilegrid/TileGrid.js").default} tileGrid The default tile grid.
-   */
-  setDefaultTileGrid(tileGrid) {
-    this.defaultTileGrid_ = tileGrid;
-  }
-  /**
-   * Set the validity extent for this projection.
-   * @param {import("../extent.js").Extent} extent Extent.
-   * @api
-   */
-  setExtent(extent) {
-    this.extent_ = extent;
-    this.canWrapX_ = !!(this.global_ && extent);
-  }
-  /**
-   * Set the world extent for this projection.
-   * @param {import("../extent.js").Extent} worldExtent World extent
-   *     [minlon, minlat, maxlon, maxlat].
-   * @api
-   */
-  setWorldExtent(worldExtent) {
-    this.worldExtent_ = worldExtent;
-  }
-  /**
-   * Set the getPointResolution function (see {@link module:ol/proj.getPointResolution}
-   * for this projection.
-   * @param {function(number, import("../coordinate.js").Coordinate):number} func Function
-   * @api
-   */
-  setGetPointResolution(func) {
-    this.getPointResolutionFunc_ = func;
-  }
-  /**
-   * Get the custom point resolution function for this projection (if set).
-   * @return {GetPointResolution|undefined} The custom point
-   * resolution function (if set).
-   */
-  getPointResolutionFunc() {
-    return this.getPointResolutionFunc_;
-  }
-};
-var Projection_default = Projection;
-
-// node_modules/ol/proj/epsg3857.js
-var RADIUS = 6378137;
-var HALF_SIZE = Math.PI * RADIUS;
-var EXTENT = [-HALF_SIZE, -HALF_SIZE, HALF_SIZE, HALF_SIZE];
-var WORLD_EXTENT = [-180, -85, 180, 85];
-var MAX_SAFE_Y = RADIUS * Math.log(Math.tan(Math.PI / 2));
-var EPSG3857Projection = class extends Projection_default {
-  /**
-   * @param {string} code Code.
-   */
-  constructor(code) {
-    super({
-      code,
-      units: "m",
-      extent: EXTENT,
-      global: true,
-      worldExtent: WORLD_EXTENT,
-      getPointResolution: function(resolution, point) {
-        return resolution / Math.cosh(point[1] / RADIUS);
-      }
-    });
-  }
-};
-var PROJECTIONS = [
-  new EPSG3857Projection("EPSG:3857"),
-  new EPSG3857Projection("EPSG:102100"),
-  new EPSG3857Projection("EPSG:102113"),
-  new EPSG3857Projection("EPSG:900913"),
-  new EPSG3857Projection("http://www.opengis.net/def/crs/EPSG/0/3857"),
-  new EPSG3857Projection("http://www.opengis.net/gml/srs/epsg.xml#3857")
-];
-function fromEPSG4326(input, output, dimension, stride) {
-  const length = input.length;
-  dimension = dimension > 1 ? dimension : 2;
-  stride = stride ?? dimension;
-  if (output === void 0) {
-    if (dimension > 2) {
-      output = input.slice();
-    } else {
-      output = new Array(length);
-    }
-  }
-  for (let i = 0; i < length; i += stride) {
-    output[i] = HALF_SIZE * input[i] / 180;
-    let y = RADIUS * Math.log(Math.tan(Math.PI * (+input[i + 1] + 90) / 360));
-    if (y > MAX_SAFE_Y) {
-      y = MAX_SAFE_Y;
-    } else if (y < -MAX_SAFE_Y) {
-      y = -MAX_SAFE_Y;
-    }
-    output[i + 1] = y;
-  }
-  return output;
-}
-function toEPSG4326(input, output, dimension, stride) {
-  const length = input.length;
-  dimension = dimension > 1 ? dimension : 2;
-  stride = stride ?? dimension;
-  if (output === void 0) {
-    if (dimension > 2) {
-      output = input.slice();
-    } else {
-      output = new Array(length);
-    }
-  }
-  for (let i = 0; i < length; i += stride) {
-    output[i] = 180 * input[i] / HALF_SIZE;
-    output[i + 1] = 360 * Math.atan(Math.exp(input[i + 1] / RADIUS)) / Math.PI - 90;
-  }
-  return output;
-}
-
-// node_modules/ol/proj/epsg4326.js
-var RADIUS2 = 6378137;
-var EXTENT2 = [-180, -90, 180, 90];
-var METERS_PER_UNIT2 = Math.PI * RADIUS2 / 180;
-var EPSG4326Projection = class extends Projection_default {
-  /**
-   * @param {string} code Code.
-   * @param {string} [axisOrientation] Axis orientation.
-   */
-  constructor(code, axisOrientation) {
-    super({
-      code,
-      units: "degrees",
-      extent: EXTENT2,
-      axisOrientation,
-      global: true,
-      metersPerUnit: METERS_PER_UNIT2,
-      worldExtent: EXTENT2
-    });
-  }
-};
-var PROJECTIONS2 = [
-  new EPSG4326Projection("CRS:84"),
-  new EPSG4326Projection("EPSG:4326", "neu"),
-  new EPSG4326Projection("urn:ogc:def:crs:OGC:1.3:CRS84"),
-  new EPSG4326Projection("urn:ogc:def:crs:OGC:2:84"),
-  new EPSG4326Projection("http://www.opengis.net/def/crs/OGC/1.3/CRS84"),
-  new EPSG4326Projection("http://www.opengis.net/gml/srs/epsg.xml#4326", "neu"),
-  new EPSG4326Projection("http://www.opengis.net/def/crs/EPSG/0/4326", "neu")
-];
-
-// node_modules/ol/proj/projections.js
-var cache = {};
-function get(code) {
-  return cache[code] || cache[code.replace(/urn:(x-)?ogc:def:crs:EPSG:(.*:)?(\w+)$/, "EPSG:$3")] || null;
-}
-function add2(code, projection) {
-  cache[code] = projection;
-}
-
-// node_modules/ol/proj/transforms.js
-var transforms = {};
-function add3(source, destination, transformFn) {
-  const sourceCode = source.getCode();
-  const destinationCode = destination.getCode();
-  if (!(sourceCode in transforms)) {
-    transforms[sourceCode] = {};
-  }
-  transforms[sourceCode][destinationCode] = transformFn;
-}
-function get2(sourceCode, destinationCode) {
-  if (sourceCode in transforms && destinationCode in transforms[sourceCode]) {
-    return transforms[sourceCode][destinationCode];
-  }
-  return null;
-}
-
-// node_modules/ol/proj/utm.js
-var K0 = 0.9996;
-var E = 669438e-8;
-var E2 = E * E;
-var E3 = E2 * E;
-var E_P2 = E / (1 - E);
-var SQRT_E = Math.sqrt(1 - E);
-var _E = (1 - SQRT_E) / (1 + SQRT_E);
-var _E2 = _E * _E;
-var _E3 = _E2 * _E;
-var _E4 = _E3 * _E;
-var _E5 = _E4 * _E;
-var M1 = 1 - E / 4 - 3 * E2 / 64 - 5 * E3 / 256;
-var M2 = 3 * E / 8 + 3 * E2 / 32 + 45 * E3 / 1024;
-var M3 = 15 * E2 / 256 + 45 * E3 / 1024;
-var M4 = 35 * E3 / 3072;
-var P2 = 3 / 2 * _E - 27 / 32 * _E3 + 269 / 512 * _E5;
-var P3 = 21 / 16 * _E2 - 55 / 32 * _E4;
-var P4 = 151 / 96 * _E3 - 417 / 128 * _E5;
-var P5 = 1097 / 512 * _E4;
-var R = 6378137;
-function toLonLat(easting, northing, zone) {
-  const x = easting - 5e5;
-  const y = zone.north ? northing : northing - 1e7;
-  const m = y / K0;
-  const mu = m / (R * M1);
-  const pRad = mu + P2 * Math.sin(2 * mu) + P3 * Math.sin(4 * mu) + P4 * Math.sin(6 * mu) + P5 * Math.sin(8 * mu);
-  const pSin = Math.sin(pRad);
-  const pSin2 = pSin * pSin;
-  const pCos = Math.cos(pRad);
-  const pTan = pSin / pCos;
-  const pTan2 = pTan * pTan;
-  const pTan4 = pTan2 * pTan2;
-  const epSin = 1 - E * pSin2;
-  const epSinSqrt = Math.sqrt(1 - E * pSin2);
-  const n = R / epSinSqrt;
-  const r = (1 - E) / epSin;
-  const c = E_P2 * pCos ** 2;
-  const c2 = c * c;
-  const d = x / (n * K0);
-  const d2 = d * d;
-  const d3 = d2 * d;
-  const d4 = d3 * d;
-  const d5 = d4 * d;
-  const d6 = d5 * d;
-  const latitude = pRad - pTan / r * (d2 / 2 - d4 / 24 * (5 + 3 * pTan2 + 10 * c - 4 * c2 - 9 * E_P2)) + d6 / 720 * (61 + 90 * pTan2 + 298 * c + 45 * pTan4 - 252 * E_P2 - 3 * c2);
-  let longitude = (d - d3 / 6 * (1 + 2 * pTan2 + c) + d5 / 120 * (5 - 2 * c + 28 * pTan2 - 3 * c2 + 8 * E_P2 + 24 * pTan4)) / pCos;
-  longitude = wrap(
-    longitude + toRadians(zoneToCentralLongitude(zone.number)),
-    -Math.PI,
-    Math.PI
-  );
-  return [toDegrees(longitude), toDegrees(latitude)];
-}
-var MIN_LATITUDE = -80;
-var MAX_LATITUDE = 84;
-var MIN_LONGITUDE = -180;
-var MAX_LONGITUDE = 180;
-function fromLonLat(longitude, latitude, zone) {
-  longitude = wrap(longitude, MIN_LONGITUDE, MAX_LONGITUDE);
-  if (latitude < MIN_LATITUDE) {
-    latitude = MIN_LATITUDE;
-  } else if (latitude > MAX_LATITUDE) {
-    latitude = MAX_LATITUDE;
-  }
-  const latRad = toRadians(latitude);
-  const latSin = Math.sin(latRad);
-  const latCos = Math.cos(latRad);
-  const latTan = latSin / latCos;
-  const latTan2 = latTan * latTan;
-  const latTan4 = latTan2 * latTan2;
-  const lonRad = toRadians(longitude);
-  const centralLon = zoneToCentralLongitude(zone.number);
-  const centralLonRad = toRadians(centralLon);
-  const n = R / Math.sqrt(1 - E * latSin ** 2);
-  const c = E_P2 * latCos ** 2;
-  const a = latCos * wrap(lonRad - centralLonRad, -Math.PI, Math.PI);
-  const a22 = a * a;
-  const a3 = a22 * a;
-  const a4 = a3 * a;
-  const a5 = a4 * a;
-  const a6 = a5 * a;
-  const m = R * (M1 * latRad - M2 * Math.sin(2 * latRad) + M3 * Math.sin(4 * latRad) - M4 * Math.sin(6 * latRad));
-  const easting = K0 * n * (a + a3 / 6 * (1 - latTan2 + c) + a5 / 120 * (5 - 18 * latTan2 + latTan4 + 72 * c - 58 * E_P2)) + 5e5;
-  let northing = K0 * (m + n * latTan * (a22 / 2 + a4 / 24 * (5 - latTan2 + 9 * c + 4 * c ** 2) + a6 / 720 * (61 - 58 * latTan2 + latTan4 + 600 * c - 330 * E_P2)));
-  if (!zone.north) {
-    northing += 1e7;
-  }
-  return [easting, northing];
-}
-function zoneToCentralLongitude(zone) {
-  return (zone - 1) * 6 - 180 + 3;
-}
-var epsgRegExes = [
-  /^EPSG:(\d+)$/,
-  /^urn:ogc:def:crs:EPSG::(\d+)$/,
-  /^http:\/\/www\.opengis\.net\/def\/crs\/EPSG\/0\/(\d+)$/
-];
-function zoneFromCode(code) {
-  let epsgId = 0;
-  for (const re of epsgRegExes) {
-    const match = code.match(re);
-    if (match) {
-      epsgId = parseInt(match[1]);
-      break;
-    }
-  }
-  if (!epsgId) {
-    return null;
-  }
-  let number = 0;
-  let north = false;
-  if (epsgId > 32700 && epsgId < 32761) {
-    number = epsgId - 32700;
-  } else if (epsgId > 32600 && epsgId < 32661) {
-    north = true;
-    number = epsgId - 32600;
-  }
-  if (!number) {
-    return null;
-  }
-  return { number, north };
-}
-function makeTransformFunction(transformer, zone) {
-  return function(input, output, dimension, stride) {
-    const length = input.length;
-    dimension = dimension > 1 ? dimension : 2;
-    stride = stride ?? dimension;
-    if (!output) {
-      if (dimension > 2) {
-        output = input.slice();
-      } else {
-        output = new Array(length);
-      }
-    }
-    for (let i = 0; i < length; i += stride) {
-      const x = input[i];
-      const y = input[i + 1];
-      const coord = transformer(x, y, zone);
-      output[i] = coord[0];
-      output[i + 1] = coord[1];
-    }
-    return output;
-  };
-}
-function makeProjection(code) {
-  const zone = zoneFromCode(code);
-  if (!zone) {
-    return null;
-  }
-  return new Projection_default({ code, units: "m" });
-}
-function makeTransforms(projection) {
-  const zone = zoneFromCode(projection.getCode());
-  if (!zone) {
-    return null;
-  }
-  return {
-    forward: makeTransformFunction(fromLonLat, zone),
-    inverse: makeTransformFunction(toLonLat, zone)
-  };
-}
-
-// node_modules/ol/proj.js
-var transformFactories = [makeTransforms];
-var projectionFactories = [makeProjection];
-var showCoordinateWarning = true;
-function disableCoordinateWarning(disable2) {
-  const hide = disable2 === void 0 ? true : disable2;
-  showCoordinateWarning = !hide;
-}
-function cloneTransform(input, output) {
-  if (output !== void 0) {
-    for (let i = 0, ii = input.length; i < ii; ++i) {
-      output[i] = input[i];
-    }
-    output = output;
-  } else {
-    output = input.slice();
-  }
-  return output;
-}
-function addProjection(projection) {
-  add2(projection.getCode(), projection);
-  add3(projection, projection, cloneTransform);
-}
-function addProjections(projections) {
-  projections.forEach(addProjection);
-}
-function get3(projectionLike) {
-  if (!(typeof projectionLike === "string")) {
-    return projectionLike;
-  }
-  const projection = get(projectionLike);
-  if (projection) {
-    return projection;
-  }
-  for (const makeProjection2 of projectionFactories) {
-    const projection2 = makeProjection2(projectionLike);
-    if (projection2) {
-      return projection2;
-    }
-  }
-  return null;
-}
-function getPointResolution(projection, resolution, point, units) {
-  projection = get3(projection);
-  let pointResolution;
-  const getter = projection.getPointResolutionFunc();
-  if (getter) {
-    pointResolution = getter(resolution, point);
-    if (units && units !== projection.getUnits()) {
-      const metersPerUnit = projection.getMetersPerUnit();
-      if (metersPerUnit) {
-        pointResolution = pointResolution * metersPerUnit / METERS_PER_UNIT[units];
-      }
-    }
-  } else {
-    const projUnits = projection.getUnits();
-    if (projUnits == "degrees" && !units || units == "degrees") {
-      pointResolution = resolution;
-    } else {
-      const toEPSG43262 = getTransformFromProjections(
-        projection,
-        get3("EPSG:4326")
-      );
-      if (!toEPSG43262 && projUnits !== "degrees") {
-        pointResolution = resolution * projection.getMetersPerUnit();
-      } else {
-        let vertices = [
-          point[0] - resolution / 2,
-          point[1],
-          point[0] + resolution / 2,
-          point[1],
-          point[0],
-          point[1] - resolution / 2,
-          point[0],
-          point[1] + resolution / 2
-        ];
-        vertices = toEPSG43262(vertices, vertices, 2);
-        const width = getDistance(vertices.slice(0, 2), vertices.slice(2, 4));
-        const height = getDistance(vertices.slice(4, 6), vertices.slice(6, 8));
-        pointResolution = (width + height) / 2;
-      }
-      const metersPerUnit = units ? METERS_PER_UNIT[units] : projection.getMetersPerUnit();
-      if (metersPerUnit !== void 0) {
-        pointResolution /= metersPerUnit;
-      }
-    }
-  }
-  return pointResolution;
-}
-function addEquivalentProjections(projections) {
-  addProjections(projections);
-  projections.forEach(function(source) {
-    projections.forEach(function(destination) {
-      if (source !== destination) {
-        add3(source, destination, cloneTransform);
-      }
-    });
-  });
-}
-function addEquivalentTransforms(projections1, projections2, forwardTransform, inverseTransform) {
-  projections1.forEach(function(projection1) {
-    projections2.forEach(function(projection2) {
-      add3(projection1, projection2, forwardTransform);
-      add3(projection2, projection1, inverseTransform);
-    });
-  });
-}
-function createProjection(projection, defaultCode) {
-  if (!projection) {
-    return get3(defaultCode);
-  }
-  if (typeof projection === "string") {
-    return get3(projection);
-  }
-  return (
-    /** @type {Projection} */
-    projection
-  );
-}
-function createTransformFromCoordinateTransform(coordTransform) {
-  return (
-    /**
-     * @param {Array<number>} input Input.
-     * @param {Array<number>} [output] Output.
-     * @param {number} [dimension] Dimensions that should be transformed.
-     * @param {number} [stride] Stride.
-     * @return {Array<number>} Output.
-     */
-    (function(input, output, dimension, stride) {
-      const length = input.length;
-      dimension = dimension !== void 0 ? dimension : 2;
-      stride = stride ?? dimension;
-      output = output !== void 0 ? output : new Array(length);
-      for (let i = 0; i < length; i += stride) {
-        const point = coordTransform(input.slice(i, i + dimension));
-        const pointLength = point.length;
-        for (let j = 0, jj = stride; j < jj; ++j) {
-          output[i + j] = j >= pointLength ? input[i + j] : point[j];
-        }
-      }
-      return output;
-    })
-  );
-}
-function fromLonLat2(coordinate, projection) {
-  disableCoordinateWarning();
-  return transform(
-    coordinate,
-    "EPSG:4326",
-    projection !== void 0 ? projection : "EPSG:3857"
-  );
-}
-function toLonLat2(coordinate, projection) {
-  const lonLat = transform(
-    coordinate,
-    projection !== void 0 ? projection : "EPSG:3857",
-    "EPSG:4326"
-  );
-  const lon = lonLat[0];
-  if (lon < -180 || lon > 180) {
-    lonLat[0] = modulo(lon + 180, 360) - 180;
-  }
-  return lonLat;
-}
-function equivalent(projection1, projection2) {
-  if (projection1 === projection2) {
-    return true;
-  }
-  const equalUnits = projection1.getUnits() === projection2.getUnits();
-  if (projection1.getCode() === projection2.getCode()) {
-    return equalUnits;
-  }
-  const transformFunc = getTransformFromProjections(projection1, projection2);
-  return transformFunc === cloneTransform && equalUnits;
-}
-function getTransformFromProjections(source, destination) {
-  const sourceCode = source.getCode();
-  const destinationCode = destination.getCode();
-  let transformFunc = get2(sourceCode, destinationCode);
-  if (transformFunc) {
-    return transformFunc;
-  }
-  let sourceTransforms = null;
-  let destinationTransforms = null;
-  for (const makeTransforms2 of transformFactories) {
-    if (!sourceTransforms) {
-      sourceTransforms = makeTransforms2(source);
-    }
-    if (!destinationTransforms) {
-      destinationTransforms = makeTransforms2(destination);
-    }
-  }
-  if (!sourceTransforms && !destinationTransforms) {
-    return null;
-  }
-  const intermediateCode = "EPSG:4326";
-  if (!destinationTransforms) {
-    const toDestination = get2(intermediateCode, destinationCode);
-    if (toDestination) {
-      transformFunc = composeTransformFuncs(
-        sourceTransforms.inverse,
-        toDestination
-      );
-    }
-  } else if (!sourceTransforms) {
-    const fromSource = get2(sourceCode, intermediateCode);
-    if (fromSource) {
-      transformFunc = composeTransformFuncs(
-        fromSource,
-        destinationTransforms.forward
-      );
-    }
-  } else {
-    transformFunc = composeTransformFuncs(
-      sourceTransforms.inverse,
-      destinationTransforms.forward
-    );
-  }
-  if (transformFunc) {
-    addProjection(source);
-    addProjection(destination);
-    add3(source, destination, transformFunc);
-  }
-  return transformFunc;
-}
-function composeTransformFuncs(t1, t2) {
-  return function(input, output, dimensions, stride) {
-    output = t1(input, output, dimensions, stride);
-    return t2(output, output, dimensions, stride);
-  };
-}
-function getTransform(source, destination) {
-  const sourceProjection = get3(source);
-  const destinationProjection = get3(destination);
-  return getTransformFromProjections(sourceProjection, destinationProjection);
-}
-function transform(coordinate, source, destination) {
-  const transformFunc = getTransform(source, destination);
-  if (!transformFunc) {
-    const sourceCode = get3(source).getCode();
-    const destinationCode = get3(destination).getCode();
-    throw new Error(
-      `No transform available between ${sourceCode} and ${destinationCode}`
-    );
-  }
-  return transformFunc(coordinate, void 0, coordinate.length);
-}
-function transformExtent(extent, source, destination, stops) {
-  const transformFunc = getTransform(source, destination);
-  return applyTransform(extent, transformFunc, void 0, stops);
-}
-var userProjection = null;
-function getUserProjection() {
-  return userProjection;
-}
-function toUserCoordinate(coordinate, sourceProjection) {
-  if (!userProjection) {
-    return coordinate;
-  }
-  return transform(coordinate, sourceProjection, userProjection);
-}
-function fromUserCoordinate(coordinate, destProjection) {
-  if (!userProjection) {
-    if (showCoordinateWarning && !equals3(coordinate, [0, 0]) && coordinate[0] >= -180 && coordinate[0] <= 180 && coordinate[1] >= -90 && coordinate[1] <= 90) {
-      showCoordinateWarning = false;
-      warn(
-        "Call useGeographic() from ol/proj once to work with [longitude, latitude] coordinates."
-      );
-    }
-    return coordinate;
-  }
-  return transform(coordinate, userProjection, destProjection);
-}
-function toUserExtent(extent, sourceProjection) {
-  if (!userProjection) {
-    return extent;
-  }
-  return transformExtent(extent, sourceProjection, userProjection);
-}
-function fromUserExtent(extent, destProjection) {
-  if (!userProjection) {
-    return extent;
-  }
-  return transformExtent(extent, userProjection, destProjection);
-}
-function toUserResolution(resolution, sourceProjection) {
-  if (!userProjection) {
-    return resolution;
-  }
-  const sourceMetersPerUnit = get3(sourceProjection).getMetersPerUnit();
-  const userMetersPerUnit = userProjection.getMetersPerUnit();
-  return sourceMetersPerUnit && userMetersPerUnit ? resolution * sourceMetersPerUnit / userMetersPerUnit : resolution;
-}
-function addCommon() {
-  addEquivalentProjections(PROJECTIONS);
-  addEquivalentProjections(PROJECTIONS2);
-  addEquivalentTransforms(
-    PROJECTIONS2,
-    PROJECTIONS,
-    fromEPSG4326,
-    toEPSG4326
-  );
-}
-addCommon();
 
 // node_modules/ol/transform.js
 var IDENTITY_TRANSFORM = [1, 0, 0, 1, 0, 0];
@@ -5174,7 +5223,7 @@ var Polygon = class _Polygon extends SimpleGeometry_default {
     if (!this.flatCoordinates) {
       this.flatCoordinates = linearRing2.getFlatCoordinates().slice();
     } else {
-      extend(this.flatCoordinates, linearRing2.getFlatCoordinates());
+      extend2(this.flatCoordinates, linearRing2.getFlatCoordinates());
     }
     this.ends_.push(this.flatCoordinates.length);
     this.changed();
@@ -5469,7 +5518,7 @@ var Polygon = class _Polygon extends SimpleGeometry_default {
 };
 var Polygon_default = Polygon;
 function fromExtent(extent) {
-  if (isEmpty2(extent)) {
+  if (isEmpty(extent)) {
     throw new Error("Cannot create polygon from empty extent");
   }
   const minX = extent[0];
@@ -6540,7 +6589,7 @@ var View = class extends Object_default {
     );
     if (Array.isArray(geometryOrExtent)) {
       assert(
-        !isEmpty2(geometryOrExtent),
+        !isEmpty(geometryOrExtent),
         "Cannot fit empty extent provided as `geometry`"
       );
       const extent = fromUserExtent(geometryOrExtent, this.getProjection());
@@ -6896,7 +6945,7 @@ var View = class extends Object_default {
       this.set(ViewProperty_default.RESOLUTION, newResolution);
       this.set("zoom", this.getZoom(), true);
     }
-    if (!newCenter || !this.get(ViewProperty_default.CENTER) || !equals3(this.get(ViewProperty_default.CENTER), newCenter)) {
+    if (!newCenter || !this.get(ViewProperty_default.CENTER) || !equals2(this.get(ViewProperty_default.CENTER), newCenter)) {
       this.set(ViewProperty_default.CENTER, newCenter);
     }
     if (this.getAnimating() && !doNotCancelAnims) {
@@ -6944,7 +6993,7 @@ var View = class extends Object_default {
     }
     anchor = anchor || (duration === 0 ? this.cancelAnchor_ : void 0);
     this.cancelAnchor_ = void 0;
-    if (this.getResolution() !== newResolution || this.getRotation() !== newRotation || !this.getCenterInternal() || !equals3(this.getCenterInternal(), newCenter)) {
+    if (this.getResolution() !== newResolution || this.getRotation() !== newRotation || !this.getCenterInternal() || !equals2(this.getCenterInternal(), newCenter)) {
       if (this.getAnimating()) {
         this.cancelAnimations();
       }
@@ -7173,7 +7222,7 @@ function createRotationConstraint(options) {
 }
 function isNoopAnimation(animation) {
   if (animation.sourceCenter && animation.targetCenter) {
-    if (!equals3(animation.sourceCenter, animation.targetCenter)) {
+    if (!equals2(animation.sourceCenter, animation.targetCenter)) {
       return false;
     }
   }
@@ -7604,7 +7653,7 @@ var Attribution = class extends Control_default {
       this.element.style.display = visible ? "" : "none";
       this.renderedVisible_ = visible;
     }
-    if (equals(attributions, this.renderedAttributions_)) {
+    if (equals3(attributions, this.renderedAttributions_)) {
       return;
     }
     removeChildren(this.ulElement_);
@@ -15312,7 +15361,7 @@ function buildStyle(flatStyle, context) {
   const evaluateText = buildText(flatStyle, context);
   const evaluateImage = buildImage(flatStyle, context);
   const evaluateZIndex = numberEvaluator(flatStyle, "z-index", context);
-  if (!evaluateFill && !evaluateStroke && !evaluateText && !evaluateImage && !isEmpty(flatStyle)) {
+  if (!evaluateFill && !evaluateStroke && !evaluateText && !evaluateImage && !isEmpty2(flatStyle)) {
     throw new Error(
       "No fill, stroke, point, or text symbolizer properties in style: " + JSON.stringify(flatStyle)
     );
@@ -17817,7 +17866,7 @@ var Map2 = class extends Object_default {
         frameState.postRenderFunctions
       );
       if (previousFrameState) {
-        const moveStart = !this.previousExtent_ || !isEmpty2(this.previousExtent_) && !equals2(frameState.extent, this.previousExtent_);
+        const moveStart = !this.previousExtent_ || !isEmpty(this.previousExtent_) && !equals(frameState.extent, this.previousExtent_);
         if (moveStart) {
           this.dispatchEvent(
             new MapEvent_default(MapEventType_default.MOVESTART, this, previousFrameState)
@@ -17825,7 +17874,7 @@ var Map2 = class extends Object_default {
           this.previousExtent_ = createOrUpdateEmpty(this.previousExtent_);
         }
       }
-      const idle = this.previousExtent_ && !frameState.viewHints[ViewHint_default.ANIMATING] && !frameState.viewHints[ViewHint_default.INTERACTING] && !equals2(frameState.extent, this.previousExtent_);
+      const idle = this.previousExtent_ && !frameState.viewHints[ViewHint_default.ANIMATING] && !frameState.viewHints[ViewHint_default.INTERACTING] && !equals(frameState.extent, this.previousExtent_);
       if (idle) {
         this.dispatchEvent(
           new MapEvent_default(MapEventType_default.MOVEEND, this, frameState)
@@ -17926,7 +17975,7 @@ var Map2 = class extends Object_default {
       }
     }
     const oldSize = this.getSize();
-    if (size && (!oldSize || !equals(size, oldSize))) {
+    if (size && (!oldSize || !equals3(size, oldSize))) {
       this.updateViewportSize_(size);
       this.setSize(size);
     }
@@ -18979,7 +19028,7 @@ function render(width, height, pixelRatio, sourceResolution, sourceExtent, targe
   context.globalCompositeOperation = "lighter";
   const sourceDataExtent = createEmpty();
   sources.forEach(function(src, i, arr) {
-    extend2(sourceDataExtent, src.extent);
+    extend(sourceDataExtent, src.extent);
   });
   let stitchContext;
   const stitchScale = pixelRatio / sourceResolution;
@@ -20343,7 +20392,7 @@ var CanvasLayerRenderer = class extends Layer_default2 {
     }
     const layerClassName = this.getLayer().getClassName();
     let container, context;
-    if (target && target.className === layerClassName && (!backgroundColor || target && target.style.backgroundColor && equals(
+    if (target && target.className === layerClassName && (!backgroundColor || target && target.style.backgroundColor && equals3(
       asArray(target.style.backgroundColor),
       asArray(backgroundColor)
     ))) {
@@ -21164,7 +21213,7 @@ var CanvasTileLayerRenderer = class extends Layer_default3 {
       this.drawTile(tile, frameState, x, y, w, h, gutter, true, void 0);
     }
     this.renderedResolution = tileResolution;
-    this.extentChanged = !this.renderedExtent_ || !equals2(this.renderedExtent_, canvasExtent);
+    this.extentChanged = !this.renderedExtent_ || !equals(this.renderedExtent_, canvasExtent);
     this.renderedExtent_ = canvasExtent;
     this.renderedPixelRatio = pixelRatio;
     this.postRender(this.context, frameState);
@@ -23869,31 +23918,6 @@ var Translate = class extends Pointer_default {
 };
 var Translate_default = Translate;
 
-// js/coords.js
-function project(lat, lon) {
-  return fromLonLat2([lon, lat]);
-}
-function unproject(coordinate) {
-  const [lon, lat] = toLonLat2(coordinate);
-  return { lat: round(lat), lon: round(lon) };
-}
-function extentToBbox(extent) {
-  const [minX, minY, maxX, maxY] = extent;
-  const southWest = unproject([minX, minY]);
-  const northEast = unproject([maxX, maxY]);
-  const bbox = {
-    south: southWest.lat,
-    west: southWest.lon,
-    north: northEast.lat,
-    east: northEast.lon
-  };
-  if (bbox.west > bbox.east) bbox.crosses_antimeridian = true;
-  return bbox;
-}
-function round(value) {
-  return Math.round(value * 1e7) / 1e7;
-}
-
 // node_modules/ol/render/VectorContext.js
 var VectorContext = class {
   /**
@@ -24524,7 +24548,7 @@ var CanvasBuilder = class extends VectorContext_default {
     const lineWidth = state.lineWidth;
     const miterLimit = state.miterLimit;
     const strokeOffset = state.strokeOffset;
-    if (state.currentStrokeStyle != strokeStyle || state.currentLineCap != lineCap || lineDash != state.currentLineDash && !equals(state.currentLineDash, lineDash) || state.currentLineDashOffset != lineDashOffset || state.currentLineJoin != lineJoin || state.currentLineWidth != lineWidth || state.currentMiterLimit != miterLimit || state.currentStrokeOffset != strokeOffset) {
+    if (state.currentStrokeStyle != strokeStyle || state.currentLineCap != lineCap || lineDash != state.currentLineDash && !equals3(state.currentLineDash, lineDash) || state.currentLineDashOffset != lineDashOffset || state.currentLineJoin != lineJoin || state.currentLineWidth != lineWidth || state.currentMiterLimit != miterLimit || state.currentStrokeOffset != strokeOffset) {
       applyStroke.call(this, state);
       state.currentStrokeStyle = strokeStyle;
       state.currentLineCap = lineCap;
@@ -26626,7 +26650,7 @@ var Executor = class {
   execute_(context, scaledCanvasSize, transform2, instructions, snapToPixel, featureCallback, hitExtent, declutterTree) {
     const zIndexContext = this.zIndexContext_;
     let pixelCoordinates;
-    if (this.pixelCoordinates_ && equals(transform2, this.renderedTransform_)) {
+    if (this.pixelCoordinates_ && equals3(transform2, this.renderedTransform_)) {
       pixelCoordinates = this.pixelCoordinates_;
     } else {
       if (!this.pixelCoordinates_) {
@@ -27536,7 +27560,7 @@ var ExecutorGroup = class {
    * @return {boolean} Is empty.
    */
   isEmpty() {
-    return isEmpty(this.executorsByZIndex_);
+    return isEmpty2(this.executorsByZIndex_);
   }
   /**
    * @param {CanvasRenderingContext2D|OffscreenCanvasRenderingContext2D} targetContext Context.
@@ -28372,7 +28396,7 @@ var CanvasImmediateRenderer = class extends VectorContext_default {
         contextStrokeState.lineCap = strokeState.lineCap;
         context.lineCap = strokeState.lineCap;
       }
-      if (!equals(contextStrokeState.lineDash, strokeState.lineDash)) {
+      if (!equals3(contextStrokeState.lineDash, strokeState.lineDash)) {
         context.setLineDash(
           contextStrokeState.lineDash = strokeState.lineDash
         );
@@ -29367,7 +29391,7 @@ var CanvasVectorLayerRenderer = class extends Layer_default3 {
     this.extendX_ = false;
     if (canWrapX) {
       const sourceExtent = vectorSource.getExtent();
-      if (sourceExtent && !isEmpty2(sourceExtent)) {
+      if (sourceExtent && !isEmpty(sourceExtent)) {
         this.extendX_ = sourceExtent[0] < projectionExtent[0] || sourceExtent[2] > projectionExtent[2];
       }
     }
@@ -29401,7 +29425,7 @@ var CanvasVectorLayerRenderer = class extends Layer_default3 {
       }
     }
     if (this.ready && this.renderedResolution_ == resolution && this.renderedPixelRatio_ === pixelRatio && this.renderedRevision_ == vectorLayerRevision && this.renderedRenderOrder_ == vectorLayerRenderOrder && this.renderedFrameDeclutter_ === !!frameState.declutter && containsExtent(this.wrappedRenderedExtent_, extent)) {
-      if (!equals(this.renderedExtent_, renderedExtent)) {
+      if (!equals3(this.renderedExtent_, renderedExtent)) {
         this.hitDetectionImageData_ = null;
         this.renderedExtent_ = renderedExtent;
       }
@@ -29814,7 +29838,7 @@ var LineString = class _LineString extends SimpleGeometry_default {
    * @api
    */
   appendCoordinate(coordinate) {
-    extend(this.flatCoordinates, coordinate);
+    extend2(this.flatCoordinates, coordinate);
     this.changed();
   }
   /**
@@ -30084,7 +30108,7 @@ var MultiLineString = class _MultiLineString extends SimpleGeometry_default {
       const ends2 = [];
       for (let i = 0, ii = lineStrings.length; i < ii; ++i) {
         const lineString = lineStrings[i];
-        extend(flatCoordinates, lineString.getFlatCoordinates());
+        extend2(flatCoordinates, lineString.getFlatCoordinates());
         ends2.push(flatCoordinates.length);
       }
       const layout2 = lineStrings.length === 0 ? this.getLayout() : lineStrings[0].getLayout();
@@ -30098,7 +30122,7 @@ var MultiLineString = class _MultiLineString extends SimpleGeometry_default {
    * @api
    */
   appendLineString(lineString) {
-    extend(this.flatCoordinates, lineString.getFlatCoordinates().slice());
+    extend2(this.flatCoordinates, lineString.getFlatCoordinates().slice());
     this.ends_.push(this.flatCoordinates.length);
     this.changed();
   }
@@ -30290,7 +30314,7 @@ var MultiLineString = class _MultiLineString extends SimpleGeometry_default {
         stride,
         0.5
       );
-      extend(midpoints, midpoint);
+      extend2(midpoints, midpoint);
       offset = end;
     }
     return midpoints;
@@ -30395,7 +30419,7 @@ var MultiPoint = class _MultiPoint extends SimpleGeometry_default {
    * @api
    */
   appendPoint(point) {
-    extend(this.flatCoordinates, point.getFlatCoordinates());
+    extend2(this.flatCoordinates, point.getFlatCoordinates());
     this.changed();
   }
   /**
@@ -30592,7 +30616,7 @@ var MultiPolygon = class _MultiPolygon extends SimpleGeometry_default {
         for (let j = 0, jj = ends.length; j < jj; ++j) {
           ends[j] += offset;
         }
-        extend(flatCoordinates, polygon.getFlatCoordinates());
+        extend2(flatCoordinates, polygon.getFlatCoordinates());
         thisEndss.push(ends);
       }
       layout = polygons.length === 0 ? this.getLayout() : polygons[0].getLayout();
@@ -30627,7 +30651,7 @@ var MultiPolygon = class _MultiPolygon extends SimpleGeometry_default {
       this.endss_.push();
     } else {
       const offset = this.flatCoordinates.length;
-      extend(this.flatCoordinates, polygon.getFlatCoordinates());
+      extend2(this.flatCoordinates, polygon.getFlatCoordinates());
       ends = polygon.getEnds().slice();
       for (let i = 0, ii = ends.length; i < ii; ++i) {
         ends[i] += offset;
@@ -31082,7 +31106,7 @@ var RenderFeature = class _RenderFeature {
           this.stride_,
           0.5
         );
-        extend(this.flatMidpoints_, midpoint);
+        extend2(this.flatMidpoints_, midpoint);
         offset = end;
       }
     }
@@ -31365,7 +31389,7 @@ var RBush2 = class {
   update(extent, value) {
     const item = this.items_[getUid(value)];
     const bbox = [item.minX, item.minY, item.maxX, item.maxY];
-    if (!equals2(bbox, extent)) {
+    if (!equals(bbox, extent)) {
       this.remove(value);
       this.insert(extent, value);
     }
@@ -31439,7 +31463,7 @@ var RBush2 = class {
    * @return {boolean} Is empty.
    */
   isEmpty() {
-    return isEmpty(this.items_);
+    return isEmpty2(this.items_);
   }
   /**
    * Remove all values from the RBush.
@@ -31951,8 +31975,8 @@ var VectorSource = class extends Source_default {
       features = this.featuresCollection_.getArray().slice(0);
     } else if (this.featuresRtree_) {
       features = this.featuresRtree_.getAll();
-      if (!isEmpty(this.nullGeometryFeatures_)) {
-        extend(features, Object.values(this.nullGeometryFeatures_));
+      if (!isEmpty2(this.nullGeometryFeatures_)) {
+        extend2(features, Object.values(this.nullGeometryFeatures_));
       }
     }
     return features;
@@ -32179,7 +32203,7 @@ var VectorSource = class extends Source_default {
    */
   isEmpty() {
     if (this.featuresRtree_) {
-      return this.featuresRtree_.isEmpty() && isEmpty(this.nullGeometryFeatures_);
+      return this.featuresRtree_.isEmpty() && isEmpty2(this.nullGeometryFeatures_);
     }
     if (this.featuresCollection_) {
       return this.featuresCollection_.getLength() === 0;
@@ -32655,7 +32679,7 @@ var GeometryCollection = class _GeometryCollection extends Geometry_default {
     createOrUpdateEmpty(extent);
     const geometries = this.geometries_;
     for (let i = 0, ii = geometries.length; i < ii; ++i) {
-      extend2(extent, geometries[i].getExtent());
+      extend(extent, geometries[i].getExtent());
     }
     return extent;
   }
@@ -33465,7 +33489,7 @@ var GeoJSON = class extends JSONFeature_default {
       object.geometry = writeGeometry(geometry, options);
       delete properties[feature.getGeometryName()];
     }
-    if (!isEmpty(properties)) {
+    if (!isEmpty2(properties)) {
       object.properties = properties;
     }
     return object;
@@ -34050,7 +34074,7 @@ var RoverMap = class {
     if (extents.length === 0) return null;
     if (extents.length === 1) return extents[0];
     const union = createEmpty();
-    extents.forEach((extent) => extend2(union, extent));
+    extents.forEach((extent) => extend(union, extent));
     return union;
   }
   beQuiet(duration) {
@@ -34130,10 +34154,12 @@ var RoverMap = class {
       if (this.config.interactive === false) return;
       if (event.dragging) return this.hideTooltip();
       const { marker, markerFeature, shape } = this.featureAt(event.pixel);
-      const clickableShape = shape && (this.config.events || {}).shapeClick;
+      const clickableShape = shape && this.wants("shapeClick");
       this.map.getTargetElement().style.cursor = marker || clickableShape ? "pointer" : "";
       if (marker) {
         this.showTooltip(marker, markerFeature.getGeometry().getCoordinates());
+      } else if (shape && (shape.tooltip || shape.label)) {
+        this.showTooltip(shape, event.coordinate);
       } else {
         this.hideTooltip();
       }
@@ -34143,7 +34169,6 @@ var RoverMap = class {
       if (this.config.interactive === false) return;
       const { marker, shape } = this.featureAt(event.pixel);
       const { lat, lon } = unproject(event.coordinate);
-      const events2 = this.config.events || {};
       if (marker) {
         this.emit("markerClick", {
           id: marker.id,
@@ -34151,7 +34176,7 @@ var RoverMap = class {
           lon: marker.lon,
           data: marker.data ?? null
         });
-      } else if (shape && events2.shapeClick) {
+      } else if (shape && this.wants("shapeClick")) {
         this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null });
       } else {
         this.emit("mapClick", { lat, lon });
@@ -34207,6 +34232,9 @@ var RoverMap = class {
     this.listeners[name] = this.listeners[name] || [];
     this.listeners[name].push(fn);
   }
+  wants(name) {
+    return wantsEvent(this.config, this.listeners, name);
+  }
   // -- lifecycle ------------------------------------------------------------
   observeResize() {
     if (typeof ResizeObserver === "undefined") return;
@@ -34249,6 +34277,10 @@ function buildInteractions(config) {
 function resolveRetina(url) {
   const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
   return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "");
+}
+function wantsEvent(config, listeners, name) {
+  const subscribers = (listeners || {})[name];
+  return Boolean(((config || {}).events || {})[name]) || Boolean(subscribers && subscribers.length);
 }
 function shouldFit({ hasFitted, derivedCenter, fit }) {
   if (!hasFitted && derivedCenter) return true;

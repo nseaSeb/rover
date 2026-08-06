@@ -1,7 +1,13 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
-import { fitMaxZoom, normalizeConfig, shouldFit, shouldRecenter } from "../js/rover_map.js"
+import {
+  fitMaxZoom,
+  normalizeConfig,
+  shouldFit,
+  shouldRecenter,
+  wantsEvent,
+} from "../js/rover_map.js"
 
 const config = (overrides) => normalizeConfig({ center: [45.75, 4.85], zoom: 12, ...overrides })
 
@@ -140,5 +146,30 @@ describe("the union of both layers", () => {
     assert.ok(union[0] < shapes.extent[0], "the union did not extend west to the marker")
     assert.ok(union[3] > shapes.extent[3], "the union did not extend north to the marker")
     assert.ok(union[2] >= shapes.extent[2], "the union lost the parcel's eastern edge")
+  })
+})
+
+describe("wantsEvent", () => {
+  it("is true when the server wired a handler", () => {
+    assert.equal(wantsEvent({ events: { shapeClick: "pick" } }, {}, "shapeClick"), true)
+  })
+
+  it("is true when only a client subscriber cares", () => {
+    // A shape popup needs no server. Keying the click on the configured event alone
+    // meant a <:shape_popup> could never open.
+    assert.equal(wantsEvent({}, { shapeClick: [() => {}] }, "shapeClick"), true)
+  })
+
+  // The regression this exists for: shapes carry a default fill, so their whole
+  // interior is hit-testable. A decorative outline claiming the click swallows every
+  // on_map_click inside it — a click-to-place-a-marker map silently stops working.
+  it("is false for scenery: no handler, no popup", () => {
+    assert.equal(wantsEvent({ events: {} }, {}, "shapeClick"), false)
+    assert.equal(wantsEvent({ events: { markerClick: "x" } }, {}, "shapeClick"), false)
+    assert.equal(wantsEvent({}, { shapeClick: [] }, "shapeClick"), false)
+  })
+
+  it("survives a missing config or listener map", () => {
+    assert.equal(wantsEvent(null, null, "shapeClick"), false)
   })
 })

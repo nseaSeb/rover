@@ -24,6 +24,11 @@ defmodule Rover.ShapeTest do
       assert shape.color == "#16a34a"
     end
 
+    test "carries a tooltip, falling back to the label on hover in the client" do
+      assert Shape.new!(%{id: 1, geometry: @polygon, tooltip: "Parcel AB"}).tooltip == "Parcel AB"
+      assert Shape.new!(%{id: 1, geometry: @polygon}).tooltip == nil
+    end
+
     test "recognises :geom and :geojson as geometry fields" do
       assert Shape.new!(%{id: 1, geom: @polygon}).geometry == @polygon
       assert Shape.new!(%{id: 1, geojson: @polygon}).geometry == @polygon

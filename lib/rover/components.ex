@@ -215,6 +215,23 @@ defmodule Rover.Components do
     rather than popups is the answer to hundreds.
     """
 
+  slot :shape_popup,
+    doc: """
+    The same, for shapes. Receives the `Rover.Shape` via `:let`, and opens where the
+    geometry was clicked rather than at its centroid — pointing at the middle of a
+    long route or a large parcel would point at nothing the user did.
+
+        <.map id="parcels" shapes={@parcels}>
+          <:shape_popup :let={shape}>
+            <h3>{shape.label}</h3>
+            <p>{shape.data && shape.data.area} ha</p>
+          </:shape_popup>
+        </.map>
+
+    Works with or without `on_shape_click`: the click is claimed when either the
+    server or a popup wants it, and by neither when the shape is scenery.
+    """
+
   @spec map(map()) :: Phoenix.LiveView.Rendered.t()
   def map(assigns) do
     markers = Marker.new_all!(assigns.markers, assigns.marker_fields)
@@ -226,6 +243,7 @@ defmodule Rover.Components do
       |> assign(:shapes_json, encode_shapes(shapes))
       |> assign(:config_json, encode_config(assigns, markers, shapes))
       |> assign(:popup_markers, if(assigns.popup == [], do: [], else: markers))
+      |> assign(:popup_shapes, if(assigns.shape_popup == [], do: [], else: shapes))
 
     ~H"""
     <div
@@ -239,14 +257,25 @@ defmodule Rover.Components do
       {height_style(@height)}
     >
       <div id={"#{@id}-canvas"} class="rover-map__canvas" phx-update="ignore"></div>
+      <%!-- Keys are namespaced: a marker and a shape may carry the same id, and two
+           nodes answering to one selector means one of them silently wins. --%>
       <div
         :for={marker <- @popup_markers}
-        id={"#{@id}-popup-#{marker.id}"}
+        id={"#{@id}-popup-marker-#{marker.id}"}
         class="rover-popup"
-        data-rover-popup-for={marker.id}
+        data-rover-popup-for={"marker:#{marker.id}"}
         hidden
       >
         {render_slot(@popup, marker)}
+      </div>
+      <div
+        :for={shape <- @popup_shapes}
+        id={"#{@id}-popup-shape-#{shape.id}"}
+        class="rover-popup"
+        data-rover-popup-for={"shape:#{shape.id}"}
+        hidden
+      >
+        {render_slot(@shape_popup, shape)}
       </div>
     </div>
     """
