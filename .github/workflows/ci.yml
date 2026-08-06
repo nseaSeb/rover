@@ -3,8 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every pull request, whatever it targets. Restricting this to `main` meant a
+  # stacked pull request — one based on another feature branch — silently got no CI
+  # at all, which is worse than a red one.
   pull_request:
-    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
