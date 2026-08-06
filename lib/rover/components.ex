@@ -178,7 +178,19 @@ defmodule Rover.Components do
     default: nil,
     doc: "`@myself` to route events to the enclosing `Phoenix.LiveComponent`."
 
-  attr :height, :string, default: "24rem", doc: "CSS height. Set to nil to style it yourself."
+  # `:any`, not `:string`: the documented escape hatch is `height={nil}`, and a
+  # literal nil against a `:string` attr is a compile warning — an error in any
+  # project building with --warnings-as-errors. `:class` is `:any` for the same
+  # reason.
+  attr :height, :any,
+    default: "24rem",
+    doc: """
+    CSS height, applied as an inline style. Pass `nil` to emit no style at all and
+    size the map from your own CSS — a Tailwind class, a flex parent, a container
+    query. Note that an inline style beats a class, so `class="h-96"` needs
+    `height={nil}` to take effect.
+    """
+
   attr :class, :any, default: nil, doc: "Extra classes on the map container."
   attr :rest, :global
 
@@ -219,12 +231,12 @@ defmodule Rover.Components do
     <div
       id={@id}
       class={classes(@class)}
-      style={@height && "height: #{@height};"}
       phx-hook="Rover"
       data-rover={@config_json}
       data-rover-markers={@markers_json}
       data-rover-shapes={@shapes_json}
       {@rest}
+      {height_style(@height)}
     >
       <div id={"#{@id}-canvas"} class="rover-map__canvas" phx-update="ignore"></div>
       <div
@@ -239,6 +251,14 @@ defmodule Rover.Components do
     </div>
     """
   end
+
+  # As a dynamic attribute rather than `style={...}`: HEEx renders a nil value as
+  # `style=""`, and an empty inline style still wins over a class in the cascade,
+  # so `height={nil}` has to leave the attribute out altogether. Placed after
+  # `{@rest}` because HEEx keeps the first of two identical attribute names, and a
+  # caller who passes their own `style` should win.
+  defp height_style(nil), do: %{}
+  defp height_style(height), do: %{"style" => "height: #{height};"}
 
   # A list containing `nil` renders as a trailing space, which then shows up in
   # every consumer's DOM. Filter before handing it to HEEx.

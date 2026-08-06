@@ -3,7 +3,7 @@ defmodule Rover.Geo do
   Coordinate handling for Rover.
 
   Rover speaks **`{latitude, longitude}`** everywhere — the order humans use when
-  they read a coordinate out loud, and the order Leaflet uses. OpenLayers works
+  they read a coordinate out loud. OpenLayers works
   internally in `[x, y]` (i.e. `[longitude, latitude]`) projected to Web
   Mercator; that flip happens once, in the JavaScript runtime, and never leaks
   into your application code.

@@ -63,6 +63,24 @@ defmodule Rover.ComponentsTest do
       assert attribute(document, "class") == "rover-map shadow-lg"
     end
 
+    test "height={nil} emits no style, leaving the size to the caller's CSS" do
+      # The documented escape hatch. It has to be a legal literal: an inline style
+      # beats a Tailwind class, so a map sized by `class` or by a flex parent needs
+      # this, and `attr :height, :string` made it a compile warning.
+      document = render_map(height: nil, class: "h-96")
+
+      # Absent, not empty: `style=""` is still an inline style, and an inline style
+      # beats a class even when it says nothing.
+      assert attribute(document, "style") == nil
+      assert attribute(document, "class") == "rover-map h-96"
+    end
+
+    test "a caller's own style wins over the height" do
+      document = render_map(height: "24rem", style: "height: 40vh; border: 0;")
+
+      assert attribute(document, "style") == "height: 40vh; border: 0;"
+    end
+
     test "emits no stray whitespace when no class was given" do
       assert attribute(render_map([]), "class") == "rover-map"
     end
