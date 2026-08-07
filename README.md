@@ -205,8 +205,9 @@ Two consequences worth knowing:
 * **A grouped marker has no popup.** Its pin is drawn at the group's centre, so a
   popup would point at empty space. An open popup closes when its marker joins a
   group; it does not reopen by itself when you zoom back in.
-* **`:draggable` markers cannot be dragged while grouped**, because what is under
-  the pointer is a group rather than a pin.
+* **`:draggable` markers cannot be dragged at all while `cluster` is set**, even
+  standing alone — every marker is wrapped by a cluster feature once clustering is
+  on, and dragging that would move the wrapper rather than the marker.
 
 ## Heatmaps
 

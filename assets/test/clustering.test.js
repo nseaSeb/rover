@@ -51,6 +51,35 @@ describe("MarkerLayer clustering", () => {
     assert.equal(layer.entries.size, 1)
   })
 
+  it("reclusters once per reconcile, not once per feature it touches", () => {
+    // Cluster.setSource subscribes to the wrapped source's `change` event, and
+    // every setCoordinates/setStyle call on a feature already in that source
+    // fires one. Left unguarded, reconciling N moved markers means N full
+    // clear-and-recluster passes over the *entire* marker set — the exact cost
+    // "reconciliation is untouched by clustering" claims does not exist.
+    const layer = new MarkerLayer()
+    layer.setClustering({ distance: 40 })
+    layer.reconcile([at(1, 45.75, 4.85), at(2, 45.76, 4.86), at(3, 45.77, 4.87)])
+
+    // refresh() is reached via a `change` listener bound in Cluster's constructor
+    // (`this.boundRefresh_ = this.refresh.bind(this)`), so replacing
+    // `clusterSource.refresh` would not intercept it — that binding closed over
+    // the original method. `cluster()`, the recompute step `refresh()` calls via
+    // `this.cluster()`, is looked up dynamically and does get intercepted. It
+    // no-ops immediately when `this.source` is unset, so only count passes that
+    // actually had features to walk.
+    let reclusters = 0
+    const originalCluster = layer.clusterSource.cluster.bind(layer.clusterSource)
+    layer.clusterSource.cluster = (...args) => {
+      if (layer.clusterSource.source) reclusters += 1
+      return originalCluster(...args)
+    }
+
+    layer.reconcile([at(1, 46.0, 5.0), at(2, 46.01, 5.01), at(3, 46.02, 5.02)])
+
+    assert.equal(reclusters, 1, `expected one recluster pass for the batch, got ${reclusters}`)
+  })
+
   it("swaps the layer source rather than the markers", () => {
     const layer = new MarkerLayer()
     layer.reconcile([at(1, 45.75, 4.85)])

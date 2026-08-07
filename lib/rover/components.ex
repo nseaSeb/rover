@@ -160,8 +160,10 @@ defmodule Rover.Components do
 
     Two consequences worth knowing: a marker that has been grouped has no popup —
     the popup would point at the group's centre rather than at the marker — and
-    `:draggable` markers cannot be dragged while grouped, because what is under the
-    pointer is a group rather than a pin.
+    `:draggable` markers cannot be dragged at all while `:cluster` is set, even
+    standing alone. Every marker is wrapped by a cluster feature once clustering
+    is on, a lone one included, and dragging that would move the wrapper rather
+    than the marker.
     """
 
   attr :on_cluster_click, :string,

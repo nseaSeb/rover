@@ -39324,6 +39324,8 @@ var MarkerLayer = class {
   reconcile(markers) {
     const seen = /* @__PURE__ */ new Set();
     const added = [];
+    const clusterSource = this.clusterSource;
+    if (clusterSource) clusterSource.setSource(null);
     for (const marker of markers) {
       const key = String(marker.id);
       seen.add(key);
@@ -39352,6 +39354,7 @@ var MarkerLayer = class {
       }
     }
     if (added.length > 0) this.source.addFeatures(added);
+    if (clusterSource) clusterSource.setSource(this.source);
   }
   build(key, marker, geometryHash, appearanceHash) {
     const feature = new Feature_default({ geometry: new Point_default(project(marker.lat, marker.lon)) });

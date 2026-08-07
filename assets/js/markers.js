@@ -126,6 +126,16 @@ export class MarkerLayer {
     const seen = new Set()
     const added = []
 
+    // A feature already in `this.source` firing a `change` event is exactly what
+    // `this.clusterSource` listens for to recluster — so a batch that moves or
+    // restyles several markers would otherwise pay for one full clear-and-recluster
+    // pass over the whole set per feature touched, not once for the batch.
+    // Detaching leaves this.source's own reconciliation untouched (it does not
+    // listen to itself) and reattaching at the end triggers exactly one refresh,
+    // synchronously, before the browser has any chance to paint the gap.
+    const clusterSource = this.clusterSource
+    if (clusterSource) clusterSource.setSource(null)
+
     for (const marker of markers) {
       const key = String(marker.id)
       seen.add(key)
@@ -166,6 +176,10 @@ export class MarkerLayer {
     // One batched insert: OpenLayers reindexes its R-tree once instead of once
     // per feature.
     if (added.length > 0) this.source.addFeatures(added)
+
+    // Reattaching runs exactly one refresh, covering every add, remove, move and
+    // restyle from this pass in a single clear-and-recluster.
+    if (clusterSource) clusterSource.setSource(this.source)
   }
 
   build(key, marker, geometryHash, appearanceHash) {
