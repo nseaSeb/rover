@@ -5,6 +5,8 @@
 [![Hex.pm](https://img.shields.io/hexpm/v/rover.svg)](https://hex.pm/packages/rover)
 [![Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/rover)
 
+![Markers with emoji and labels, a parcel outline, a route, and IGN plan tiles, all rendered by the playground](https://raw.githubusercontent.com/nseaSeb/rover/main/.github/readme/playground.png)
+
 OpenLayers is a serious mapping engine. It is also ten concepts deep before you
 can put three pins on a map: `Map`, `View`, `Layer`, `Source`, `Feature`,
 `Geometry`, `Style`, `Overlay`, `Interaction`, `Control`.
