@@ -173,3 +173,18 @@ describe("wantsEvent", () => {
     assert.equal(wantsEvent(null, null, "shapeClick"), false)
   })
 })
+
+describe("fitMaxZoom as the drill-in ceiling", () => {
+  // `View#fit` treats maxZoom as a resolution floor, so it clamps in both
+  // directions. Passing the marker-only cap of 16 while sitting at zoom 18 zooms
+  // *out* to 16, where a group's members are closer together in pixels than before
+  // and still one group — the dead end zoom_on_click exists to prevent.
+  it("uses the basemap ceiling, not the marker cap", () => {
+    assert.equal(fitMaxZoom({ tiles: { maxZoom: 19 } }, true), 19)
+    assert.notEqual(fitMaxZoom({ tiles: { maxZoom: 19 } }, true), 16)
+  })
+
+  it("still respects a lower basemap", () => {
+    assert.equal(fitMaxZoom({ tiles: { maxZoom: 17 } }, true), 17)
+  })
+})

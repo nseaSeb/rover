@@ -1,4 +1,5 @@
 import Style from "ol/style/Style.js"
+import Circle from "ol/style/Circle.js"
 import Icon from "ol/style/Icon.js"
 import Text from "ol/style/Text.js"
 import Fill from "ol/style/Fill.js"
@@ -101,4 +102,54 @@ function pinDataUri(color) {
 </svg>`
 
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+// Cluster circles are keyed by their count, so a map with two hundred groups of
+// three allocates one style, not two hundred.
+const clusterCache = new Map()
+
+export const CLUSTER_COLOR = "#2563eb"
+
+/**
+ * A counted circle standing in for several markers.
+ *
+ * The radius grows with the logarithm of the count: linear growth makes a group of
+ * four hundred swallow the map, and a fixed radius makes twelve and twelve hundred
+ * look alike.
+ */
+export function clusterStyle(count) {
+  let style = clusterCache.get(count)
+
+  if (!style) {
+    const radius = Math.min(28, 12 + Math.log2(count) * 3)
+
+    style = new Style({
+      image: new Circle({
+        radius,
+        fill: new Fill({ color: withAlpha(CLUSTER_COLOR, 0.85) }),
+        stroke: new Stroke({ color: "rgba(255, 255, 255, 0.9)", width: 2 }),
+      }),
+      text: new Text({
+        text: String(count),
+        font: "600 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
+        fill: new Fill({ color: "#ffffff" }),
+      }),
+    })
+
+    if (clusterCache.size >= CACHE_LIMIT) clusterCache.delete(clusterCache.keys().next().value)
+    clusterCache.set(count, style)
+  }
+
+  return style
+}
+
+function withAlpha(hex, alpha) {
+  const digits = hex.slice(1)
+
+  return [
+    parseInt(digits.slice(0, 2), 16),
+    parseInt(digits.slice(2, 4), 16),
+    parseInt(digits.slice(4, 6), 16),
+    alpha,
+  ]
 }

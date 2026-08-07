@@ -133,6 +133,7 @@ end
 | Attribute | Payload |
 |---|---|
 | `on_marker_click` | `%{"id" =>, "lat" =>, "lon" =>, "data" =>}` |
+| `on_cluster_click` | `%{"count" =>, "ids" => [id, …], "lat" =>, "lon" =>}` |
 | `on_shape_click` | `%{"id" =>, "lat" =>, "lon" =>, "data" =>}` |
 | `on_map_click` | `%{"lat" =>, "lon" =>}` |
 | `on_move_end` | `%{"center" => [lat, lon], "zoom" =>, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
@@ -180,6 +181,33 @@ better:
 ```
 
 Same id and same `:rev` means the client leaves that feature alone.
+
+## Clustering
+
+Hundreds of markers are a wall of overlapping icons. Grouping them is one attribute:
+
+```heex
+<.map id="clients" markers={@clients} cluster={true} />
+<.map id="clients" markers={@clients} cluster={[distance: 60, zoom_on_click: false]} />
+```
+
+A group of one is drawn as its own marker, so nothing looks clustered until it
+actually is. Clicking a group zooms into it — without that a cluster is a dead end,
+showing you that twelve things are there with no way to reach them — and sends
+`on_cluster_click` with the member ids.
+
+Reconciliation is untouched by any of this. `ol/source/Cluster` *wraps* the marker
+source rather than replacing it, so the markers are still diffed by id exactly as
+before; only what is drawn changes.
+
+Two consequences worth knowing:
+
+* **A grouped marker has no popup.** Its pin is drawn at the group's centre, so a
+  popup would point at empty space. An open popup closes when its marker joins a
+  group; it does not reopen by itself when you zoom back in.
+* **`:draggable` markers cannot be dragged at all while `cluster` is set**, even
+  standing alone — every marker is wrapped by a cluster feature once clustering is
+  on, and dragging that would move the wrapper rather than the marker.
 
 ## Heatmaps
 
@@ -376,10 +404,10 @@ and a log of the events coming back. There is no OpenLayers in that file.
 
 ## Status
 
-Markers, GeoJSON shapes, emoji, popups and the French Géoportail are complete and
-tested. Still open: clustering, arbitrary HTML markers, drawing interactions,
-real `ol/source/WMTS` sources, and loading geometry by URL rather than by
-attribute.
+Markers, GeoJSON shapes, emoji, popups, clustering, heatmaps, imperative view
+control and the French Géoportail are complete and tested. Still open: arbitrary
+HTML markers, drawing interactions, a keyboard and ARIA pass, real
+`ol/source/WMTS` sources, and loading geometry by URL rather than by attribute.
 
 That last one is the honest limit of the current transport. An HTML attribute is a
 single dynamic slot, so any change re-serialises the whole payload. That is right

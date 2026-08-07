@@ -16,6 +16,9 @@ the audience is other people's applications.
   a guard there, reintroduce the bug and watch it fail — a regression test nobody
   has seen go red proves nothing, and one of these did not actually guard what its
   name claimed until it was checked that way.
+- `bin/ci` reproduces `.github/workflows/ci.yml` in a container against your working
+  tree — useful to catch a red CI before pushing. `SKIP_BROWSER=1 bin/ci` skips the
+  slow Playwright leg while iterating.
 - Keep the dependency list minimal. Library consumers pay for every dep we add;
   anything only the playground needs goes under `only: :dev`.
 - The JavaScript lives in `assets/js` and is bundled into `priv/static` by

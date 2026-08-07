@@ -4,10 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-08-07
 
 ### Added
 
+- **Clustering** — `cluster={true}`, or a keyword list of `:distance`,
+  `:min_distance` and `:zoom_on_click`. A group of one is drawn as its own marker;
+  clicking a group zooms into it and sends `on_cluster_click` with the member ids.
+  Reconciliation is untouched, because `ol/source/Cluster` wraps the marker source
+  rather than replacing it — the markers are still diffed by id, only the drawing
+  changes. A grouped marker has no popup (its pin sits at the group's centre, so a
+  popup would point at empty space) and cannot be dragged.
 - **`Rover.Heatmap` and the `heatmap` attribute** — density as a heat field. No
   `:id` required, unlike markers and shapes: a heatmap is an aggregate, so per-point
   identity buys nothing. Diffed by revision instead, which also means a style-only
@@ -43,6 +50,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Clustering, from review, before it ever shipped:
+  - Every discarded `ol/source/Cluster` stayed subscribed to the marker source, so
+    each toggle of `cluster` left another live clusterer re-clustering the whole set
+    on every update, in a source nothing draws.
+  - Clicking a group above zoom 16 **zoomed out**. `View#fit` treats `maxZoom` as a
+    resolution floor, so it clamps both ways: the drill-in now uses the basemap's own
+    ceiling and refuses to move the view backwards at all.
+  - A `:draggable` marker alone in a group was still draggable, and the drag moved the
+    throwaway feature `Cluster` allocates — the marker's own geometry untouched, the
+    event reporting coordinates for something that is not the marker, and the pin
+    snapping back on the next recompute. Nothing is draggable while clustering, which
+    is what the documentation already claimed.
+  - The `Cluster` wrapper dropped `wrapX: false`, so groups repeated across world
+    copies.
+  - A cluster click did not dismiss an open popup, which mattered with
+    `zoom_on_click: false` where nothing else moves.
+  - A non-keyword list — `cluster={[:distance]}` — raised a match error instead of the
+    friendly message every other option in the component produces.
+  - `on_cluster_click` was in neither event table and had no docs, so the only place
+    its payload was written down was the playground.
+  - Reconciling a batch of moved or restyled markers reclustered the **entire**
+    marker set once per feature touched rather than once for the batch —
+    `ol/source/Cluster` recomputes on every `change` event from the source it
+    wraps, and every `setCoordinates`/`setStyle` call fires one. A fleet of five
+    hundred with fifty vehicles moving in one update paid for fifty full passes,
+    not one, on exactly the workload clustering exists to make affordable.
 - Field accessors of the wrong arity now raise instead of being read as a map key
   and silently substituting the default. `mix format` rewrites
   `&(&1.orders / 40)` as `& &1.orders/40`, which Elixir parses as an arity-40
