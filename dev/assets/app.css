@@ -73,7 +73,8 @@ button:active {
   transform: translateY(1px);
 }
 
-.log {
+.log,
+.cluster-log {
   margin-top: 1rem;
   padding: 0.85rem 1rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -85,6 +86,7 @@ button:active {
   min-height: 3rem;
 }
 
-.log strong {
+.log strong,
+.cluster-log strong {
   color: var(--ink);
 }
