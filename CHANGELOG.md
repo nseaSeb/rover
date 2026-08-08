@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-08-08
+
+### Fixed
+
+- **The Livebook (`notebooks/rover.livemd`) failed at section 5** with `assign/2
+  imported from both Kino.JS.Live.Context and Phoenix.Component, call is
+  ambiguous`. Section 4 imported `Phoenix.Component` at the top level of its
+  cell to get `~H`; Livebook threads a cell's top-level imports into every
+  later cell, so it collided with `Kino.JS.Live.Context`'s own `assign/2` in
+  `RoverKino`. The import now lives inside its own module, scoped to the cell
+  that needs it.
+- The installation example still read `{:rover, "~> 0.2"}`, which would not
+  have resolved to 0.3.0 or this release on a fresh install.
+
 ## [0.3.0] - 2026-08-07
 
 ### Added
