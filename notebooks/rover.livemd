@@ -188,8 +188,6 @@ two attributes: `data-rover` (the view) and `data-rover-markers` (the list).
 They are separate so that changing only your markers sends only your markers.
 
 ```elixir
-import Phoenix.Component
-
 clients = [
   %{id: 1, lat: 45.7640, lon: 4.8357, emoji: "🏠", label: "Atelier"},
   %{id: 2, lat: 45.7484, lon: 4.8467, emoji: "🏭", label: "Dépôt"},
@@ -203,24 +201,31 @@ parcel = %{
   ]
 }
 
-render = fn assigns ->
-  ~H"""
-  <Rover.Components.map
-    id="clients"
-    markers={@clients}
-    shapes={@shapes}
-    tiles={:ign_plan}
-    fit={:once}
-    on_marker_click="select_client"
-    on_shape_click="select_parcel"
-  />
-  """
-  |> Phoenix.HTML.Safe.to_iodata()
-  |> IO.iodata_to_binary()
+defmodule Render do
+  # Scoped to this module rather than imported at the top level: Livebook
+  # threads top-level imports forward into later cells, and Phoenix.Component's
+  # assign/2 would otherwise collide with Kino.JS.Live.Context's in section 5.
+  import Phoenix.Component
+
+  def html(assigns) do
+    ~H"""
+    <Rover.Components.map
+      id="clients"
+      markers={@clients}
+      shapes={@shapes}
+      tiles={:ign_plan}
+      fit={:once}
+      on_marker_click="select_client"
+      on_shape_click="select_parcel"
+    />
+    """
+    |> Phoenix.HTML.Safe.to_iodata()
+    |> IO.iodata_to_binary()
+  end
 end
 
 html =
-  render.(%{
+  Render.html(%{
     clients: clients,
     shapes: [%{id: "parcel", geometry: parcel, color: "#16a34a", fill_opacity: 0.2}]
   })
