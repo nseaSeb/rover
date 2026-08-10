@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **A smoke test over the bundles in `priv/static`** (`assets/test/bundles.test.js`).
+  Nothing exercised what Hex actually ships: the playground and the browser suite
+  both import `assets/js/index.js`, and the CI `bundles` job only runs
+  `git diff --quiet -- priv/static`, which proves the artefacts match the source
+  and not that they load. The new test loads `rover.js` and `rover.min.js` and
+  checks the export surface, the hook's LiveView callbacks and a `project` /
+  `unproject` round trip; `rover.external.js` cannot be imported from
+  `priv/static` — it leaves `ol` as a peer import and there is no `node_modules`
+  above it — so it is checked as text instead.
+- Elixir 1.16.3 in the CI matrix. It sits inside the `~> 1.15` requirement and
+  was the one version in range that nothing tested.
+
+### Fixed
+
+- **The bring-your-own-OpenLayers instructions did not build.** Following them
+  as written stops esbuild with `Could not resolve "ol/Map.js"`, once per each
+  of the twenty-seven `ol` specifiers the peer build leaves bare. esbuild
+  resolves a bare import by walking up from the file that wrote it —
+  `deps/rover/priv/static/`, where no `node_modules` exists — and Phoenix's
+  generated `NODE_PATH` covers `deps` only, never `assets/node_modules`. Both
+  the README and the `Rover` moduledoc now carry the `config/config.exs` change
+  that puts `ol` on the search path. Reproduced against esbuild 0.25.12 with
+  Phoenix's own `cd` and `NODE_PATH`, and confirmed fixed the same way.
+- **The installation example in the `Rover` moduledoc still read
+  `{:rover, "~> 0.2"}`.** 0.3.1 fixed the README copy and missed this one, which
+  is the snippet HexDocs renders on the module page.
+- `mix precommit` ran `assets.test` before `assets.build`, so the new bundle
+  smoke test would have checked the artefacts from the previous run and let the
+  ones about to be committed through untested.
+- The changelog had no link definitions for `[0.3.0]` and `[0.3.1]`, so both
+  headings rendered as literal brackets.
+- The comment explaining why `setContent` fits once was attached to
+  `setHeatmap`, the method above it.
+
 ## [0.3.1] - 2026-08-08
 
 ### Fixed
@@ -15,8 +53,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   later cell, so it collided with `Kino.JS.Live.Context`'s own `assign/2` in
   `RoverKino`. The import now lives inside its own module, scoped to the cell
   that needs it.
-- The installation example still read `{:rover, "~> 0.2"}`, which would not
-  have resolved to 0.3.0 or this release on a fresh install.
+- The installation example in the README still read `{:rover, "~> 0.2"}`, one
+  series behind what it was installing. The same copy in the `Rover` moduledoc
+  was missed; see Unreleased.
 
 ## [0.3.0] - 2026-08-07
 
@@ -263,5 +302,7 @@ them.
   back as strings and will not match.
 - `fit` governs *re*fitting; the initial framing is separate.
 
+[0.3.1]: https://github.com/nseaSeb/rover/releases/tag/v0.3.1
+[0.3.0]: https://github.com/nseaSeb/rover/releases/tag/v0.3.0
 [0.2.0]: https://github.com/nseaSeb/rover/releases/tag/v0.2.0
 [0.1.0]: https://github.com/nseaSeb/rover/releases/tag/v0.1.0

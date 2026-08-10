@@ -27,7 +27,7 @@ defmodule Rover do
   Add the dependency:
 
       def deps do
-        [{:rover, "~> 0.2"}]
+        [{:rover, "~> 0.3"}]
       end
 
   Register the hook in `assets/js/app.js`. Rover ships a prebuilt bundle with
@@ -65,8 +65,29 @@ defmodule Rover do
   If your app already builds JavaScript with `npm` and you want to control the
   OpenLayers version, import the peer build instead and add `ol` yourself:
 
-      // package.json: "ol": "^10.0.0"
+      // assets/package.json: "ol": "^10.0.0"
       import { RoverHooks } from "../../deps/rover/priv/static/rover.external.js"
+
+  This one needs a build change, and without it esbuild stops with `Could not
+  resolve "ol/Map.js"` — once for each of the twenty-seven `ol` specifiers the
+  peer build leaves bare. esbuild resolves a bare import by walking up from the
+  file that wrote it, which here is `deps/rover/priv/static/`, where there is no
+  `node_modules` and never will be. Phoenix's generated `NODE_PATH` points at
+  `deps` alone, so your `ol` is never on the search path.
+
+  In your existing `config :esbuild` block in `config/config.exs`, replace the
+  `env:` key — leave `args:` and `cd:` exactly as they are:
+
+      env: %{
+        "NODE_PATH" =>
+          Enum.join(
+            [Path.expand("../deps", __DIR__), Path.expand("../assets/node_modules", __DIR__)],
+            if(match?({:win32, _}, :os.type()), do: ";", else: ":")
+          )
+      }
+
+  The default build needs none of this — OpenLayers is already inside
+  `rover.js`.
 
   Rover is tested against the version it bundles; the peer build is offered for
   applications that need to share a single OpenLayers instance with their own

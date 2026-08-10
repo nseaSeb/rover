@@ -371,9 +371,31 @@ map.contentExtent
 If you already build with `npm` and want to own the `ol` version:
 
 ```js
-// package.json: "ol": "^10.0.0"
+// assets/package.json: "ol": "^10.0.0"
 import { RoverHooks } from "../../deps/rover/priv/static/rover.external.js"
 ```
+
+This one needs a build change, and without it esbuild stops with `Could not
+resolve "ol/Map.js"` — once for each of the twenty-seven `ol` specifiers the
+peer build leaves bare. esbuild resolves a bare import by walking up from the
+file that wrote it, which here is `deps/rover/priv/static/`, where there is no
+`node_modules` and never will be. Phoenix's generated `NODE_PATH` points at
+`deps` alone, so your `ol` is never on the search path.
+
+In your existing `config :esbuild` block in `config/config.exs`, replace the
+`env:` key — leave `args:` and `cd:` exactly as they are:
+
+```elixir
+env: %{
+  "NODE_PATH" =>
+    Enum.join(
+      [Path.expand("../deps", __DIR__), Path.expand("../assets/node_modules", __DIR__)],
+      if(match?({:win32, _}, :os.type()), do: ";", else: ":")
+    )
+}
+```
+
+The default build needs none of this — OpenLayers is already inside `rover.js`.
 
 ## Try it without installing anything
 
@@ -396,8 +418,8 @@ mix assets.test.browser   # the browser suite, in a real Chromium
 
 The browser suite is small on purpose. Everything below the component — the
 canvas, the popup DOM, the tile URLs the browser actually requests — lives where
-ExUnit and `node --test` cannot look, and both rendering bugs this library has
-shipped were in there. It stands guard over those paths and nothing else. Each
+ExUnit and `node --test` cannot look, and every rendering bug this library has
+shipped was in there. It stands guard over those paths and nothing else. Each
 scenario has been watched to fail with its bug reintroduced.
 
 The playground (`dev/demo_live.ex`) is the reference for the intended
