@@ -28,6 +28,8 @@ jobs:
           # the declared requirement is wrong — do not just drop the row.
           - elixir: "1.15.8"
             otp: "26.2"
+          - elixir: "1.16.3"
+            otp: "26.2"
           - elixir: "1.17.3"
             otp: "27.2"
           - elixir: "1.18.4"
@@ -166,7 +168,7 @@ jobs:
 
       # Everything below the component — the canvas, the popup DOM, the tile URLs
       # the browser actually requests — lives where ExUnit and node --test cannot
-      # look. Both rendering bugs this library has shipped were in here.
+      # look. Every rendering bug this library has shipped was in here.
       # `mix dev` is started by Playwright's webServer, which also runs the esbuild
       # watcher, so the bundle under test is built from the current source.
       - run: npm run test:browser
