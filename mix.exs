@@ -66,8 +66,11 @@ defmodule Rover.MixProject do
         "format",
         "compile --warnings-as-errors",
         "test",
-        "assets.test",
-        "assets.build"
+        # Build before testing: `assets/test/bundles.test.js` loads the files in
+        # priv/static, so running it first would check the bundles from the last
+        # run and let the ones about to be committed through untested.
+        "assets.build",
+        "assets.test"
       ]
     ]
   end

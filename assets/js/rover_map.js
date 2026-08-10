@@ -84,6 +84,11 @@ export class RoverMap {
     this.maybeFit()
   }
 
+  setHeatmap(heatmap) {
+    this.heatmapLayer.reconcile(heatmap)
+    this.maybeFit()
+  }
+
   /**
    * Load both layers and fit once.
    *
@@ -93,11 +98,6 @@ export class RoverMap {
    * outside the shapes' bounding box was simply off-screen, for good. The mount
    * path and any update touching both layers go through here instead.
    */
-  setHeatmap(heatmap) {
-    this.heatmapLayer.reconcile(heatmap)
-    this.maybeFit()
-  }
-
   setContent({ markers, shapes, heatmap }) {
     if (heatmap !== undefined) this.heatmapLayer.reconcile(heatmap)
     if (shapes !== undefined) this.shapeLayer.reconcile(shapes)
