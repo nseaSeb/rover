@@ -38,7 +38,7 @@ defmodule Rover.Components do
   | `on_map_click` | `%{"lat" => lat, "lon" => lon}` |
   | `on_move_end` | `%{"center" => [lat, lon], "zoom" => zoom, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
   | `on_marker_drag_end` | `%{"id" => id, "lat" => lat, "lon" => lon}` |
-  | `on_shape_edit_end` | `%{"id" => id, "geometry" => geojson_geometry, "data" => data}` |
+  | `on_shape_edit_end` | `%{"id" => id, "geometry" => geojson_geometry, "properties" => geojson_properties, "data" => data}` |
 
   Inside a `Phoenix.LiveComponent`, route the events to yourself with
   `target={@myself}`.

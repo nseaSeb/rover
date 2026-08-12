@@ -140,7 +140,7 @@ end
 | `on_map_click` | `%{"lat" =>, "lon" =>}` |
 | `on_move_end` | `%{"center" => [lat, lon], "zoom" =>, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
 | `on_marker_drag_end` | `%{"id" =>, "lat" =>, "lon" =>}` |
-| `on_shape_edit_end` | `%{"id" =>, "geometry" =>, "data" =>}` |
+| `on_shape_edit_end` | `%{"id" =>, "geometry" =>, "properties" =>, "data" =>}` |
 
 Inside a `Phoenix.LiveComponent`, add `target={@myself}`.
 
@@ -192,12 +192,17 @@ Only a shape backed by a single feature can be edited — a `FeatureCollection` 
 several has no one geometry a drag could write back to a single `:geometry`
 field, and stays read-only regardless of `:editable`.
 
-`on_shape_edit_end`'s `"geometry"` is always a **bare** geometry, even if the
-shape's own `:geometry` was originally a `Feature` with its own `properties`.
-Merging it straight back into `:geometry` — the obvious thing to do — replaces
-a `Feature` with a plain `Polygon` (or whatever the type is) on the first
-accepted edit, silently dropping those `properties`. Not a concern if you keep
-extra data in `:data`, as the rest of Rover already assumes.
+`on_shape_edit_end`'s `"geometry"` is always a **bare** geometry — if the
+shape's own `:geometry` was a `Feature`, its `"properties"` travel in their own
+key instead, `nil` for a shape that was already bare. Wrap them back up
+yourself if you merge the result straight into `:geometry`:
+
+```elixir
+def handle_event("on_shape_edit_end", %{"id" => id, "geometry" => geometry, "properties" => properties}, socket) do
+  geometry = if properties, do: %{"type" => "Feature", "properties" => properties, "geometry" => geometry}, else: geometry
+  # ...
+end
+```
 
 **Rejecting an edit needs an observable `:rev`.** The client already moved the
 vertex by the time `on_shape_edit_end` fires; reassigning `:shapes` with the

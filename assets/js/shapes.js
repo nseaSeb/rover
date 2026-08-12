@@ -151,6 +151,31 @@ export class ShapeLayer {
     if (entry) entry.rev = null
   }
 
+  /**
+   * The GeoJSON `properties` a shape's own `:geometry` carried, if it was a
+   * `Feature` (or a single-member `FeatureCollection`) rather than a bare
+   * geometry — `null` otherwise.
+   *
+   * `writeGeometryObject`, used to report an edit back, only ever writes the
+   * bare geometry — there is no `writeFeatureObject` call anywhere in the
+   * edit path. Without this, merging that bare geometry straight into
+   * `:geometry` silently drops whatever `properties` a `Feature`-wrapped
+   * shape carried, on the first accepted edit.
+   */
+  propertiesFor(feature) {
+    const shape = this.shapeFor(feature)
+    const geometry = shape && shape.geometry
+    if (!geometry) return null
+
+    if (geometry.type === "Feature") return geometry.properties ?? null
+
+    if (geometry.type === "FeatureCollection" && geometry.features?.length === 1) {
+      return geometry.features[0].properties ?? null
+    }
+
+    return null
+  }
+
   get extent() {
     return this.entries.size > 0 ? this.source.getExtent() : null
   }

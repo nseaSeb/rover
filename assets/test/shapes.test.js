@@ -253,6 +253,67 @@ describe("ShapeLayer.reconcile", () => {
       assert.notEqual(features(layer, 1)[0], edited, "the shape was left alone instead of rebuilt")
     })
   })
+
+  describe("propertiesFor", () => {
+    it("is null for a bare geometry", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([shape(1)])
+
+      assert.equal(layer.propertiesFor(features(layer, 1)[0]), null)
+    })
+
+    it("returns a Feature's own properties", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([
+        {
+          id: 1,
+          rev: 1,
+          geometry: { type: "Feature", properties: { parcel_id: "AB214" }, geometry: polygon() },
+        },
+      ])
+
+      assert.deepEqual(layer.propertiesFor(features(layer, 1)[0]), { parcel_id: "AB214" })
+    })
+
+    it("returns the single member's properties from a one-feature FeatureCollection", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([
+        {
+          id: 1,
+          rev: 1,
+          geometry: {
+            type: "FeatureCollection",
+            features: [
+              { type: "Feature", properties: { parcel_id: "AB214" }, geometry: polygon() },
+            ],
+          },
+        },
+      ])
+
+      assert.deepEqual(layer.propertiesFor(features(layer, 1)[0]), { parcel_id: "AB214" })
+    })
+
+    it("is null for a FeatureCollection of more than one — no single feature owns it", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([
+        {
+          id: "collection",
+          rev: 1,
+          geometry: {
+            type: "FeatureCollection",
+            features: [
+              { type: "Feature", properties: { a: 1 }, geometry: polygon() },
+              { type: "Feature", properties: { b: 2 }, geometry: polygon(4.9) },
+            ],
+          },
+        },
+      ])
+
+      features(layer, "collection").forEach((feature) => {
+        assert.equal(layer.propertiesFor(feature), null)
+      })
+    })
+  })
 })
 
 describe("styleForShape", () => {

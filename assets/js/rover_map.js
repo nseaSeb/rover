@@ -354,7 +354,13 @@ export class RoverMap {
         const geometry = geoJsonFormat.writeGeometryObject(feature.getGeometry(), {
           decimals: 7,
         })
-        this.emit("shapeEditEnd", { id: shape.id, geometry, data: shape.data ?? null })
+        const properties = this.shapeLayer.propertiesFor(feature)
+        this.emit("shapeEditEnd", {
+          id: shape.id,
+          geometry,
+          properties,
+          data: shape.data ?? null,
+        })
       })
     })
 
