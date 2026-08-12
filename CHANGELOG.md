@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-08-12
 
 ### Added
 
@@ -16,6 +16,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   needed, ported from a geometry hash to the `:rev` shapes are actually diffed
   by. A `FeatureCollection` shape (more than one underlying feature) stays
   read-only — there is no single geometry a drag could write back to.
+  `on_shape_edit_end`'s geometry is always bare; a `Feature`-wrapped shape's
+  `properties` travel in their own key on the payload instead, so merging the
+  result back into `:geometry` does not silently lose them.
+
+### Fixed
+
+- The installation example still read `{:rover, "~> 0.3"}` in both the README
+  and the `Rover` moduledoc.
 
 ## [0.3.2] - 2026-08-10
 
