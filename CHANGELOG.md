@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`:editable` on shapes**, and `on_shape_edit_end`. Lets the user drag a
+  shape's vertices directly on the map — the geometry equivalent of
+  `:draggable` on a marker, built the same way: an `ol/interaction/Modify`
+  filtered to editable single-feature shapes, and the same "forget the cached
+  identity so a same-valued server payload still reapplies" fix `:draggable`
+  needed, ported from a geometry hash to the `:rev` shapes are actually diffed
+  by. A `FeatureCollection` shape (more than one underlying feature) stays
+  read-only — there is no single geometry a drag could write back to.
+
 ## [0.3.2] - 2026-08-10
 
 ### Added

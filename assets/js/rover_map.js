@@ -8,6 +8,8 @@ import FullScreen from "ol/control/FullScreen.js"
 import Rotate from "ol/control/Rotate.js"
 import ScaleLine from "ol/control/ScaleLine.js"
 import Zoom from "ol/control/Zoom.js"
+import { never } from "ol/events/condition.js"
+import Modify from "ol/interaction/Modify.js"
 import Translate from "ol/interaction/Translate.js"
 import { defaults as defaultInteractions } from "ol/interaction/defaults.js"
 import { createEmpty, extend } from "ol/extent.js"
@@ -15,7 +17,7 @@ import { createEmpty, extend } from "ol/extent.js"
 import { extentToBbox, project, unproject } from "./coords.js"
 import { HeatmapLayer } from "./heatmap.js"
 import { MarkerLayer } from "./markers.js"
-import { ShapeLayer } from "./shapes.js"
+import { ShapeLayer, format as geoJsonFormat } from "./shapes.js"
 
 const HIT_TOLERANCE = 6
 const ANIMATION_MS = 350
@@ -67,6 +69,11 @@ export class RoverMap {
     this.markerLayer.setClustering(this.config.cluster)
 
     this.setupTooltip()
+    // Editing before dragging: OpenLayers checks the most-recently-added
+    // interaction first, so this order is what makes a draggable marker win a
+    // pointer-gesture tie against an editable shape's vertex sitting under it —
+    // matching featureAt()'s "markers win ties" rule for clicks.
+    this.setupEditing()
     this.setupDragging()
     this.setupEvents()
     this.observeResize()
@@ -244,6 +251,14 @@ export class RoverMap {
     interactions.clear()
     buildInteractions(config).forEach((interaction) => interactions.push(interaction))
 
+    // Modify.setMap (called when interactions.clear() drops it) tears down its
+    // vertex overlay but not the ADDFEATURE/REMOVEFEATURE listeners it put on
+    // shapeLayer.source — only dispose() does, via disposeInternal(). Skipping
+    // this leaks one Modify's worth of listeners every time interactive toggles.
+    if (this.modify) this.modify.dispose()
+    this.modify = null
+    this.setupEditing()
+
     this.translate = null
     this.setupDragging()
   }
@@ -302,6 +317,54 @@ export class RoverMap {
     })
 
     this.map.addInteraction(this.translate)
+  }
+
+  setupEditing() {
+    if (this.config.interactive === false) return
+
+    this.modify = new Modify({
+      source: this.shapeLayer.source,
+      filter: (feature) => this.shapeLayer.isEditable(feature),
+      // Modify's own option, unlike Translate's hitTolerance above — same idea,
+      // different name.
+      pixelTolerance: HIT_TOLERANCE,
+      // Off by default, this inserts a vertex whenever the pointer is merely
+      // near an edge — including a single click with no drag at all, which
+      // would silently add a vertex and fire shapeEditEnd from what looked
+      // like a read-only click on the shape (e.g. one that also opens its
+      // popup via on_shape_click). Dragging an existing vertex is this
+      // feature's whole scope; inserting new ones is not.
+      insertVertexCondition: never,
+    })
+
+    this.modify.on("modifyend", (event) => {
+      event.features.forEach((feature) => {
+        const shape = this.shapeLayer.shapeFor(feature)
+        if (!shape) return
+
+        // Same reasoning as forgetGeometry on a marker drag: the geometry now
+        // disagrees with the rev the server last sent, so the next payload —
+        // whether it accepts the edit or rejects it — must be applied rather
+        // than skipped as "unchanged".
+        this.shapeLayer.forgetRev(feature)
+
+        // 7 decimal places is roughly a centimetre — enough precision to matter,
+        // far short of the ~15 significant digits a raw Mercator round trip
+        // otherwise produces.
+        const geometry = geoJsonFormat.writeGeometryObject(feature.getGeometry(), {
+          decimals: 7,
+        })
+        const properties = this.shapeLayer.propertiesFor(feature)
+        this.emit("shapeEditEnd", {
+          id: shape.id,
+          geometry,
+          properties,
+          data: shape.data ?? null,
+        })
+      })
+    })
+
+    this.map.addInteraction(this.modify)
   }
 
   setupEvents() {

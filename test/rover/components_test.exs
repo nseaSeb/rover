@@ -393,6 +393,25 @@ defmodule Rover.ComponentsTest do
     test "no shapeClick key when it was not asked for" do
       refute Map.has_key?(config(render_map(markers: @lyon))["events"], "shapeClick")
     end
+
+    test "carry :editable only when true" do
+      [shape] = shapes(render_map(shapes: [%{id: "p", geometry: @polygon}]))
+      refute Map.has_key?(shape, "editable")
+
+      [shape] =
+        shapes(render_map(shapes: [%{id: "p", geometry: @polygon, editable: true}]))
+
+      assert shape["editable"] == true
+    end
+
+    test "an on_shape_edit_end handler reaches the client" do
+      assert config(render_map(on_shape_edit_end: "shape_edited"))["events"]["shapeEditEnd"] ==
+               "shape_edited"
+    end
+
+    test "no shapeEditEnd key when it was not asked for" do
+      refute Map.has_key?(config(render_map(markers: @lyon))["events"], "shapeEditEnd")
+    end
   end
 
   describe "clustering" do

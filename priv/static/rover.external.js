@@ -136,6 +136,8 @@ import FullScreen from "ol/control/FullScreen.js";
 import Rotate from "ol/control/Rotate.js";
 import ScaleLine from "ol/control/ScaleLine.js";
 import Zoom from "ol/control/Zoom.js";
+import { never } from "ol/events/condition.js";
+import Modify from "ol/interaction/Modify.js";
 import Translate from "ol/interaction/Translate.js";
 import { defaults as defaultInteractions } from "ol/interaction/defaults.js";
 import { createEmpty, extend } from "ol/extent.js";
@@ -587,6 +589,56 @@ var ShapeLayer = class {
   shapeFor(feature) {
     return feature && feature.get(SHAPE_KEY);
   }
+  /**
+   * Whether a rendered feature may have its vertices dragged.
+   *
+   * A shape backed by more than one feature (a FeatureCollection) has no single
+   * geometry a drag could write back to a single `:geometry` field, so only a
+   * shape whose entry holds exactly one feature qualifies — this is what
+   * `ol/interaction/Modify`'s `filter` option calls per feature.
+   */
+  isEditable(feature) {
+    const shape = this.shapeFor(feature);
+    if (!shape || !shape.editable) return false;
+    const entry = this.entries.get(String(shape.id));
+    return Boolean(entry && entry.features.length === 1);
+  }
+  /**
+   * Drop the cached revision for a feature the client edited on its own.
+   *
+   * Mirrors `MarkerLayer.forgetGeometry`, but for the rev a shape is diffed by
+   * instead of a coordinate hash: without this, a server payload that echoes
+   * back the same `:rev` — whether it accepted the edit or rejected it — would
+   * hash-match the stale entry and `reconcile()` would skip re-applying it,
+   * leaving the shape wherever the user last dragged it regardless of what the
+   * server actually decided.
+   */
+  forgetRev(feature) {
+    const shape = this.shapeFor(feature);
+    const entry = shape && this.entries.get(String(shape.id));
+    if (entry) entry.rev = null;
+  }
+  /**
+   * The GeoJSON `properties` a shape's own `:geometry` carried, if it was a
+   * `Feature` (or a single-member `FeatureCollection`) rather than a bare
+   * geometry — `null` otherwise.
+   *
+   * `writeGeometryObject`, used to report an edit back, only ever writes the
+   * bare geometry — there is no `writeFeatureObject` call anywhere in the
+   * edit path. Without this, merging that bare geometry straight into
+   * `:geometry` silently drops whatever `properties` a `Feature`-wrapped
+   * shape carried, on the first accepted edit.
+   */
+  propertiesFor(feature) {
+    const shape = this.shapeFor(feature);
+    const geometry = shape && shape.geometry;
+    if (!geometry) return null;
+    if (geometry.type === "Feature") return geometry.properties ?? null;
+    if (geometry.type === "FeatureCollection" && geometry.features?.length === 1) {
+      return geometry.features[0].properties ?? null;
+    }
+    return null;
+  }
   get extent() {
     return this.entries.size > 0 ? this.source.getExtent() : null;
   }
@@ -694,6 +746,7 @@ var RoverMap = class {
     });
     this.markerLayer.setClustering(this.config.cluster);
     this.setupTooltip();
+    this.setupEditing();
     this.setupDragging();
     this.setupEvents();
     this.observeResize();
@@ -834,6 +887,9 @@ var RoverMap = class {
     const interactions = this.map.getInteractions();
     interactions.clear();
     buildInteractions(config).forEach((interaction) => interactions.push(interaction));
+    if (this.modify) this.modify.dispose();
+    this.modify = null;
+    this.setupEditing();
     this.translate = null;
     this.setupDragging();
   }
@@ -877,6 +933,41 @@ var RoverMap = class {
       });
     });
     this.map.addInteraction(this.translate);
+  }
+  setupEditing() {
+    if (this.config.interactive === false) return;
+    this.modify = new Modify({
+      source: this.shapeLayer.source,
+      filter: (feature) => this.shapeLayer.isEditable(feature),
+      // Modify's own option, unlike Translate's hitTolerance above — same idea,
+      // different name.
+      pixelTolerance: HIT_TOLERANCE,
+      // Off by default, this inserts a vertex whenever the pointer is merely
+      // near an edge — including a single click with no drag at all, which
+      // would silently add a vertex and fire shapeEditEnd from what looked
+      // like a read-only click on the shape (e.g. one that also opens its
+      // popup via on_shape_click). Dragging an existing vertex is this
+      // feature's whole scope; inserting new ones is not.
+      insertVertexCondition: never
+    });
+    this.modify.on("modifyend", (event) => {
+      event.features.forEach((feature) => {
+        const shape = this.shapeLayer.shapeFor(feature);
+        if (!shape) return;
+        this.shapeLayer.forgetRev(feature);
+        const geometry = format.writeGeometryObject(feature.getGeometry(), {
+          decimals: 7
+        });
+        const properties = this.shapeLayer.propertiesFor(feature);
+        this.emit("shapeEditEnd", {
+          id: shape.id,
+          geometry,
+          properties,
+          data: shape.data ?? null
+        });
+      });
+    });
+    this.map.addInteraction(this.modify);
   }
   setupEvents() {
     this.map.on("pointermove", (event) => {
