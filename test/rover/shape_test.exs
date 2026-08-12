@@ -29,6 +29,14 @@ defmodule Rover.ShapeTest do
       assert Shape.new!(%{id: 1, geometry: @polygon}).tooltip == nil
     end
 
+    test "editable defaults to false" do
+      assert Shape.new!(%{id: 1, geometry: @polygon}).editable == false
+    end
+
+    test "editable passes through when true" do
+      assert Shape.new!(%{id: 1, geometry: @polygon, editable: true}).editable == true
+    end
+
     test "recognises :geom and :geojson as geometry fields" do
       assert Shape.new!(%{id: 1, geom: @polygon}).geometry == @polygon
       assert Shape.new!(%{id: 1, geojson: @polygon}).geometry == @polygon
@@ -147,6 +155,14 @@ defmodule Rover.ShapeTest do
       assert Shape.new!(%{id: 1, geometry: @polygon, fill_opacity: 0})
              |> Shape.dump()
              |> Map.fetch!(:fill_opacity) == 0
+    end
+
+    test "keeps editable only when true" do
+      refute Shape.new!(%{id: 1, geometry: @polygon}) |> Shape.dump() |> Map.has_key?(:editable)
+
+      assert Shape.new!(%{id: 1, geometry: @polygon, editable: true})
+             |> Shape.dump()
+             |> Map.fetch!(:editable)
     end
   end
 

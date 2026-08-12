@@ -8,6 +8,7 @@ import FullScreen from "ol/control/FullScreen.js"
 import Rotate from "ol/control/Rotate.js"
 import ScaleLine from "ol/control/ScaleLine.js"
 import Zoom from "ol/control/Zoom.js"
+import Modify from "ol/interaction/Modify.js"
 import Translate from "ol/interaction/Translate.js"
 import { defaults as defaultInteractions } from "ol/interaction/defaults.js"
 import { createEmpty, extend } from "ol/extent.js"
@@ -15,7 +16,7 @@ import { createEmpty, extend } from "ol/extent.js"
 import { extentToBbox, project, unproject } from "./coords.js"
 import { HeatmapLayer } from "./heatmap.js"
 import { MarkerLayer } from "./markers.js"
-import { ShapeLayer } from "./shapes.js"
+import { ShapeLayer, format as geoJsonFormat } from "./shapes.js"
 
 const HIT_TOLERANCE = 6
 const ANIMATION_MS = 350
@@ -68,6 +69,7 @@ export class RoverMap {
 
     this.setupTooltip()
     this.setupDragging()
+    this.setupEditing()
     this.setupEvents()
     this.observeResize()
   }
@@ -246,6 +248,9 @@ export class RoverMap {
 
     this.translate = null
     this.setupDragging()
+
+    this.modify = null
+    this.setupEditing()
   }
 
   // -- interaction ----------------------------------------------------------
@@ -302,6 +307,41 @@ export class RoverMap {
     })
 
     this.map.addInteraction(this.translate)
+  }
+
+  setupEditing() {
+    if (this.config.interactive === false) return
+
+    this.modify = new Modify({
+      source: this.shapeLayer.source,
+      filter: (feature) => this.shapeLayer.isEditable(feature),
+      // Modify's own option, unlike Translate's hitTolerance above — same idea,
+      // different name.
+      pixelTolerance: HIT_TOLERANCE,
+    })
+
+    this.modify.on("modifyend", (event) => {
+      event.features.forEach((feature) => {
+        const shape = this.shapeLayer.shapeFor(feature)
+        if (!shape) return
+
+        // Same reasoning as forgetGeometry on a marker drag: the geometry now
+        // disagrees with the rev the server last sent, so the next payload —
+        // whether it accepts the edit or rejects it — must be applied rather
+        // than skipped as "unchanged".
+        this.shapeLayer.forgetRev(feature)
+
+        // 7 decimal places is roughly a centimetre — enough precision to matter,
+        // far short of the ~15 significant digits a raw Mercator round trip
+        // otherwise produces.
+        const geometry = geoJsonFormat.writeGeometryObject(feature.getGeometry(), {
+          decimals: 7,
+        })
+        this.emit("shapeEditEnd", { id: shape.id, geometry, data: shape.data ?? null })
+      })
+    })
+
+    this.map.addInteraction(this.modify)
   }
 
   setupEvents() {

@@ -21,8 +21,10 @@ const CACHE_LIMIT = 256
 const cache = new Map()
 
 // GeoJSON is longitude-first in WGS 84; the map renders in Web Mercator. One
-// reader, configured once, does that conversion for every geometry.
-const format = new GeoJSON({
+// reader, configured once, does that conversion for every geometry — exported
+// so rover_map.js can run it in reverse (writeGeometryObject) on a shape a user
+// just edited, the same projection flip applied symmetrically both ways.
+export const format = new GeoJSON({
   dataProjection: "EPSG:4326",
   featureProjection: "EPSG:3857",
 })
@@ -115,6 +117,38 @@ export class ShapeLayer {
 
   shapeFor(feature) {
     return feature && feature.get(SHAPE_KEY)
+  }
+
+  /**
+   * Whether a rendered feature may have its vertices dragged.
+   *
+   * A shape backed by more than one feature (a FeatureCollection) has no single
+   * geometry a drag could write back to a single `:geometry` field, so only a
+   * shape whose entry holds exactly one feature qualifies — this is what
+   * `ol/interaction/Modify`'s `filter` option calls per feature.
+   */
+  isEditable(feature) {
+    const shape = this.shapeFor(feature)
+    if (!shape || !shape.editable) return false
+
+    const entry = this.entries.get(String(shape.id))
+    return Boolean(entry && entry.features.length === 1)
+  }
+
+  /**
+   * Drop the cached revision for a feature the client edited on its own.
+   *
+   * Mirrors `MarkerLayer.forgetGeometry`, but for the rev a shape is diffed by
+   * instead of a coordinate hash: without this, a server payload that echoes
+   * back the same `:rev` — whether it accepted the edit or rejected it — would
+   * hash-match the stale entry and `reconcile()` would skip re-applying it,
+   * leaving the shape wherever the user last dragged it regardless of what the
+   * server actually decided.
+   */
+  forgetRev(feature) {
+    const shape = this.shapeFor(feature)
+    const entry = shape && this.entries.get(String(shape.id))
+    if (entry) entry.rev = null
   }
 
   get extent() {

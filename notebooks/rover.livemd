@@ -370,8 +370,11 @@ defmodule RoverKino do
         ctx.pushEvent(event, payload)
       })
 
-      map.setShapes(data.shapes)
-      map.setMarkers(data.markers)
+      // One combined call, not setShapes() then setMarkers(): the first call
+      // alone would already fit the view once, and the default fit: "once"
+      // means the second call's fit is a silent no-op — any marker outside the
+      // shapes' bounding box would land off-screen for good.
+      map.setContent({ shapes: data.shapes, markers: data.markers })
 
       ctx.handleEvent("markers", (markers) => map.setMarkers(markers))
       ctx.handleEvent("shapes", (shapes) => map.setShapes(shapes))

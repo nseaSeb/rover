@@ -198,6 +198,61 @@ describe("ShapeLayer.reconcile", () => {
     layer.reconcile([])
     assert.equal(layer.extent, null)
   })
+
+  describe("isEditable", () => {
+    it("is true for a single-feature shape marked editable", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([shape(1, { editable: true })])
+
+      assert.equal(layer.isEditable(features(layer, 1)[0]), true)
+    })
+
+    it("is false when editable was not set", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([shape(1)])
+
+      assert.equal(layer.isEditable(features(layer, 1)[0]), false)
+    })
+
+    it("is false for a multi-feature shape, even when marked editable", () => {
+      // A drag would have no single :geometry to write the result back to.
+      const layer = new ShapeLayer()
+      layer.reconcile([
+        {
+          id: "collection",
+          rev: 1,
+          editable: true,
+          geometry: {
+            type: "FeatureCollection",
+            features: [
+              { type: "Feature", properties: {}, geometry: polygon() },
+              { type: "Feature", properties: {}, geometry: polygon(4.9) },
+            ],
+          },
+        },
+      ])
+
+      features(layer, "collection").forEach((feature) => {
+        assert.equal(layer.isEditable(feature), false)
+      })
+    })
+  })
+
+  describe("forgetRev", () => {
+    it("nulls the cached rev, so the next reconcile rebuilds even a same-rev shape", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([shape(1, { editable: true })])
+
+      const edited = features(layer, 1)[0]
+      edited.getGeometry().setCoordinates(polygon(9.9).coordinates)
+      layer.forgetRev(edited)
+
+      // The server rejects the edit: it sends the very same shape as before.
+      layer.reconcile([shape(1, { editable: true })])
+
+      assert.notEqual(features(layer, 1)[0], edited, "the shape was left alone instead of rebuilt")
+    })
+  })
 })
 
 describe("styleForShape", () => {

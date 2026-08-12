@@ -63,6 +63,7 @@ defmodule RoverDev.DemoLive do
        crowd: false,
        cluster_log: nil,
        next_id: 4,
+       reject_edits: false,
        log: nil
      )}
   end
@@ -108,6 +109,9 @@ defmodule RoverDev.DemoLive do
       <button phx-click="toggle_crowd">Crowd: {if @crowd, do: "240 markers", else: "off"}</button>
       <button phx-click="toggle_cluster">Cluster: {cluster_label(@cluster)}</button>
       <button phx-click="yard">Two in a yard</button>
+      <button phx-click="toggle_edit_reject">
+        Edits: {if @reject_edits, do: "rejected", else: "accepted"}
+      </button>
     </div>
 
     <.map
@@ -126,6 +130,7 @@ defmodule RoverDev.DemoLive do
       on_map_click="map_clicked"
       on_move_end="moved"
       on_marker_drag_end="marker_dragged"
+      on_shape_edit_end="shape_edited"
     >
       <:popup :let={marker}>
         <strong>{marker.emoji} {marker.label}</strong>
@@ -238,7 +243,10 @@ defmodule RoverDev.DemoLive do
       Enum.map(socket.assigns.shapes, fn
         %{id: "route"} = shape ->
           geometry = Map.update!(shape.geometry, "coordinates", &Enum.map(&1, jitter))
-          %{shape | geometry: geometry, rev: :erlang.phash2(geometry)}
+          # Map.merge, not %{shape | ...}: shapes here are the plain literals
+          # from route(), with no :rev key to update — struct-style update
+          # syntax requires the key to already exist and raises otherwise.
+          Map.merge(shape, %{geometry: geometry, rev: :erlang.phash2(geometry)})
 
         shape ->
           shape
@@ -394,6 +402,40 @@ defmodule RoverDev.DemoLive do
     {:noreply, log(socket, "view centred on #{fmt(lat)}, #{fmt(lon)} at zoom #{zoom}")}
   end
 
+  # The mirror of marker_dragged, one level up. Rejecting is the interesting
+  # case: the client already moved the vertex, and a same-content reassign is
+  # byte-identical JSON that never even reaches the browser — so what makes
+  # the server's true, unedited geometry observable again is bumping :rev
+  # alone, geometry left untouched. That is the whole trick behind snapping a
+  # rejected edit back, and it is worth seeing land immediately rather than
+  # only whenever some other button happens to touch @shapes next.
+  def handle_event("shape_edited", %{"id" => id, "geometry" => geometry}, socket) do
+    shapes =
+      Enum.map(socket.assigns.shapes, fn
+        # Map.merge, not %{shape | ...}: these are the plain literals from
+        # parcel()/route(), with no :rev key to update in place.
+        %{id: ^id} = shape when socket.assigns.reject_edits ->
+          Map.merge(shape, %{rev: make_ref() |> :erlang.phash2()})
+
+        %{id: ^id} = shape ->
+          Map.merge(shape, %{geometry: geometry, rev: :erlang.phash2(geometry)})
+
+        shape ->
+          shape
+      end)
+
+    message =
+      if socket.assigns.reject_edits,
+        do: "shape #{id} edited — rejected, snapping back to the server's geometry",
+        else: "shape #{id} edited — and the server now agrees"
+
+    {:noreply, socket |> assign(shapes: shapes) |> log(message)}
+  end
+
+  def handle_event("toggle_edit_reject", _params, socket) do
+    {:noreply, assign(socket, reject_edits: !socket.assigns.reject_edits)}
+  end
+
   def handle_event("marker_dragged", %{"id" => id, "lat" => lat, "lon" => lon}, socket) do
     clients =
       Enum.map(socket.assigns.clients, fn
@@ -425,7 +467,8 @@ defmodule RoverDev.DemoLive do
       width: 2,
       label: "AB 214",
       tooltip: "Parcel AB 214 — click for details",
-      data: %{section: "AB"}
+      data: %{section: "AB"},
+      editable: true
     }
   end
 

@@ -49,6 +49,7 @@ defmodule Rover.Shape do
   | `:tooltip` | string | Shown on hover, at the pointer. Defaults to `:label`. |
   | `:rev` | term | Revision. See below. |
   | `:data` | map | Echoed back verbatim in shape events. |
+  | `:editable` | boolean | Lets the user drag its vertices — see `on_shape_edit_end`. Only for a shape backed by a single feature; a `FeatureCollection` of several is not editable. |
 
   ## Why there is a `:rev`
 
@@ -79,7 +80,8 @@ defmodule Rover.Shape do
           label: String.t() | nil,
           tooltip: String.t() | nil,
           rev: term(),
-          data: map() | nil
+          data: map() | nil,
+          editable: boolean()
         }
 
   @enforce_keys [:id, :geometry]
@@ -93,7 +95,8 @@ defmodule Rover.Shape do
     :label,
     :tooltip,
     :rev,
-    :data
+    :data,
+    editable: false
   ]
 
   @default_mapping [
@@ -106,7 +109,8 @@ defmodule Rover.Shape do
     label: [:label, :name, :title, "label", "name", "title"],
     tooltip: [:tooltip, "tooltip"],
     rev: [:rev, "rev"],
-    data: [:data, "data"]
+    data: [:data, "data"],
+    editable: [:editable, "editable"]
   ]
 
   @geometry_types ~w(
@@ -155,7 +159,8 @@ defmodule Rover.Shape do
       label: source |> extract(:label, opts) |> to_string_or_nil(),
       tooltip: source |> extract(:tooltip, opts) |> to_string_or_nil(),
       rev: extract(source, :rev, opts) || default_rev(geometry),
-      data: extract(source, :data, opts)
+      data: extract(source, :data, opts),
+      editable: extract(source, :editable, opts) == true
     }
   end
 
@@ -195,7 +200,10 @@ defmodule Rover.Shape do
   def dump(%__MODULE__{} = shape) do
     shape
     |> Map.from_struct()
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Enum.reject(fn
+      {:editable, false} -> true
+      {_key, value} -> is_nil(value)
+    end)
     |> Map.new()
   end
 

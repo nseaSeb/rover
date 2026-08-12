@@ -140,6 +140,7 @@ end
 | `on_map_click` | `%{"lat" =>, "lon" =>}` |
 | `on_move_end` | `%{"center" => [lat, lon], "zoom" =>, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
 | `on_marker_drag_end` | `%{"id" =>, "lat" =>, "lon" =>}` |
+| `on_shape_edit_end` | `%{"id" =>, "geometry" =>, "data" =>}` |
 
 Inside a `Phoenix.LiveComponent`, add `target={@myself}`.
 
@@ -162,7 +163,7 @@ assign(socket,
 A bare geometry, a `Feature` or a `FeatureCollection`; atom or string keys; or an
 undecoded JSON string, so `ST_AsGeoJSON` output goes straight in. Fields:
 `:color`, `:width`, `:fill_color`, `:fill_opacity`, `:label`, `:tooltip`, `:rev`,
-`:data`.
+`:data`, `:editable`.
 
 Shapes are **the one place Rover is not latitude-first** — GeoJSON is defined as
 `[longitude, latitude]` and the standard wins, because geometry is never typed by
@@ -170,6 +171,35 @@ hand. See `Rover.Shape` for why.
 
 A map with shapes and no markers frames the geometry, so a parcel page needs no
 `center`.
+
+### Letting the user edit a shape's vertices
+
+`editable: true` lets the user drag a shape's vertices directly on the map, the
+geometry equivalent of `:draggable` on a marker:
+
+```elixir
+%{id: p.id, geometry: p.cadastral_outline, editable: true}
+```
+
+```elixir
+def handle_event("on_shape_edit_end", %{"id" => id, "geometry" => geometry}, socket) do
+  # Persist or reject. Either way, see the :rev note below.
+  {:noreply, socket}
+end
+```
+
+Only a shape backed by a single feature can be edited — a `FeatureCollection` of
+several has no one geometry a drag could write back to a single `:geometry`
+field, and stays read-only regardless of `:editable`.
+
+**Rejecting an edit needs an observable `:rev`.** The client already moved the
+vertex by the time `on_shape_edit_end` fires; reassigning `:shapes` with the
+exact same geometry produces byte-identical JSON, which never reaches the
+browser at all — nothing in the rendered output changed, so nothing is sent.
+What snaps the shape back to the server's truth is bumping `:rev` (the default
+`:erlang.phash2(geometry)` already does this whenever the geometry itself
+changes; rejecting an edit means the geometry does *not* change, so `:rev` has
+to be bumped some other way, deliberately).
 
 ### Geometry is diffed by revision, not by hashing
 
