@@ -57,7 +57,7 @@ is somewhere else entirely.
 
 ```elixir
 def deps do
-  [{:rover, "~> 0.3"}]
+  [{:rover, "~> 0.4"}]
 end
 ```
 
