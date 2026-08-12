@@ -43043,8 +43043,8 @@ var RoverMap = class {
     });
     this.markerLayer.setClustering(this.config.cluster);
     this.setupTooltip();
-    this.setupDragging();
     this.setupEditing();
+    this.setupDragging();
     this.setupEvents();
     this.observeResize();
   }
@@ -43184,10 +43184,11 @@ var RoverMap = class {
     const interactions = this.map.getInteractions();
     interactions.clear();
     buildInteractions(config).forEach((interaction) => interactions.push(interaction));
-    this.translate = null;
-    this.setupDragging();
+    if (this.modify) this.modify.dispose();
     this.modify = null;
     this.setupEditing();
+    this.translate = null;
+    this.setupDragging();
   }
   // -- interaction ----------------------------------------------------------
   setupTooltip() {
@@ -43237,7 +43238,14 @@ var RoverMap = class {
       filter: (feature) => this.shapeLayer.isEditable(feature),
       // Modify's own option, unlike Translate's hitTolerance above — same idea,
       // different name.
-      pixelTolerance: HIT_TOLERANCE
+      pixelTolerance: HIT_TOLERANCE,
+      // Off by default, this inserts a vertex whenever the pointer is merely
+      // near an edge — including a single click with no drag at all, which
+      // would silently add a vertex and fire shapeEditEnd from what looked
+      // like a read-only click on the shape (e.g. one that also opens its
+      // popup via on_shape_click). Dragging an existing vertex is this
+      // feature's whole scope; inserting new ones is not.
+      insertVertexCondition: never
     });
     this.modify.on("modifyend", (event) => {
       event.features.forEach((feature) => {

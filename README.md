@@ -192,6 +192,13 @@ Only a shape backed by a single feature can be edited — a `FeatureCollection` 
 several has no one geometry a drag could write back to a single `:geometry`
 field, and stays read-only regardless of `:editable`.
 
+`on_shape_edit_end`'s `"geometry"` is always a **bare** geometry, even if the
+shape's own `:geometry` was originally a `Feature` with its own `properties`.
+Merging it straight back into `:geometry` — the obvious thing to do — replaces
+a `Feature` with a plain `Polygon` (or whatever the type is) on the first
+accepted edit, silently dropping those `properties`. Not a concern if you keep
+extra data in `:data`, as the rest of Rover already assumes.
+
 **Rejecting an edit needs an observable `:rev`.** The client already moved the
 vertex by the time `on_shape_edit_end` fires; reassigning `:shapes` with the
 exact same geometry produces byte-identical JSON, which never reaches the

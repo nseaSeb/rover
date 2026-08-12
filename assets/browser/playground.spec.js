@@ -192,6 +192,23 @@ function shapeVertexPixel(page, selector, shapeId) {
   )
 }
 
+/** The pixel midway along a shape's first edge — on the outline, not on a vertex. */
+function shapeEdgeMidpointPixel(page, selector, shapeId) {
+  return page.evaluate(
+    ([sel, id]) => {
+      const rover = document.querySelector(sel)._rover
+      const entry = rover.shapeLayer.entries.get(String(id))
+      if (!entry) return null
+
+      const ring = entry.features[0].getGeometry().getCoordinates()[0]
+      const mid = [(ring[0][0] + ring[1][0]) / 2, (ring[0][1] + ring[1][1]) / 2]
+      const [x, y] = rover.map.getPixelFromCoordinate(mid)
+      return { x, y }
+    },
+    [selector, shapeId]
+  )
+}
+
 /** Wait until the hook has mounted and handed us the map. */
 async function mapReady(page) {
   await page.waitForFunction(
@@ -792,6 +809,54 @@ test.describe("the playground", () => {
       Math.hypot(after.x - before.x, after.y - before.y),
       "the vertex did not move"
     ).toBeGreaterThan(10)
+
+    expect(problems).toEqual([])
+  })
+
+  test("a plain click on an editable shape's edge neither inserts a vertex nor edits it", async ({
+    page,
+  }) => {
+    // Modify's default insertVertexCondition is "always": a bare click near an
+    // edge (no drag) inserts a vertex there and still fires modifyend, which
+    // would silently mutate geometry from what looks like a read-only click —
+    // one that, on this same shape, also opens its popup via on_shape_click.
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/?shapes=parcel")
+    await mapReady(page)
+
+    const before = await shapeEdgeMidpointPixel(page, MAP, "parcel")
+    expect(before).not.toBeNull()
+
+    const vertexCountBefore = await page.evaluate(
+      (selector) =>
+        document
+          .querySelector(selector)
+          ._rover.shapeLayer.entries.get("parcel")
+          .features[0].getGeometry()
+          .getCoordinates()[0].length,
+      MAP
+    )
+
+    await page.locator(CANVAS).click({ position: before })
+
+    // The click still does its ordinary job — opening the popup — so
+    // shapeClick is expected; shapeEditEnd is not.
+    await expect(page.locator(`${MAP} [data-rover-popup-for="shape:parcel"]`)).toBeVisible()
+    await expect(page.locator(".log")).not.toContainText("shape parcel edited")
+
+    const vertexCountAfter = await page.evaluate(
+      (selector) =>
+        document
+          .querySelector(selector)
+          ._rover.shapeLayer.entries.get("parcel")
+          .features[0].getGeometry()
+          .getCoordinates()[0].length,
+      MAP
+    )
+
+    expect(vertexCountAfter, "a click inserted a vertex").toBe(vertexCountBefore)
 
     expect(problems).toEqual([])
   })
