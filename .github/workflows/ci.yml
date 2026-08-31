@@ -39,7 +39,7 @@ jobs:
             lint: true
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: erlef/setup-beam@v1
         with:
@@ -47,7 +47,7 @@ jobs:
           otp-version: ${{ matrix.otp }}
 
       - name: Cache deps and build
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -88,7 +88,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: erlef/setup-beam@v1
         with:
@@ -102,7 +102,7 @@ jobs:
       # without it, bumping the versions below would restore a build no step can
       # reuse.
       - name: Cache deps and build
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -121,9 +121,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -140,9 +140,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -171,21 +171,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: erlef/setup-beam@v1
         with:
           elixir-version: "1.19.5"
           otp-version: "28.1"
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: assets/package-lock.json
 
       - name: Cache deps and build
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -199,7 +199,7 @@ jobs:
         working-directory: assets
 
       - name: Cache the Playwright browser
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
@@ -216,7 +216,7 @@ jobs:
       - run: npm run test:browser
         working-directory: assets
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
