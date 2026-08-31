@@ -1,0 +1,34 @@
+# Rover redistributes OpenLayers inside priv/static/rover.js, so an `ol` release
+# is not just a dev-dependency bump: the bundle every Hex consumer loads is built
+# from it. Nothing here was watching that.
+version: 2
+
+updates:
+  # The one that matters. Dependabot cannot run `mix assets.build`, so an `ol`
+  # bump arrives with assets/package.json updated and priv/static untouched —
+  # which makes the `bundles` CI job fail on the pull request, by design. Rebuild
+  # on the branch and push; a green bundles job is the proof the new OpenLayers
+  # actually builds.
+  - package-ecosystem: npm
+    directory: /assets
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      # esbuild and Playwright are build and test tooling; grouping them keeps
+      # `ol` alone in a pull request of its own, where it belongs.
+      tooling:
+        patterns:
+          - esbuild
+          - "@playwright/test"
+
+  - package-ecosystem: mix
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
