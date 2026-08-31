@@ -1,7 +1,7 @@
 defmodule Rover.MixProject do
   use Mix.Project
 
-  @version "0.4.0"
+  @version "0.5.0"
   @source_url "https://github.com/nseaSeb/rover"
 
   def project do
@@ -79,7 +79,7 @@ defmodule Rover.MixProject do
   # unless excluded — and a helper is always fully exercised, which would let new
   # test scaffolding raise the number without covering a line of the library.
   defp test_coverage do
-    [summary: [threshold: 94], ignore_modules: [Rover.MapCase]]
+    [summary: [threshold: 95], ignore_modules: [Rover.MapCase]]
   end
 
   defp aliases do
