@@ -4,18 +4,6 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.0] - 2026-08-31
-
-### Added
-
-- **Carto API key support** on `:carto_light`, `:carto_dark`, and
-  `:carto_voyager`, which Carto now requires. Configure a default with
-  `config :rover, Rover.Tiles, carto_api_key: "..."`, or pass
-  `tiles={{:carto_dark, key: "..."}}` per call to override it. Presets
-  without a key configured or passed are unaffected. Carto is retiring these
-  raster endpoints for vector tiles; Rover's basemap layer stays raster-only
-  for now.
-
 ## [0.5.0] - 2026-08-31
 
 ### Added
@@ -76,6 +64,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   only `data-*` attributes onto one of those — a map that locked itself would
   otherwise stay a focusable `role="application"` with nothing behind it.
 
+- **Carto API key support** on `:carto_light`, `:carto_dark`, and
+  `:carto_voyager`, which Carto's basemaps now need. Configure a default with
+  `config :rover, Rover.Tiles, carto_api_key: "..."`, or pass
+  `tiles={{:carto_dark, key: "..."}}` per call to override it. A preset with no
+  key configured or passed keeps the URL it had.
+
+  Worth knowing what an unkeyed map looks like, because it is not what anyone
+  goes looking for: the tiles still load, with `API KEY REQUIRED` stamped
+  diagonally across every one. Not a blank map, not a 401 — a legible map
+  wearing a watermark. The key is free, issued by return email with no queue and
+  no Carto account, and covers 5 million tile requests a month.
+
+  Carto also say the raster service is being retired in favour of vector tiles
+  and that they are considering freezing its data updates, with no date
+  published for either. Rover's basemap layer is raster-only today; the key
+  covers both services, so nothing is wasted when that changes.
+
+  Thanks to [@rockneurotiko](https://github.com/rockneurotiko), who found this
+  and wrote the implementation.
+
 - **Dialyzer in CI**, and `mix dialyzer` locally. The public API is annotated
   with `@spec` end to end and nothing ever checked those annotations against the
   code. The PLT is written to `_build/plts`, so the `_build` cache CI already
@@ -85,11 +93,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   in `mix.exs`, and the lint row of the CI matrix runs it. The floor is a
   ratchet: raise it when a release lands above it, never lower it to make a red
   run green.
-
 ### Removed
 
 - A `Rover.Shape` fallback clause that could not be reached — every caller of the
   private `get/2` is already inside an `is_map/1` guard. Dialyzer's first find.
+
 ## [0.4.0] - 2026-08-12
 
 ### Added
@@ -409,7 +417,6 @@ them.
   back as strings and will not match.
 - `fit` governs *re*fitting; the initial framing is separate.
 
-[0.6.0]: https://github.com/nseaSeb/rover/releases/tag/v0.6.0
 [0.5.0]: https://github.com/nseaSeb/rover/releases/tag/v0.5.0
 [0.4.0]: https://github.com/nseaSeb/rover/releases/tag/v0.4.0
 [0.3.2]: https://github.com/nseaSeb/rover/releases/tag/v0.3.2

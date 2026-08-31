@@ -57,7 +57,7 @@ is somewhere else entirely.
 
 ```elixir
 def deps do
-  [{:rover, "~> 0.6"}]
+  [{:rover, "~> 0.5"}]
 end
 ```
 
@@ -458,8 +458,13 @@ The OSM and Carto presets point at **public demo servers with usage policies
 that forbid production traffic** — for anything real, point `{:xyz, …}` at tiles
 you are entitled to use.
 
-Carto now requires an API key on `:carto_light`, `:carto_dark`, and
-`:carto_voyager`:
+**Carto's basemaps now need an API key.** Without one the tiles still load —
+they are served with `API KEY REQUIRED` stamped diagonally across every one, so
+the symptom is a legible map wearing a watermark rather than a blank map or an
+error in the console. The key is free, issued by return email with no queue and
+no Carto account, and covers 5 million tile requests a month across their raster
+and vector services. Attribution must stay visible, which Rover renders for you.
+Request one at <https://carto.com/basemaps/apikey/>, then:
 
 ```elixir
 # config.exs — applies to every carto_* preset
@@ -471,9 +476,11 @@ config :rover, Rover.Tiles, carto_api_key: "YOUR_KEY"
 <.map id="m" tiles={{:carto_dark, key: "YOUR_KEY"}} ... />
 ```
 
-Carto is also retiring these raster endpoints for vector tiles; Rover's
-OpenLayers basemap layer is raster-only today, so treat the Carto presets as a
-transitional option rather than a long-term one.
+Carto also says the raster (PNG) service is being retired in favour of vector
+tiles, and that they are considering freezing its data updates. No date is
+published. Rover's OpenLayers basemap layer is raster-only today, so treat the
+Carto presets as a transitional option rather than a long-term one — the key you
+request now covers the vector service too, whenever Rover reaches it.
 
 ## What "only update what changed" actually means
 

@@ -17,9 +17,19 @@ defmodule Rover.Tiles do
 
   ## Carto API keys
 
-  Carto now requires an API key on `:carto_light`, `:carto_dark`, and
-  `:carto_voyager`, requests without one are rejected. Configure a default for
-  the whole app:
+  Carto's basemaps now need an API key. Without one the tiles still load — they
+  arrive with `API KEY REQUIRED` stamped diagonally across every one, so the
+  symptom is a legible map wearing a watermark rather than a blank map or an
+  error in the console. That is worth knowing before you go looking for a 401
+  that never comes.
+
+  The key is free: Carto issue it by return email, with no approval queue and no
+  Carto account, and it covers 5 million tile requests a month across their
+  raster and vector services. Their terms require the CARTO and OpenStreetMap
+  attribution to stay visible, which Rover renders for you. Request one at
+  <https://carto.com/basemaps/apikey/>.
+
+  Configure a default for the whole app:
 
       config :rover, Rover.Tiles, carto_api_key: "YOUR_KEY"
 
@@ -27,12 +37,13 @@ defmodule Rover.Tiles do
 
       <.map id="m" tiles={{:carto_dark, key: "YOUR_KEY"}} ... />
 
-  Carto is also retiring these raster tile endpoints in favor of vector tiles
-  (MapLibre-style GL JSON served as MVT). Rover's map renders basemaps through
-  OpenLayers' raster `XYZ` source today, so the presets here stay on raster
-  until Rover grows a vector tile layer — track Carto's deprecation notices if
-  you depend on `:carto_light`, `:carto_dark`, or `:carto_voyager` past their
-  raster sunset date.
+  Carto also say the raster (PNG) service is being retired in favour of vector
+  tiles, and that they are considering freezing its data updates — the
+  cartography would stay where it is while vector keeps moving. No date is
+  published for either. Rover's map renders basemaps through OpenLayers' raster
+  `XYZ` source today, so the presets here stay on raster until Rover grows a
+  vector tile layer; the key you request now covers both services, so nothing is
+  wasted when it does.
 
   ## France
 

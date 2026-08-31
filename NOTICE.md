@@ -36,6 +36,7 @@ The OpenStreetMap and CARTO presets target public demo endpoints whose usage
 policies forbid production traffic. For anything real, pass `{:xyz, url}` with
 tiles you are entitled to serve.
 
-CARTO also requires an API key on its raster presets (`:carto_light`,
-`:carto_dark`, `:carto_voyager`) and is retiring those raster endpoints in
-favor of vector tiles. See `Rover.Tiles` for how to configure a key.
+CARTO's basemaps (`:carto_light`, `:carto_dark`, `:carto_voyager`) now need a
+free API key; without one the tiles arrive watermarked. CARTO's terms also
+require that its attribution, and OpenStreetMap's, stay visible — Rover renders
+both. See `Rover.Tiles` for how to configure a key.
