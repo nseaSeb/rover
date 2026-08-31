@@ -315,6 +315,10 @@
   position: absolute;
   inset: 0;
 }
+.rover-map__canvas--drawing,
+.rover-map__canvas--drawing .ol-viewport {
+  cursor: crosshair !important;
+}
 .rover-map .ol-control {
   background: none;
   padding: 0;

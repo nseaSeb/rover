@@ -8,6 +8,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Drawing new shapes**: `Rover.start_drawing/3`, `Rover.stop_drawing/2` and
+  `on_draw_end`. The other half of 0.4.0's `:editable`, which could only reshape
+  a geometry that already existed. Deliberately a mode rather than an attribute —
+  there is no shape yet to hang a per-item flag on, and an always-armed
+  `ol/interaction/Draw` would swallow every ordinary map and shape click — so it
+  is a one-shot command in the shape of `fly_to/4`. `on_draw_end` is the only
+  event with no `"id"`: the shape does not exist until the server makes one, so
+  identity is the server's to assign.
+
+  The sketch is drawn into a **separate scratch source**, never into
+  `ShapeLayer`'s own. A feature `Draw` put there would be absent from the
+  `entries` map `reconcile/1` tracks, so the server's echo of the new shape would
+  render a second feature beside it and the polygon would appear twice. The
+  scratch layer is cleared by the same call that applies a new `:shapes` list, so
+  the handover is invisible on the accepted path and is the cleanup on the
+  abandoned one.
+
+  `:type` is `:polygon`, `:line` or `:point`. There is no `:circle`: OpenLayers
+  draws one, GeoJSON cannot represent one, and it could never round-trip through
+  `Rover.Shape`. Escape abandons the sketch in progress and leaves the mode
+  armed; new points snap to the shapes already on the map; a map with
+  `interactive={false}` refuses to arm, and locking one mid-draw cancels the
+  mode rather than remembering it.
+
+  While the mode is armed the map does not report clicks or tooltips of its own:
+  a click that places a vertex is not a click on the map, and reporting it would
+  fire `on_map_click` once per corner — dismissing any open popup each time,
+  since the popup layer listens for exactly that.
 - **Dialyzer in CI**, and `mix dialyzer` locally. The public API is annotated
   with `@spec` end to end and nothing ever checked those annotations against the
   code. The PLT is written to `_build/plts`, so the `_build` cache CI already
@@ -22,7 +50,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - A `Rover.Shape` fallback clause that could not be reached — every caller of the
   private `get/2` is already inside an `is_map/1` guard. Dialyzer's first find.
-
 ## [0.4.0] - 2026-08-12
 
 ### Added

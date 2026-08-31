@@ -17,6 +17,15 @@
   inset: 0;
 }
 
+/* Drawing is a mode, and a mode should be visible before the first click.
+   Set by the client while `Rover.start_drawing/3` is armed; the rule is
+   `!important` because OpenLayers writes cursor straight onto this element's
+   inline style on every pointermove. */
+.rover-map__canvas--drawing,
+.rover-map__canvas--drawing .ol-viewport {
+  cursor: crosshair !important;
+}
+
 /* --- controls ------------------------------------------------------------ */
 
 .rover-map .ol-control {

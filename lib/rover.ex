@@ -175,6 +175,89 @@ defmodule Rover do
     end
   end
 
+  @draw_types %{point: "Point", line: "LineString", polygon: "Polygon"}
+
+  @doc """
+  Arms the map for drawing, so the user can put a new shape on it.
+
+  `:editable` lets a user reshape a geometry that already exists. This is the
+  other half: there is nothing to attach a per-item flag to yet, so drawing is a
+  one-shot command like `fly_to/4` rather than an attribute — a mode the server
+  turns on for a gesture and turns off again.
+
+      def handle_event("draw_parcel", _params, socket) do
+        {:noreply, Rover.start_drawing(socket, "parcels", type: :polygon)}
+      end
+
+  The finished geometry arrives on `on_draw_end`, with no `:id` — the shape does
+  not exist yet, and identity is yours to assign:
+
+      def handle_event("drew", %{"geometry" => geometry}, socket) do
+        parcel = %{id: System.unique_integer([:positive]), geometry: geometry}
+
+        {:noreply,
+         socket
+         |> assign(parcels: socket.assigns.parcels ++ [parcel])
+         |> Rover.stop_drawing("parcels")}
+      end
+
+  The mode stays armed until `stop_drawing/2`, so a user asked to trace four
+  parcels traces four without touching the toolbar again. Escape abandons the
+  sketch in progress and leaves the mode armed, the way it does in every drawing
+  tool.
+
+  While it is armed the map claims every click — `on_marker_click`,
+  `on_shape_click`, `on_cluster_click` and `on_map_click` all stop firing, and
+  popups stop opening. A click that places a vertex is not a click on whatever
+  sits under it. Because the mode persists, leaving it armed leaves the map's
+  other click behaviour off with it.
+
+  ## Options
+
+    * `:type` — `:polygon` (the default), `:line` or `:point`.
+
+  There is no `:circle`. OpenLayers can draw one, GeoJSON has no way to represent
+  one, and a shape that cannot round-trip through `Rover.Shape` would be a
+  geometry the server could never store or send back.
+
+  A map rendered with `interactive={false}` refuses to arm: it is a picture, and
+  drawing is the largest interaction there is.
+  """
+  @spec start_drawing(Phoenix.LiveView.Socket.t(), String.t(), keyword()) ::
+          Phoenix.LiveView.Socket.t()
+  def start_drawing(socket, id, opts \\ []) do
+    type = Keyword.get(opts, :type, :polygon)
+
+    Phoenix.LiveView.push_event(socket, "rover:start_drawing", %{id: id, type: draw_type!(type)})
+  end
+
+  @doc """
+  Disarms a map armed by `start_drawing/3`, and discards any unfinished sketch.
+
+  Calling it on a map that is not drawing does nothing.
+  """
+  @spec stop_drawing(Phoenix.LiveView.Socket.t(), String.t()) :: Phoenix.LiveView.Socket.t()
+  def stop_drawing(socket, id) do
+    Phoenix.LiveView.push_event(socket, "rover:stop_drawing", %{id: id})
+  end
+
+  defp draw_type!(type) do
+    case Map.fetch(@draw_types, type) do
+      {:ok, geojson_type} ->
+        geojson_type
+
+      :error ->
+        raise ArgumentError, """
+        invalid draw type: #{inspect(type)}.
+
+        Expected one of: #{Enum.map_join(Map.keys(@draw_types), ", ", &inspect/1)}.
+
+        Note that :circle is not among them — GeoJSON cannot represent a circle,
+        so a drawn one could never round-trip through Rover.Shape.
+        """
+    end
+  end
+
   @doc """
   The bounding box of anything `fit_to/4` accepts, as `{south, west, north, east}`.
 

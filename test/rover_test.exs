@@ -126,6 +126,49 @@ defmodule RoverTest do
     end
   end
 
+  describe "start_drawing/3" do
+    test "arms the map named, with the GeoJSON type the client draws" do
+      socket = Rover.start_drawing(socket(), "parcels", type: :polygon)
+
+      assert [{"rover:start_drawing", payload}] = pushed(socket)
+      assert payload.id == "parcels"
+      assert payload.type == "Polygon"
+    end
+
+    test "defaults to a polygon, which is what drawing a shape usually means" do
+      [{_event, payload}] = Rover.start_drawing(socket(), "m") |> pushed()
+
+      assert payload.type == "Polygon"
+    end
+
+    test "translates the other two types" do
+      assert [{_, %{type: "LineString"}}] =
+               Rover.start_drawing(socket(), "m", type: :line) |> pushed()
+
+      assert [{_, %{type: "Point"}}] =
+               Rover.start_drawing(socket(), "m", type: :point) |> pushed()
+    end
+
+    test "refuses a circle by name, because GeoJSON cannot carry one back" do
+      assert_raise ArgumentError, ~r/GeoJSON cannot represent a circle/, fn ->
+        Rover.start_drawing(socket(), "m", type: :circle)
+      end
+    end
+
+    test "refuses an unknown type" do
+      assert_raise ArgumentError, ~r/invalid draw type: :blob/, fn ->
+        Rover.start_drawing(socket(), "m", type: :blob)
+      end
+    end
+  end
+
+  describe "stop_drawing/2" do
+    test "disarms the map named" do
+      assert [{"rover:stop_drawing", %{id: "parcels"}}] =
+               Rover.stop_drawing(socket(), "parcels") |> pushed()
+    end
+  end
+
   # push_event/3 accumulates onto `socket.private.live_temp[:push_events]`, newest
   # first. Reading it back is the cheapest honest way to assert the payload without
   # standing up an endpoint; the round trip to an actual animation is covered by the

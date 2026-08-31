@@ -63,6 +63,8 @@ defmodule RoverDev.DemoLive do
        crowd: false,
        cluster_log: nil,
        next_id: 4,
+       next_drawn_id: 1,
+       draw: nil,
        reject_edits: false,
        log: nil
      )}
@@ -112,6 +114,7 @@ defmodule RoverDev.DemoLive do
       <button phx-click="toggle_edit_reject">
         Edits: {if @reject_edits, do: "rejected", else: "accepted"}
       </button>
+      <button phx-click="cycle_draw">Draw: {@draw || "off"}</button>
     </div>
 
     <.map
@@ -131,6 +134,7 @@ defmodule RoverDev.DemoLive do
       on_move_end="moved"
       on_marker_drag_end="marker_dragged"
       on_shape_edit_end="shape_edited"
+      on_draw_end="drew"
     >
       <:popup :let={marker}>
         <strong>{marker.emoji} {marker.label}</strong>
@@ -432,6 +436,51 @@ defmodule RoverDev.DemoLive do
     {:noreply, socket |> assign(shapes: shapes) |> log(message)}
   end
 
+  # The mode stays armed until it is turned off, so tracing four parcels takes
+  # four gestures and no trips back to the toolbar. Cycling through the three
+  # types rather than offering three buttons keeps the toolbar honest about what
+  # `Rover.start_drawing/3` actually is: one mode, with a type.
+  def handle_event("cycle_draw", _params, socket) do
+    next = next_draw(socket.assigns.draw)
+    socket = assign(socket, draw: next)
+
+    if next do
+      {:noreply,
+       socket
+       |> Rover.start_drawing("clients", type: next)
+       |> log("drawing #{next}s — click to place points, Escape abandons the one in progress")}
+    else
+      {:noreply, socket |> Rover.stop_drawing("clients") |> log("drawing off")}
+    end
+  end
+
+  # No id on the payload: the shape did not exist until now, so naming it is the
+  # server's job — exactly as it would be for a row about to be inserted.
+  def handle_event("drew", %{"type" => type, "geometry" => geometry}, socket) do
+    id = "drawn-#{socket.assigns.next_drawn_id}"
+
+    shape = %{
+      id: id,
+      geometry: geometry,
+      color: "#7c3aed",
+      fill_color: "#7c3aed",
+      fill_opacity: 0.18,
+      width: 2,
+      label: id,
+      rev: :erlang.phash2(geometry),
+      # Drawn and then reshaped, which is the pair of features working together.
+      editable: true
+    }
+
+    {:noreply,
+     socket
+     |> assign(
+       shapes: socket.assigns.shapes ++ [shape],
+       next_drawn_id: socket.assigns.next_drawn_id + 1
+     )
+     |> log("drew #{id} (#{type}) — the sketch became a shape the server owns")}
+  end
+
   def handle_event("toggle_edit_reject", _params, socket) do
     {:noreply, assign(socket, reject_edits: !socket.assigns.reject_edits)}
   end
@@ -448,6 +497,11 @@ defmodule RoverDev.DemoLive do
      |> assign(clients: clients)
      |> log("marker #{id} dragged to #{fmt(lat)}, #{fmt(lon)} — and the server now agrees")}
   end
+
+  defp next_draw(nil), do: :polygon
+  defp next_draw(:polygon), do: :line
+  defp next_draw(:line), do: :point
+  defp next_draw(:point), do: nil
 
   defp shapes(:none), do: []
 
@@ -524,13 +578,22 @@ defmodule RoverDev.DemoLive do
   defp cluster_label(true), do: "on"
   defp cluster_label(_opts), do: "on, no zoom"
 
+  # The button cycles the two built-in geometries, so it names those and counts
+  # anything drawn separately. Matching on the whole id list raised a
+  # CaseClauseError the moment a drawn shape joined it — a render crash, from a
+  # label.
   defp shape_label(shapes) do
-    case Enum.map(shapes, & &1.id) |> Enum.sort() do
-      ["parcel", "route"] -> "both"
-      ["parcel"] -> "parcel only"
-      ["route"] -> "route only"
-      [] -> "none"
-    end
+    {known, drawn} = Enum.split_with(shapes, &(&1.id in ["parcel", "route"]))
+
+    base =
+      case known |> Enum.map(& &1.id) |> Enum.sort() do
+        ["parcel", "route"] -> "both"
+        ["parcel"] -> "parcel only"
+        ["route"] -> "route only"
+        [] -> "none"
+      end
+
+    if drawn == [], do: base, else: "#{base} + #{length(drawn)} drawn"
   end
 
   defp log(socket, message), do: assign(socket, log: message)

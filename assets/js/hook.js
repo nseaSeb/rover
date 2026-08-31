@@ -47,6 +47,14 @@ export const Rover = {
     this.handleEvent("rover:fit_to", (payload) => {
       if (this.mine(payload)) this.map.fitTo(payload)
     })
+
+    this.handleEvent("rover:start_drawing", (payload) => {
+      if (this.mine(payload)) this.map.startDrawing(payload)
+    })
+
+    this.handleEvent("rover:stop_drawing", (payload) => {
+      if (this.mine(payload)) this.map.stopDrawing()
+    })
   },
 
   mine(payload) {

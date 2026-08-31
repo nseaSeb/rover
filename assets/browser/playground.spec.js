@@ -238,6 +238,35 @@ function markerPixel(page, id) {
   )
 }
 
+/**
+ * The state of the drawing mode, read off the map itself.
+ *
+ * `drawing` is what `Rover.start_drawing/3` armed; `sketch` is how many features
+ * are sitting in the scratch layer. The pair is what distinguishes "the sketch
+ * became a shape" from "the sketch is still a sketch", and neither is visible in
+ * the DOM.
+ */
+function drawState(page) {
+  return page.evaluate((selector) => {
+    const rover = document.querySelector(selector)._rover
+
+    return {
+      drawing: rover.drawing ? rover.drawing.type : null,
+      sketch: rover.drawLayer.source.getFeatures().length,
+      shapes: rover.shapeLayer.entries.size,
+    }
+  }, MAP)
+}
+
+/** Click a sequence of canvas-relative points, in order. */
+async function clickPath(page, points) {
+  const canvas = page.locator(CANVAS)
+
+  for (const point of points) {
+    await canvas.click({ position: point })
+  }
+}
+
 test.describe("the playground", () => {
   test("builds IGN tile URLs the Géoportail accepts", async ({ page }) => {
     const urls = await stubTiles(page)
@@ -890,6 +919,122 @@ test.describe("the playground", () => {
     const after = await shapeVertexPixel(page, MAP, "parcel")
     expect(after.x, "the vertex stayed at the dropped position").toBeCloseTo(before.x, 0)
     expect(after.y, "the vertex stayed at the dropped position").toBeCloseTo(before.y, 0)
+
+    expect(problems).toEqual([])
+  })
+  test("draws a polygon, and the sketch becomes a shape the server owns", async ({ page }) => {
+    // The scratch layer's whole reason for existing: a feature Draw put straight
+    // into ShapeLayer's source would be untracked by `entries`, so the server's
+    // echo of the same shape would render a second feature beside it and the
+    // polygon would appear twice. Asserting the sketch is empty afterwards is
+    // what catches that.
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/?shapes=none")
+    await mapReady(page)
+
+    await page.getByRole("button", { name: "Draw: off" }).click()
+    await expect(page.getByRole("button", { name: "Draw: polygon" })).toBeVisible()
+    expect(await drawState(page)).toMatchObject({ drawing: "Polygon", shapes: 0 })
+
+    // Three corners, then the last click again — how OpenLayers is told a
+    // polygon is finished.
+    await clickPath(page, [
+      { x: 120, y: 120 },
+      { x: 220, y: 120 },
+      { x: 220, y: 200 },
+      { x: 220, y: 200 },
+    ])
+
+    await expect(page.locator(".log")).toContainText(
+      "drew drawn-1 (Polygon) — the sketch became a shape the server owns"
+    )
+
+    const after = await drawState(page)
+    expect(after.shapes, "the drawn shape did not reach the shape layer").toBe(1)
+    expect(after.sketch, "the sketch outlived the shape it became").toBe(0)
+    // Still armed: the mode ends when the server says so, not when one shape is
+    // finished, so tracing four parcels takes four gestures and no toolbar trips.
+    expect(after.drawing).toBe("Polygon")
+
+    expect(problems).toEqual([])
+  })
+
+  test("a click that places a vertex is not a click on the map", async ({ page }) => {
+    // Every click while drawing also reaches `singleclick`. Without the guard it
+    // fires on_map_click per vertex — and Popups listens for mapClick, so each
+    // corner of a polygon would also dismiss whatever popup was open.
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/?shapes=none")
+    await mapReady(page)
+
+    await page.getByRole("button", { name: "Draw: off" }).click()
+    await expect(page.getByRole("button", { name: "Draw: polygon" })).toBeVisible()
+
+    await clickPath(page, [
+      { x: 130, y: 130 },
+      { x: 210, y: 130 },
+    ])
+
+    await expect(page.locator(".log")).not.toContainText("map clicked at")
+
+    expect(problems).toEqual([])
+  })
+
+  test("Escape abandons the sketch and leaves the mode armed", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/?shapes=none")
+    await mapReady(page)
+
+    await page.getByRole("button", { name: "Draw: off" }).click()
+    await expect(page.getByRole("button", { name: "Draw: polygon" })).toBeVisible()
+
+    await clickPath(page, [
+      { x: 140, y: 140 },
+      { x: 230, y: 140 },
+      { x: 230, y: 210 },
+    ])
+
+    await page.keyboard.press("Escape")
+
+    const afterEscape = await drawState(page)
+    expect(afterEscape.sketch, "the abandoned sketch is still on the map").toBe(0)
+    expect(afterEscape.shapes, "an abandoned sketch reached the server").toBe(0)
+    expect(afterEscape.drawing, "Escape disarmed the mode as well").toBe("Polygon")
+
+    // And turning the mode off leaves nothing behind.
+    await page.getByRole("button", { name: "Draw: polygon" }).click()
+    await page.getByRole("button", { name: "Draw: line" }).click()
+    await page.getByRole("button", { name: "Draw: point" }).click()
+    await expect(page.getByRole("button", { name: "Draw: off" })).toBeVisible()
+
+    expect(await drawState(page)).toMatchObject({ drawing: null, sketch: 0 })
+
+    expect(problems).toEqual([])
+  })
+
+  test("draws a point, the type the server asked for", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/?shapes=none")
+    await mapReady(page)
+
+    await page.getByRole("button", { name: "Draw: off" }).click()
+    await page.getByRole("button", { name: "Draw: polygon" }).click()
+    await page.getByRole("button", { name: "Draw: line" }).click()
+    await expect(page.getByRole("button", { name: "Draw: point" })).toBeVisible()
+    expect(await drawState(page)).toMatchObject({ drawing: "Point" })
+
+    await clickPath(page, [{ x: 160, y: 160 }])
+
+    await expect(page.locator(".log")).toContainText("drew drawn-1 (Point)")
+    expect((await drawState(page)).sketch).toBe(0)
 
     expect(problems).toEqual([])
   })

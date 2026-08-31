@@ -15,6 +15,7 @@ import { describe, it } from "node:test"
 // to every consumer's import — it should be deliberate, so it is written out
 // rather than derived from the source.
 const CONTRACT = [
+  "DrawLayer",
   "HeatmapLayer",
   "MarkerLayer",
   "Rover",

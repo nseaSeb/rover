@@ -414,6 +414,16 @@ defmodule Rover.ComponentsTest do
     end
   end
 
+  describe "drawing" do
+    test "an on_draw_end handler reaches the client" do
+      assert config(render_map(on_draw_end: "drew"))["events"]["drawEnd"] == "drew"
+    end
+
+    test "no drawEnd key when it was not asked for" do
+      refute Map.has_key?(config(render_map(markers: @lyon))["events"], "drawEnd")
+    end
+  end
+
   describe "clustering" do
     test "is off unless asked for" do
       refute Map.has_key?(config(render_map(markers: @lyon)), "cluster")

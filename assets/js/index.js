@@ -6,6 +6,7 @@ export { Rover, RoverHooks } from "./hook.js"
 export { RoverMap } from "./rover_map.js"
 export { MarkerLayer } from "./markers.js"
 export { ShapeLayer } from "./shapes.js"
+export { DrawLayer } from "./draw.js"
 export { HeatmapLayer } from "./heatmap.js"
 export { project, unproject, extentToBbox } from "./coords.js"
 

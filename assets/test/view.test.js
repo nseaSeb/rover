@@ -3,6 +3,7 @@ import { describe, it } from "node:test"
 
 import {
   fitMaxZoom,
+  isTextEntry,
   normalizeConfig,
   shouldFit,
   shouldRecenter,
@@ -186,5 +187,23 @@ describe("fitMaxZoom as the drill-in ceiling", () => {
 
   it("still respects a lower basemap", () => {
     assert.equal(fitMaxZoom({ tiles: { maxZoom: 17 } }, true), 17)
+  })
+})
+
+// The Escape that abandons a sketch is bound to the document, the way a drawing
+// tool binds it. The one press that is plainly not the map's is the one
+// dismissing whatever the user is typing into.
+describe("isTextEntry", () => {
+  it("leaves Escape to a field the user is typing in", () => {
+    assert.equal(isTextEntry({ tagName: "INPUT" }), true)
+    assert.equal(isTextEntry({ tagName: "TEXTAREA" }), true)
+    assert.equal(isTextEntry({ tagName: "SELECT" }), true)
+    assert.equal(isTextEntry({ tagName: "DIV", isContentEditable: true }), true)
+  })
+
+  it("takes Escape for the map everywhere else", () => {
+    assert.equal(isTextEntry({ tagName: "DIV" }), false)
+    assert.equal(isTextEntry({ tagName: "BODY" }), false)
+    assert.equal(isTextEntry(null), false)
   })
 })

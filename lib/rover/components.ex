@@ -39,9 +39,13 @@ defmodule Rover.Components do
   | `on_move_end` | `%{"center" => [lat, lon], "zoom" => zoom, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
   | `on_marker_drag_end` | `%{"id" => id, "lat" => lat, "lon" => lon}` |
   | `on_shape_edit_end` | `%{"id" => id, "geometry" => geojson_geometry, "properties" => geojson_properties, "data" => data}` |
+  | `on_draw_end` | `%{"type" => type, "geometry" => geojson_geometry}` |
 
   Inside a `Phoenix.LiveComponent`, route the events to yourself with
   `target={@myself}`.
+
+  `on_draw_end` is the one with no `:id`, because the shape it describes does not
+  exist yet — see `Rover.start_drawing/3`, which is what arms the map to send it.
 
   > #### Viewports can straddle the antimeridian {: .warning}
   >
@@ -223,6 +227,15 @@ defmodule Rover.Components do
   attr :on_marker_drag_end, :string, default: nil
   attr :on_shape_edit_end, :string, default: nil
 
+  attr :on_draw_end, :string,
+    default: nil,
+    doc: """
+    Receives `%{"type" => type, "geometry" => geometry}` when the user finishes
+    drawing a new shape, which they can only do while `Rover.start_drawing/3` has
+    armed this map. No `:id`: identity is yours to assign when you turn the
+    geometry into a shape.
+    """
+
   attr :target, :any,
     default: nil,
     doc: "`@myself` to route events to the enclosing `Phoenix.LiveComponent`."
@@ -398,7 +411,8 @@ defmodule Rover.Components do
           mapClick: assigns.on_map_click,
           moveEnd: assigns.on_move_end,
           markerDragEnd: assigns.on_marker_drag_end,
-          shapeEditEnd: assigns.on_shape_edit_end
+          shapeEditEnd: assigns.on_shape_edit_end,
+          drawEnd: assigns.on_draw_end
         })
     }
     |> drop_nils()

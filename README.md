@@ -213,6 +213,60 @@ What snaps the shape back to the server's truth is bumping `:rev` (the default
 changes; rejecting an edit means the geometry does *not* change, so `:rev` has
 to be bumped some other way, deliberately).
 
+### Letting the user draw a new one
+
+`:editable` reshapes a geometry that already exists. Drawing is the other half,
+and it is a **mode** rather than an attribute — there is no shape yet to hang a
+flag on, so the server arms the map for a gesture the way `fly_to` moves it:
+
+```elixir
+def handle_event("draw_parcel", _params, socket) do
+  {:noreply, Rover.start_drawing(socket, "parcels", type: :polygon)}
+end
+```
+
+```heex
+<.map id="parcels" shapes={@parcels} on_draw_end="drew" />
+```
+
+```elixir
+def handle_event("drew", %{"type" => _type, "geometry" => geometry}, socket) do
+  parcel = %{id: System.unique_integer([:positive]), geometry: geometry, editable: true}
+
+  {:noreply,
+   socket
+   |> assign(parcels: socket.assigns.parcels ++ [parcel])
+   |> Rover.stop_drawing("parcels")}
+end
+```
+
+`on_draw_end` is the one event with no `"id"`: the shape does not exist until
+you make one, so naming it is yours to do — the same way it would be for a row
+you are about to insert.
+
+Four things worth knowing:
+
+* **The mode stays armed** until `Rover.stop_drawing/2`. A user asked to trace
+  four parcels traces four without going back to the toolbar. Drop the
+  `stop_drawing` above if that is what you want.
+* **Escape abandons the sketch in progress** and leaves the mode armed, the way
+  it does in every drawing tool. The server is not told: it armed a mode, and
+  the mode is still armed.
+* **`:type` is `:polygon`, `:line` or `:point`.** There is no `:circle` —
+  OpenLayers can draw one, GeoJSON has no way to represent one, and a shape that
+  cannot round-trip through `Rover.Shape` is one the server could never store or
+  send back.
+* **New points snap to the shapes already on the map**, so a parcel traced
+  against its neighbour shares that border instead of leaving a sliver.
+* **While the mode is armed the map claims every click.** Not just
+  `on_map_click`: markers, shapes and clusters stop answering too, popups
+  included, because a click that places a vertex is not a click on the thing
+  underneath it. Since the mode persists until you stop it, leaving it armed
+  leaves the map's other click behaviour off with it.
+
+A map rendered with `interactive={false}` refuses to arm, and locking one that
+is already drawing cancels the mode outright rather than remembering it.
+
 ### Geometry is diffed by revision, not by hashing
 
 Markers hash their coordinate — two numbers. A route is thousands of points, so
@@ -476,9 +530,9 @@ and a log of the events coming back. There is no OpenLayers in that file.
 
 ## Status
 
-Markers, GeoJSON shapes, emoji, popups, clustering, heatmaps, imperative view
-control and the French Géoportail are complete and tested. Still open: arbitrary
-HTML markers, drawing interactions, a keyboard and ARIA pass, real
+Markers, GeoJSON shapes, emoji, popups, clustering, heatmaps, drawing and
+editing geometry, imperative view control and the French Géoportail are complete
+and tested. Still open: arbitrary HTML markers, a keyboard and ARIA pass, real
 `ol/source/WMTS` sources, and loading geometry by URL rather than by attribute.
 
 That last one is the honest limit of the current transport. An HTML attribute is a
@@ -503,6 +557,7 @@ Most of the migration is deleting JavaScript. The mapping:
 | `bindTooltip` / `title` | a marker's `:tooltip` |
 | `L.geoJSON(geometry, style)` | `shapes` with `:color`, `:width`, `:fill_opacity` |
 | `featureGroup().getBounds()` + `fitBounds` | automatic, over markers and shapes together |
+| `L.Draw` / `leaflet-draw` | `Rover.start_drawing/3` and `on_draw_end` |
 | `handleEvent` + `push_event` to feed the map | `assign/3`; the data rides on attributes |
 | a versioned element `id` to force a remount | not needed — Rover has an `updated()` |
 

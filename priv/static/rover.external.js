@@ -137,19 +137,63 @@ import Rotate from "ol/control/Rotate.js";
 import ScaleLine from "ol/control/ScaleLine.js";
 import Zoom from "ol/control/Zoom.js";
 import { never } from "ol/events/condition.js";
+import Draw from "ol/interaction/Draw.js";
 import Modify from "ol/interaction/Modify.js";
+import Snap from "ol/interaction/Snap.js";
 import Translate from "ol/interaction/Translate.js";
 import { defaults as defaultInteractions } from "ol/interaction/defaults.js";
 import { createEmpty, extend } from "ol/extent.js";
+
+// js/draw.js
+import VectorLayer from "ol/layer/Vector.js";
+import VectorSource from "ol/source/Vector.js";
+import Circle from "ol/style/Circle.js";
+import Fill from "ol/style/Fill.js";
+import Stroke from "ol/style/Stroke.js";
+import Style from "ol/style/Style.js";
+var PENDING_COLOR = "#2563eb";
+var TYPES = /* @__PURE__ */ new Set(["Point", "LineString", "Polygon"]);
+function drawTypeFor(type) {
+  return TYPES.has(type) ? type : null;
+}
+var DrawLayer = class {
+  constructor() {
+    this.source = new VectorSource({ wrapX: false });
+    this.layer = new VectorLayer({
+      source: this.source,
+      // Above the shapes it is about to become one of, below the markers.
+      zIndex: 6,
+      style: pendingStyle()
+    });
+  }
+  clear() {
+    this.source.clear();
+  }
+  dispose() {
+    this.source.clear();
+  }
+};
+function pendingStyle() {
+  return new Style({
+    stroke: new Stroke({ color: PENDING_COLOR, width: 2, lineDash: [6, 5] }),
+    fill: new Fill({ color: [37, 99, 235, 0.08] }),
+    // A drawn Point has no stroke or fill to show.
+    image: new Circle({
+      radius: 5,
+      fill: new Fill({ color: PENDING_COLOR }),
+      stroke: new Stroke({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
+    })
+  });
+}
 
 // js/heatmap.js
 import Feature from "ol/Feature.js";
 import Point from "ol/geom/Point.js";
 import HeatmapLayerOl from "ol/layer/Heatmap.js";
-import VectorSource from "ol/source/Vector.js";
+import VectorSource2 from "ol/source/Vector.js";
 var HeatmapLayer = class {
   constructor() {
-    this.source = new VectorSource({ wrapX: false });
+    this.source = new VectorSource2({ wrapX: false });
     this.layer = new HeatmapLayerOl({
       source: this.source,
       // Under the shapes and the markers: a heat field is background, and covering
@@ -202,17 +246,17 @@ var HeatmapLayer = class {
 // js/markers.js
 import Feature2 from "ol/Feature.js";
 import Point2 from "ol/geom/Point.js";
-import VectorLayer from "ol/layer/Vector.js";
+import VectorLayer2 from "ol/layer/Vector.js";
 import Cluster from "ol/source/Cluster.js";
-import VectorSource2 from "ol/source/Vector.js";
+import VectorSource3 from "ol/source/Vector.js";
 
 // js/styles.js
-import Style from "ol/style/Style.js";
-import Circle from "ol/style/Circle.js";
+import Style2 from "ol/style/Style.js";
+import Circle2 from "ol/style/Circle.js";
 import Icon from "ol/style/Icon.js";
 import Text from "ol/style/Text.js";
-import Fill from "ol/style/Fill.js";
-import Stroke from "ol/style/Stroke.js";
+import Fill2 from "ol/style/Fill.js";
+import Stroke2 from "ol/style/Stroke.js";
 var DEFAULT_COLOR = "#e11d48";
 var cache = /* @__PURE__ */ new Map();
 var CACHE_LIMIT = 512;
@@ -234,11 +278,11 @@ function styleFor(marker) {
 }
 function buildStyle(marker) {
   const scale = marker.scale || 1;
-  const styles = marker.emoji ? [new Style({ text: emojiText(marker.emoji, scale) })] : [new Style({ image: pinImage(marker, scale) })];
+  const styles = marker.emoji ? [new Style2({ text: emojiText(marker.emoji, scale) })] : [new Style2({ image: pinImage(marker, scale) })];
   if (marker.label) {
     const label = labelText(marker.label);
     if (marker.emoji) {
-      styles.push(new Style({ text: label }));
+      styles.push(new Style2({ text: label }));
     } else {
       styles[0].setText(label);
     }
@@ -263,10 +307,10 @@ function labelText(text) {
     font: "500 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
     offsetY: 8,
     textBaseline: "top",
-    fill: new Fill({ color: "#111827" }),
+    fill: new Fill2({ color: "#111827" }),
     // A halo rather than a background box: legible over any tile, without
     // drawing a rectangle over the map.
-    stroke: new Stroke({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
+    stroke: new Stroke2({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
     overflow: true
   });
 }
@@ -283,16 +327,16 @@ function clusterStyle(count) {
   let style = clusterCache.get(count);
   if (!style) {
     const radius = Math.min(28, 12 + Math.log2(count) * 3);
-    style = new Style({
-      image: new Circle({
+    style = new Style2({
+      image: new Circle2({
         radius,
-        fill: new Fill({ color: withAlpha(CLUSTER_COLOR, 0.85) }),
-        stroke: new Stroke({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
+        fill: new Fill2({ color: withAlpha(CLUSTER_COLOR, 0.85) }),
+        stroke: new Stroke2({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
       }),
       text: new Text({
         text: String(count),
         font: "600 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
-        fill: new Fill({ color: "#ffffff" })
+        fill: new Fill2({ color: "#ffffff" })
       })
     });
     if (clusterCache.size >= CACHE_LIMIT) clusterCache.delete(clusterCache.keys().next().value);
@@ -314,8 +358,8 @@ function withAlpha(hex, alpha) {
 var ROVER_KEY = "rover";
 var MarkerLayer = class {
   constructor() {
-    this.source = new VectorSource2({ wrapX: false });
-    this.layer = new VectorLayer({
+    this.source = new VectorSource3({ wrapX: false });
+    this.layer = new VectorLayer2({
       source: this.source,
       // Markers are the thing the user came for: keep them above every other
       // layer regardless of the order layers happen to be added in.
@@ -510,11 +554,11 @@ function appearanceOf(marker) {
 
 // js/shapes.js
 import GeoJSON from "ol/format/GeoJSON.js";
-import VectorLayer2 from "ol/layer/Vector.js";
-import VectorSource3 from "ol/source/Vector.js";
-import Fill2 from "ol/style/Fill.js";
-import Stroke2 from "ol/style/Stroke.js";
-import Style2 from "ol/style/Style.js";
+import VectorLayer3 from "ol/layer/Vector.js";
+import VectorSource4 from "ol/source/Vector.js";
+import Fill3 from "ol/style/Fill.js";
+import Stroke3 from "ol/style/Stroke.js";
+import Style3 from "ol/style/Style.js";
 import Text2 from "ol/style/Text.js";
 var SHAPE_KEY = "roverShape";
 var DEFAULT_COLOR2 = "#2563eb";
@@ -528,8 +572,8 @@ var format = new GeoJSON({
 });
 var ShapeLayer = class {
   constructor() {
-    this.source = new VectorSource3({ wrapX: false });
-    this.layer = new VectorLayer2({
+    this.source = new VectorSource4({ wrapX: false });
+    this.layer = new VectorLayer3({
       source: this.source,
       // Above the tiles, below the markers: an outline should never swallow the
       // pin that sits on it.
@@ -668,17 +712,17 @@ function styleForShape(shape) {
 function buildStyle2(shape) {
   const color = shape.color || DEFAULT_COLOR2;
   const opacity = shape.fill_opacity ?? DEFAULT_FILL_OPACITY;
-  const style = new Style2({
-    stroke: new Stroke2({ color, width: shape.width || DEFAULT_WIDTH }),
-    fill: new Fill2({ color: withOpacity(shape.fill_color || color, opacity) })
+  const style = new Style3({
+    stroke: new Stroke3({ color, width: shape.width || DEFAULT_WIDTH }),
+    fill: new Fill3({ color: withOpacity(shape.fill_color || color, opacity) })
   });
   if (shape.label) {
     style.setText(
       new Text2({
         text: shape.label,
         font: "500 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
-        fill: new Fill2({ color: "#111827" }),
-        stroke: new Stroke2({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
+        fill: new Fill3({ color: "#111827" }),
+        stroke: new Stroke3({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
         overflow: true
       })
     );
@@ -721,8 +765,10 @@ var RoverMap = class {
     this.hasFitted = false;
     this.quietUntil = 0;
     this.listeners = {};
+    this.drawing = null;
     this.markerLayer = new MarkerLayer();
     this.shapeLayer = new ShapeLayer();
+    this.drawLayer = new DrawLayer();
     this.heatmapLayer = new HeatmapLayer();
     this.tileLayer = new TileLayer({ zIndex: 0 });
     this.applyTiles(this.config.tiles);
@@ -732,6 +778,7 @@ var RoverMap = class {
         this.tileLayer,
         this.heatmapLayer.layer,
         this.shapeLayer.layer,
+        this.drawLayer.layer,
         this.markerLayer.layer
       ],
       controls: buildControls(this.config),
@@ -757,7 +804,7 @@ var RoverMap = class {
     this.maybeFit();
   }
   setShapes(shapes) {
-    this.shapeLayer.reconcile(shapes);
+    this.acceptShapes(shapes);
     this.maybeFit();
   }
   setHeatmap(heatmap) {
@@ -775,9 +822,28 @@ var RoverMap = class {
    */
   setContent({ markers, shapes, heatmap }) {
     if (heatmap !== void 0) this.heatmapLayer.reconcile(heatmap);
-    if (shapes !== void 0) this.shapeLayer.reconcile(shapes);
+    if (shapes !== void 0) this.acceptShapes(shapes);
     if (markers !== void 0) this.markerLayer.reconcile(markers);
     this.maybeFit();
+  }
+  /**
+   * Take a shape list from the server, and drop whatever was sketched.
+   *
+   * The two happen in one synchronous call, so when this is the update carrying
+   * the drawn shape the swap from pending sketch to real tracked shape is
+   * invisible — there is no frame in which the map shows both or neither.
+   *
+   * The clear is unconditional, which is the trade: any `:shapes` update drops a
+   * finished sketch, including one that arrived from somewhere else — a PubSub
+   * broadcast landing between `drawEnd` and the server's echo blanks the polygon
+   * until the round trip completes. Recognising *which* update carries the drawn
+   * shape would need an identity the client does not have, since assigning one is
+   * the whole thing the server does with a `drawEnd`. An unconditional clear is
+   * also what cleans up after a sketch the server refused.
+   */
+  acceptShapes(shapes) {
+    this.drawLayer.clear();
+    this.shapeLayer.reconcile(shapes);
   }
   setConfig(config) {
     const previous = this.config;
@@ -892,6 +958,69 @@ var RoverMap = class {
     this.setupEditing();
     this.translate = null;
     this.setupDragging();
+    const type = this.drawing && this.drawing.type;
+    this.stopDrawing();
+    if (type && config.interactive !== false) this.armDrawing(type);
+  }
+  // -- drawing --------------------------------------------------------------
+  /**
+   * Arm the map for drawing, from `Rover.start_drawing/3`.
+   *
+   * A locked map refuses: `interactive={false}` withholds every other pointer
+   * gesture, and a drawing mode is the largest of them.
+   */
+  startDrawing({ type }) {
+    if (this.config.interactive === false) return;
+    const geometryType = drawTypeFor(type);
+    if (!geometryType) {
+      console.error(`[rover] cannot draw ${JSON.stringify(type)} \u2014 expected Point, LineString or Polygon`);
+      return;
+    }
+    this.stopDrawing();
+    this.armDrawing(geometryType);
+  }
+  armDrawing(type) {
+    this.drawing = { type };
+    if (!this.wants("drawEnd")) {
+      console.error("[rover] drawing was armed with no on_draw_end handler \u2014 the shape drawn will go nowhere");
+    }
+    this.draw = new Draw({ source: this.drawLayer.source, type });
+    this.draw.on("drawend", (event) => {
+      const geometry = format.writeGeometryObject(event.feature.getGeometry(), {
+        decimals: 7
+      });
+      this.emit("drawEnd", { type: geometry.type, geometry });
+    });
+    this.map.addInteraction(this.draw);
+    this.snap = new Snap({ source: this.shapeLayer.source, pixelTolerance: HIT_TOLERANCE });
+    this.map.addInteraction(this.snap);
+    this.onDrawKeydown = (event) => {
+      if (event.key !== "Escape" || !this.draw) return;
+      if (isTextEntry(event.target)) return;
+      this.draw.abortDrawing();
+    };
+    document.addEventListener("keydown", this.onDrawKeydown);
+    this.element.classList.add("rover-map__canvas--drawing");
+  }
+  /** Disarm, from `Rover.stop_drawing/2` — and discard the sketch with the mode. */
+  stopDrawing() {
+    if (this.draw) {
+      this.map.removeInteraction(this.draw);
+      this.draw.dispose();
+      this.draw = null;
+    }
+    if (this.snap) {
+      this.map.removeInteraction(this.snap);
+      this.snap.dispose();
+      this.snap = null;
+    }
+    if (this.onDrawKeydown) {
+      document.removeEventListener("keydown", this.onDrawKeydown);
+      this.onDrawKeydown = null;
+    }
+    this.drawLayer.clear();
+    this.drawing = null;
+    this.element.classList.remove("rover-map__canvas--drawing");
   }
   // -- interaction ----------------------------------------------------------
   setupTooltip() {
@@ -972,6 +1101,7 @@ var RoverMap = class {
   setupEvents() {
     this.map.on("pointermove", (event) => {
       if (this.config.interactive === false) return;
+      if (this.drawing) return this.hideTooltip();
       if (event.dragging) return this.hideTooltip();
       const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel);
       const clickableShape = shape && this.wants("shapeClick");
@@ -989,6 +1119,7 @@ var RoverMap = class {
     this.map.getViewport().addEventListener("pointerleave", () => this.hideTooltip());
     this.map.on("singleclick", (event) => {
       if (this.config.interactive === false) return;
+      if (this.drawing) return;
       const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel);
       const { lat, lon } = unproject(event.coordinate);
       if (cluster) {
@@ -1119,7 +1250,9 @@ var RoverMap = class {
   }
   destroy() {
     if (this.resizeObserver) this.resizeObserver.disconnect();
+    this.stopDrawing();
     this.markerLayer.dispose();
+    this.drawLayer.dispose();
     this.shapeLayer.dispose();
     this.heatmapLayer.dispose();
     this.map.setTarget(void 0);
@@ -1169,6 +1302,10 @@ function fitMaxZoom(config, hasShapes) {
   const tileMax = config.tiles && config.tiles.maxZoom || 19;
   return hasShapes ? tileMax : Math.min(tileMax, 16);
 }
+function isTextEntry(target) {
+  if (!target || !target.tagName) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
 function sameCenter(a, b) {
   return Boolean(a) && Boolean(b) && a[0] === b[0] && a[1] === b[1];
 }
@@ -1209,6 +1346,12 @@ var Rover = {
     });
     this.handleEvent("rover:fit_to", (payload) => {
       if (this.mine(payload)) this.map.fitTo(payload);
+    });
+    this.handleEvent("rover:start_drawing", (payload) => {
+      if (this.mine(payload)) this.map.startDrawing(payload);
+    });
+    this.handleEvent("rover:stop_drawing", (payload) => {
+      if (this.mine(payload)) this.map.stopDrawing();
     });
   },
   mine(payload) {
@@ -1273,6 +1416,7 @@ function parse(json, fallback, attribute) {
 // js/index.js
 var index_default = RoverHooks;
 export {
+  DrawLayer,
   HeatmapLayer,
   MarkerLayer,
   Rover,
