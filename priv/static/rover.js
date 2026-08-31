@@ -1538,17 +1538,27 @@ var Popups = class {
   open(kind, id, coordinate) {
     const key = `${kind}:${id}`;
     const node = this.nodeFor(key);
+    const opener = keyboardOpener(document.activeElement);
     this.close();
     if (!node) return;
     this.current = { kind, id: String(id), key, coordinate };
     node.hidden = false;
     this.position();
+    if (opener && this.current) {
+      this.returnFocusTo = opener;
+      focusInto(node);
+    }
   }
   close() {
     if (!this.current) return;
     const node = this.nodeFor(this.current.key);
+    const held = Boolean(node && node.contains(document.activeElement));
     if (node) node.hidden = true;
     this.current = null;
+    if (held && this.returnFocusTo && this.returnFocusTo.isConnected) {
+      this.returnFocusTo.focus();
+    }
+    this.returnFocusTo = null;
   }
   /**
    * Where the open popup should point, in map coordinates.
@@ -1605,6 +1615,16 @@ var Popups = class {
     this.roverMap.map.un("postrender", this.onPostrender);
   }
 };
+function keyboardOpener(active) {
+  if (!active || !active.closest) return null;
+  return active.closest("[data-rover-focus]");
+}
+function focusInto(node) {
+  const focusable = node.querySelector(
+    "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
+  );
+  (focusable || node).focus();
+}
 function cssEscape(value) {
   return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(value) : value.replace(/"/g, '\\"');
 }
@@ -44989,6 +45009,12 @@ var RoverMap = class {
     this.applyTiles(this.config.tiles);
     this.map = new Map_default2({
       target: element,
+      // OpenLayers listens for keys on this element, and by default that is the
+      // viewport it builds *inside* the target. Nothing ever focuses that, so
+      // KeyboardPan and KeyboardZoom — both already in defaultInteractions() —
+      // were present and unreachable. The target is the element the component
+      // gives a tabindex, so a keydown on the focused map now reaches them.
+      keyboardEventTarget: element,
       layers: [
         this.tileLayer,
         this.heatmapLayer.layer,
@@ -45007,6 +45033,7 @@ var RoverMap = class {
       })
     });
     this.markerLayer.setClustering(this.config.cluster);
+    this.applyAccessibility(this.config);
     this.setupTooltip();
     this.setupEditing();
     this.setupDragging();
@@ -45070,6 +45097,9 @@ var RoverMap = class {
       this.applyControls(next);
     }
     if (previous.interactive !== next.interactive) this.applyInteractions(next);
+    if (previous.interactive !== next.interactive || previous.label !== next.label) {
+      this.applyAccessibility(next);
+    }
     if (changed(previous.cluster, next.cluster)) this.markerLayer.setClustering(next.cluster);
     const view = this.map.getView();
     if (previous.minZoom !== next.minZoom) view.setMinZoom(next.minZoom ?? 0);
@@ -45236,6 +45266,24 @@ var RoverMap = class {
     this.drawLayer.clear();
     this.drawing = null;
     this.element.classList.remove("rover-map__canvas--drawing");
+  }
+  /**
+   * The map element's accessible name, and whether it is in the tab order.
+   *
+   * Applied from here rather than left to the server's markup, because the
+   * element is `phx-update="ignore"` — and LiveView merges only `data-*`
+   * attributes onto an ignored element (`mergeAttrs`, `isIgnored`). The server's
+   * rendering is the first paint; every change after it has to come through the
+   * config, or a map that locks itself stays a focusable `role="application"`
+   * nobody can do anything with.
+   */
+  applyAccessibility(config) {
+    if (config.label) this.element.setAttribute("aria-label", config.label);
+    if (config.interactive === false) {
+      this.element.removeAttribute("tabindex");
+    } else {
+      this.element.setAttribute("tabindex", "0");
+    }
   }
   // -- interaction ----------------------------------------------------------
   setupTooltip() {
@@ -45418,6 +45466,38 @@ var RoverMap = class {
       duration: ANIMATION_MS
     });
   }
+  /**
+   * Do to a feature what a click on it would do, named rather than pointed at.
+   *
+   * The keyboard's way in. `<.map>` renders one hidden button per marker and
+   * shape, carrying `marker:<id>` or `shape:<id>`; pressing one lands here, and
+   * from here on it is the same path as a pointer click — the same payload to the
+   * server, the same popup opened by the same subscriber.
+   */
+  activate(key) {
+    if (this.config.interactive === false) return;
+    const target = parseFocusKey(key);
+    if (!target) return;
+    if (target.kind === "marker") {
+      const marker = this.markerLayer.markerById(target.id);
+      if (!marker) return;
+      this.emit("markerClick", {
+        id: marker.id,
+        lat: marker.lat,
+        lon: marker.lon,
+        data: marker.data ?? null
+      });
+      return;
+    }
+    const entry = this.shapeLayer.entries.get(target.id);
+    if (!entry || !this.wants("shapeClick")) return;
+    if (entry.features.length === 0) return;
+    const extent = createEmpty();
+    entry.features.forEach((feature) => extend(extent, feature.getGeometry().getExtent()));
+    const [minX, minY, maxX, maxY] = extent;
+    const { lat, lon } = unproject([(minX + maxX) / 2, (minY + maxY) / 2]);
+    this.emit("shapeClick", { id: entry.shape.id, lat, lon, data: entry.shape.data ?? null });
+  }
   featureAt(pixel) {
     let marker = null;
     let shape = null;
@@ -45521,6 +45601,15 @@ function isTextEntry(target) {
   if (!target || !target.tagName) return false;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
+function parseFocusKey(key) {
+  if (typeof key !== "string") return null;
+  const at = key.indexOf(":");
+  if (at < 1) return null;
+  const kind = key.slice(0, at);
+  const id = key.slice(at + 1);
+  if (kind !== "marker" && kind !== "shape" || id === "") return null;
+  return { kind, id };
+}
 function sameCenter(a, b) {
   return Boolean(a) && Boolean(b) && a[0] === b[0] && a[1] === b[1];
 }
@@ -45555,6 +45644,11 @@ var Rover = {
       markers: parse2(this.markersJson, [], "data-rover-markers")
     });
     this.popups = new Popups(this.el, this.map);
+    this.onIndexClick = (event) => {
+      const button = event.target.closest && event.target.closest("[data-rover-focus]");
+      if (button && this.map) this.map.activate(button.dataset.roverFocus);
+    };
+    this.el.addEventListener("click", this.onIndexClick);
     this.el._rover = this.map;
     this.handleEvent("rover:fly_to", (payload) => {
       if (this.mine(payload)) this.map.flyTo(payload);
@@ -45602,6 +45696,7 @@ var Rover = {
     if (this.popups) this.popups.refresh();
   },
   destroyed() {
+    this.el.removeEventListener("click", this.onIndexClick);
     if (this.popups) this.popups.destroy();
     if (this.map) this.map.destroy();
     this.popups = null;

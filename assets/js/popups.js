@@ -72,20 +72,49 @@ export class Popups {
     const key = `${kind}:${id}`
     const node = this.nodeFor(key)
 
+    // Sampled before close(), which hands focus back to whatever opened the
+    // *previous* popup. Read afterwards, a mouse click landing while a
+    // keyboard-opened popup is up would look like a keyboard opening.
+    //
+    // Only a keyboard opening moves focus. A pointer user has their attention
+    // where they clicked and does not need to be sent anywhere; a keyboard user
+    // pressed a button and would otherwise be left standing on it, with the
+    // popup they just opened unreachable except by tabbing the whole page.
+    const opener = keyboardOpener(document.activeElement)
+
     this.close()
     if (!node) return
 
     this.current = { kind, id: String(id), key, coordinate }
     node.hidden = false
     this.position()
+
+    // position() closes again when there is nothing left to point at — a marker
+    // that clustering has just grouped, say. Focusing a hidden node would drop
+    // focus on the floor.
+    if (opener && this.current) {
+      this.returnFocusTo = opener
+      focusInto(node)
+    }
   }
 
   close() {
     if (!this.current) return
 
     const node = this.nodeFor(this.current.key)
+    // Whether the popup still holds focus decides who gets it back. A user who
+    // has already tabbed away must not be yanked backwards by a popup closing
+    // behind them.
+    const held = Boolean(node && node.contains(document.activeElement))
+
     if (node) node.hidden = true
     this.current = null
+
+    if (held && this.returnFocusTo && this.returnFocusTo.isConnected) {
+      this.returnFocusTo.focus()
+    }
+
+    this.returnFocusTo = null
   }
 
   /**
@@ -157,6 +186,29 @@ export class Popups {
     this.root.removeEventListener("click", this.onClick)
     this.roverMap.map.un("postrender", this.onPostrender)
   }
+}
+
+/**
+ * The keyboard index button that opened this popup, if that is what did.
+ *
+ * The distinction the focus behaviour turns on, and the only reliable signal for
+ * it: a pointer click leaves focus on the map or on nothing at all, while a
+ * press of one of `<.map>`'s hidden feature buttons leaves it on that button.
+ */
+function keyboardOpener(active) {
+  if (!active || !active.closest) return null
+
+  return active.closest("[data-rover-focus]")
+}
+
+// The close button, if the slot has one, and the popup itself otherwise — it
+// carries tabindex="-1" for exactly this.
+function focusInto(node) {
+  const focusable = node.querySelector(
+    "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
+  )
+
+  ;(focusable || node).focus()
 }
 
 // Marker ids are application data — a UUID, a slug, conceivably something with a

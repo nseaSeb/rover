@@ -253,6 +253,15 @@ defmodule Rover.Components do
     `height={nil}` to take effect.
     """
 
+  attr :label, :string,
+    default: "Map",
+    doc: """
+    The map's accessible name, announced by a screen reader and read out when the
+    map takes keyboard focus. The default says only that this is a map; say which
+    map — `label="Delivery points"` — when there is more than one on a page, or
+    when the map is the page.
+    """
+
   attr :class, :any, default: nil, doc: "Extra classes on the map container."
   attr :rest, :global
 
@@ -308,6 +317,7 @@ defmodule Rover.Components do
       |> assign(:config_json, encode_config(assigns, markers, shapes, heat))
       |> assign(:popup_markers, if(assigns.popup == [], do: [], else: markers))
       |> assign(:popup_shapes, if(assigns.shape_popup == [], do: [], else: shapes))
+      |> assign(:index, index(assigns, markers, shapes))
 
     ~H"""
     <div
@@ -321,7 +331,32 @@ defmodule Rover.Components do
       {@rest}
       {height_style(@height)}
     >
-      <div id={"#{@id}-canvas"} class="rover-map__canvas" phx-update="ignore"></div>
+      <%!-- `role="application"` because the arrow keys belong to the map once it
+           has focus: they pan it rather than scrolling the page, which is exactly
+           what the role tells a screen reader to expect. The tabindex is what
+           makes that focus possible at all — without it OpenLayers' keyboard pan
+           and zoom are present and unreachable — so a locked map does not get
+           one. --%>
+      <div
+        id={"#{@id}-canvas"}
+        class="rover-map__canvas"
+        phx-update="ignore"
+        role="application"
+        aria-label={@label}
+        tabindex={if @interactive, do: "0"}
+      >
+      </div>
+      <%!-- Markers and shapes are painted into a canvas: there is nothing for a
+           keyboard or a screen reader to reach. This list is that missing DOM —
+           one button per feature, each hidden until it takes focus, each
+           activating the same click the pointer would. Rendered only when
+           something is actually listening, so a map that is scenery does not
+           grow a list of buttons that do nothing. --%>
+      <ul :if={@index != []} class="rover-map__index" aria-label={"#{@label} contents"}>
+        <li :for={item <- @index}>
+          <button type="button" data-rover-focus={item.key}>{item.label}</button>
+        </li>
+      </ul>
       <%!-- Keys are namespaced: a marker and a shape may carry the same id, and two
            nodes answering to one selector means one of them silently wins. --%>
       <div
@@ -329,6 +364,9 @@ defmodule Rover.Components do
         id={"#{@id}-popup-marker-#{marker.id}"}
         class="rover-popup"
         data-rover-popup-for={"marker:#{marker.id}"}
+        role="dialog"
+        aria-label={index_label(marker, "Marker")}
+        tabindex="-1"
         hidden
       >
         {render_slot(@popup, marker)}
@@ -338,6 +376,9 @@ defmodule Rover.Components do
         id={"#{@id}-popup-shape-#{shape.id}"}
         class="rover-popup"
         data-rover-popup-for={"shape:#{shape.id}"}
+        role="dialog"
+        aria-label={index_label(shape, "Shape")}
+        tabindex="-1"
         hidden
       >
         {render_slot(@shape_popup, shape)}
@@ -360,6 +401,29 @@ defmodule Rover.Components do
     ["rover-map", extra]
     |> List.flatten()
     |> Enum.reject(&(&1 in [nil, false, ""]))
+  end
+
+  # -- accessibility ---------------------------------------------------------
+
+  # One entry per feature a click can do something with. A marker or shape that
+  # neither opens a popup nor reaches the server is scenery: listing it would put
+  # a button in the tab order that does nothing when pressed.
+  defp index(%{interactive: false}, _markers, _shapes), do: []
+
+  defp index(assigns, markers, shapes) do
+    markers = if actionable?(assigns.popup, assigns.on_marker_click), do: markers, else: []
+    shapes = if actionable?(assigns.shape_popup, assigns.on_shape_click), do: shapes, else: []
+
+    Enum.map(markers, &%{key: "marker:#{&1.id}", label: index_label(&1, "Marker")}) ++
+      Enum.map(shapes, &%{key: "shape:#{&1.id}", label: index_label(&1, "Shape")})
+  end
+
+  defp actionable?(slot, event), do: slot != [] or not is_nil(event)
+
+  # The name the user already gave it, and its id only as a last resort — "Marker
+  # 41" is poor, but it is addressable, which no label at all is not.
+  defp index_label(item, kind) do
+    item.label || item.tooltip || "#{kind} #{item.id}"
   end
 
   # -- config ----------------------------------------------------------------
@@ -402,6 +466,10 @@ defmodule Rover.Components do
       cluster: encode_cluster(assigns.cluster),
       controls: encode_controls(assigns.controls),
       interactive: assigns.interactive,
+      # Read back by the client to keep the canvas's `aria-label` and `tabindex`
+      # in step: the element is `phx-update="ignore"`, and LiveView merges only
+      # `data-*` attributes onto one of those.
+      label: assigns.label,
       target: encode_target(assigns.target),
       events:
         drop_nils(%{

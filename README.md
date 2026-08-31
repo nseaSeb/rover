@@ -368,6 +368,39 @@ patching markup it no longer owns. Rover leaves the nodes where HEEx put them an
 positions them itself. The cost is one DOM node per marker — fine for dozens,
 which is why clustering rather than popups is the answer to hundreds.
 
+## Keyboard and screen readers
+
+A map is a canvas, and a canvas has no DOM: without help, everything on a Rover
+map is unreachable to anyone not holding a mouse. Three things close that, and
+they are on by default.
+
+**The map takes focus.** It carries `tabindex="0"` and `role="application"`, so
+Tab reaches it and the arrow keys pan it, `+` and `-` zoom it. OpenLayers has
+shipped `KeyboardPan` and `KeyboardZoom` all along; nothing could focus the map,
+so nothing could reach them.
+
+**Every marker and shape gets a button.** Rover renders one visually-hidden
+button per feature — the only DOM a keyboard or a screen reader can reach a
+painted marker through. Each shows itself when it takes focus, and pressing it
+does exactly what clicking the marker does: the same event to your LiveView, the
+same popup opened. The list is rendered only when something is listening, so a
+map that is pure scenery does not grow a tab stop per pin.
+
+**Popups are dialogs, and they manage focus.** Each is `role="dialog"`, named
+after its marker. A popup opened from the keyboard takes focus and hands it back
+to the button on close; a popup opened by a mouse click does neither, because a
+pointer user's attention is already where they clicked.
+
+Name your maps — the accessible name defaults to the word `Map`, which is enough
+for one map on a page and not enough for two:
+
+```heex
+<.map id="clients" label="Client sites" markers={@clients} on_marker_click="select" />
+```
+
+A button is named by the marker's `:label`, falling back to its `:tooltip`, then
+to `Marker <id>` — poor, but addressable, which no name at all is not.
+
 ## Moving the view without owning it
 
 `center` and `zoom` are attributes, which is right when the view *is* a property of
@@ -531,8 +564,8 @@ and a log of the events coming back. There is no OpenLayers in that file.
 ## Status
 
 Markers, GeoJSON shapes, emoji, popups, clustering, heatmaps, drawing and
-editing geometry, imperative view control and the French Géoportail are complete
-and tested. Still open: arbitrary HTML markers, a keyboard and ARIA pass, real
+editing geometry, keyboard access, imperative view control and the French
+Géoportail are complete and tested. Still open: arbitrary HTML markers, real
 `ol/source/WMTS` sources, and loading geometry by URL rather than by attribute.
 
 That last one is the honest limit of the current transport. An HTML attribute is a

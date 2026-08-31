@@ -424,6 +424,95 @@ defmodule Rover.ComponentsTest do
     end
   end
 
+  describe "accessibility" do
+    @a11y_polygon %{
+      "type" => "Polygon",
+      "coordinates" => [[[4.0, 45.0], [5.0, 45.0], [5.0, 46.0], [4.0, 45.0]]]
+    }
+
+    test "the map takes focus, so OpenLayers' keyboard pan and zoom are reachable" do
+      canvas = canvas(render_map(markers: @lyon))
+
+      assert LazyHTML.attribute(canvas, "tabindex") == ["0"]
+      # The arrow keys belong to the map once it has focus rather than scrolling
+      # the page, which is what this role tells a screen reader to expect.
+      assert LazyHTML.attribute(canvas, "role") == ["application"]
+    end
+
+    test "a locked map is not in the tab order" do
+      canvas = canvas(render_map(markers: @lyon, interactive: false))
+
+      assert LazyHTML.attribute(canvas, "tabindex") == []
+      assert LazyHTML.attribute(canvas, "role") == ["application"]
+    end
+
+    test "the map carries an accessible name, and says so by default" do
+      assert LazyHTML.attribute(canvas(render_map(markers: @lyon)), "aria-label") == ["Map"]
+
+      assert LazyHTML.attribute(
+               canvas(render_map(markers: @lyon, label: "Clients")),
+               "aria-label"
+             ) ==
+               ["Clients"]
+    end
+
+    test "every marker a click can do something with gets a button" do
+      document = render_map(markers: @lyon, on_marker_click: "select")
+
+      assert index_keys(document) == ["marker:1", "marker:2"]
+      assert index_labels(document) == ["Atelier", "Dépôt"]
+    end
+
+    test "an unlabelled marker falls back to something addressable" do
+      document =
+        render_map(markers: [%{id: 41, lat: 45.75, lon: 4.85}], on_marker_click: "select")
+
+      assert index_labels(document) == ["Marker 41"]
+    end
+
+    test "a popup slot alone is enough — the server needs no part in it" do
+      assert index_keys(PopupHost.render_popups(markers: @lyon)) == ["marker:1", "marker:2"]
+    end
+
+    test "scenery gets no button, because pressing it would do nothing" do
+      # Neither a handler nor a popup: the click has nowhere to go, and a button
+      # in the tab order that does nothing when pressed is worse than no button.
+      document = render_map(markers: @lyon, shapes: [%{id: "p", geometry: @a11y_polygon}])
+
+      assert index_keys(document) == []
+    end
+
+    test "shapes are listed too, under their own namespace" do
+      document =
+        render_map(
+          markers: @lyon,
+          shapes: [%{id: "p", geometry: @a11y_polygon, label: "AB 214"}],
+          on_shape_click: "picked"
+        )
+
+      assert index_keys(document) == ["shape:p"]
+      assert index_labels(document) == ["AB 214"]
+    end
+
+    test "a locked map gets no buttons either" do
+      # `interactive={false}` withholds every other click; a button that pushes
+      # `markerClick` to the server would be the one gesture that survived.
+      document = render_map(markers: @lyon, on_marker_click: "select", interactive: false)
+
+      assert index_keys(document) == []
+    end
+
+    test "a popup is a dialog, named the same way its button is" do
+      popups = LazyHTML.query(PopupHost.render_popups(markers: @lyon), "[data-rover-popup-for]")
+
+      assert LazyHTML.attribute(popups, "role") == ["dialog", "dialog"]
+      assert LazyHTML.attribute(popups, "aria-label") == ["Atelier", "Dépôt"]
+      # Focusable only on purpose: the popup takes focus when a keyboard opened
+      # it, and never appears in the tab order otherwise.
+      assert LazyHTML.attribute(popups, "tabindex") == ["-1", "-1"]
+    end
+  end
+
   describe "clustering" do
     test "is off unless asked for" do
       refute Map.has_key?(config(render_map(markers: @lyon)), "cluster")
@@ -698,5 +787,19 @@ defmodule Rover.ComponentsTest do
 
   test "interactivity can be turned off" do
     assert config(render_map(interactive: false))["interactive"] == false
+  end
+
+  defp canvas(document), do: LazyHTML.query(document, ".rover-map__canvas")
+
+  defp index_keys(document) do
+    document
+    |> LazyHTML.query("[data-rover-focus]")
+    |> LazyHTML.attribute("data-rover-focus")
+  end
+
+  defp index_labels(document) do
+    document
+    |> LazyHTML.query("[data-rover-focus]")
+    |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
   end
 end

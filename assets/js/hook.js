@@ -29,6 +29,16 @@ export const Rover = {
     })
     this.popups = new Popups(this.el, this.map)
 
+    // `<.map>` renders one hidden button per marker and shape — the only DOM a
+    // keyboard can reach features painted into a canvas through. They are
+    // ordinary buttons, so Enter and Space arrive here as a click. Delegated on
+    // the root because LiveView re-renders the list whenever the features change.
+    this.onIndexClick = (event) => {
+      const button = event.target.closest && event.target.closest("[data-rover-focus]")
+      if (button && this.map) this.map.activate(button.dataset.roverFocus)
+    }
+    this.el.addEventListener("click", this.onIndexClick)
+
     // The map instance, on the element that owns it. Markers are drawn into a
     // canvas and have no DOM node of their own, so this is the only way to get
     // from a coordinate to a pixel — which is what the browser suite needs to
@@ -105,6 +115,7 @@ export const Rover = {
   },
 
   destroyed() {
+    this.el.removeEventListener("click", this.onIndexClick)
     if (this.popups) this.popups.destroy()
     if (this.map) this.map.destroy()
     this.popups = null

@@ -36,6 +36,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a click that places a vertex is not a click on the map, and reporting it would
   fire `on_map_click` once per corner — dismissing any open popup each time,
   since the popup layer listens for exactly that.
+- **A keyboard and screen-reader pass.** A map was a canvas with nothing
+  focusable in it and no accessible name, so everything on one was unreachable
+  without a mouse.
+
+  The map itself now carries `tabindex="0"` and `role="application"`, and
+  OpenLayers' `keyboardEventTarget` is pointed at the element the component gives
+  that tabindex to. `KeyboardPan` and `KeyboardZoom` were in
+  `defaultInteractions()` from the start — present, and unreachable, because
+  nothing ever focused the viewport they listened on.
+
+  Every marker and shape a click can do something with is rendered as a
+  visually-hidden button, which is the only DOM a keyboard or a screen reader can
+  reach a painted feature through. Pressing one takes the same path as a pointer
+  click: the same payload to the server, the same popup opened by the same
+  subscriber. Features that are pure scenery — no handler, no popup — get no
+  button, because a tab stop that does nothing when pressed is worse than none.
+
+  Popups became `role="dialog"`, named after their feature. One opened from the
+  keyboard takes focus and hands it back to the button on close; one opened by a
+  pointer does neither, since a mouse user's attention is already where they
+  clicked.
+
+  New `label` attribute for the accessible name, defaulting to `"Map"`. The
+  canvas's `aria-label` and `tabindex` are re-applied by the client on every
+  config change, because the element is `phx-update="ignore"` and LiveView merges
+  only `data-*` attributes onto one of those — a map that locked itself would
+  otherwise stay a focusable `role="application"` with nothing behind it.
+
 - **Dialyzer in CI**, and `mix dialyzer` locally. The public API is annotated
   with `@spec` end to end and nothing ever checked those annotations against the
   code. The PLT is written to `_build/plts`, so the `_build` cache CI already
@@ -50,6 +78,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - A `Rover.Shape` fallback clause that could not be reached — every caller of the
   private `get/2` is already inside an `is_map/1` guard. Dialyzer's first find.
+
 ## [0.4.0] - 2026-08-12
 
 ### Added

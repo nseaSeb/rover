@@ -66,6 +66,7 @@ defmodule RoverDev.DemoLive do
        next_drawn_id: 1,
        draw: nil,
        reject_edits: false,
+       interactive: true,
        log: nil
      )}
   end
@@ -111,6 +112,9 @@ defmodule RoverDev.DemoLive do
       <button phx-click="toggle_crowd">Crowd: {if @crowd, do: "240 markers", else: "off"}</button>
       <button phx-click="toggle_cluster">Cluster: {cluster_label(@cluster)}</button>
       <button phx-click="yard">Two in a yard</button>
+      <button phx-click="toggle_interactive">
+        Interactive: {if @interactive, do: "on", else: "off"}
+      </button>
       <button phx-click="toggle_edit_reject">
         Edits: {if @reject_edits, do: "rejected", else: "accepted"}
       </button>
@@ -119,6 +123,8 @@ defmodule RoverDev.DemoLive do
 
     <.map
       id="clients"
+      label="Clients around Lyon"
+      interactive={@interactive}
       markers={if @crowd, do: @clients ++ crowd(), else: @clients}
       cluster={@cluster}
       shapes={@shapes}
@@ -159,6 +165,7 @@ defmodule RoverDev.DemoLive do
 
     <.map
       id="mini"
+      label="The same clients, smaller"
       markers={@clients}
       shapes={[parcel()]}
       tiles={:carto_light}
@@ -479,6 +486,18 @@ defmodule RoverDev.DemoLive do
        next_drawn_id: socket.assigns.next_drawn_id + 1
      )
      |> log("drew #{id} (#{type}) — the sketch became a shape the server owns")}
+  end
+
+  # A map that locks itself while a form saves is the case `:interactive` exists
+  # for, and the one that proves the client rebuilds controls, interactions and
+  # the accessibility attributes rather than applying them once at mount.
+  def handle_event("toggle_interactive", _params, socket) do
+    interactive = !socket.assigns.interactive
+
+    {:noreply,
+     socket
+     |> assign(interactive: interactive)
+     |> log("map is now #{if interactive, do: "interactive", else: "a picture"}")}
   end
 
   def handle_event("toggle_edit_reject", _params, socket) do

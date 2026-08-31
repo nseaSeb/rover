@@ -267,6 +267,28 @@ async function clickPath(page, points) {
   }
 }
 
+/**
+ * Press Tab until the focused element matches, and return its focus key.
+ *
+ * The zoom controls live inside the canvas and come first in the tab order, so
+ * the number of presses is a property of the controls the map was given rather
+ * than something worth hard-coding.
+ */
+async function tabTo(page, selector, limit = 8) {
+  for (let i = 0; i < limit; i++) {
+    await page.keyboard.press("Tab")
+
+    const key = await page.evaluate(
+      (sel) => (document.activeElement.matches(sel) ? document.activeElement.dataset.roverFocus : null),
+      selector
+    )
+
+    if (key) return key
+  }
+
+  return null
+}
+
 test.describe("the playground", () => {
   test("builds IGN tile URLs the Géoportail accepts", async ({ page }) => {
     const urls = await stubTiles(page)
@@ -961,6 +983,39 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("the map is reachable by keyboard, and its arrow keys pan it", async ({ page }) => {
+    // OpenLayers ships KeyboardPan and KeyboardZoom in defaultInteractions(), and
+    // both were dead: nothing focusable, and the key listener bound to a viewport
+    // no one ever focuses.
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    const center = () =>
+      page.evaluate(
+        (selector) => document.querySelector(selector)._rover.map.getView().getCenter(),
+        MAP
+      )
+
+    const before = await center()
+
+    await page.locator(CANVAS).focus()
+    expect(
+      await page.evaluate((selector) => document.activeElement === document.querySelector(selector), CANVAS),
+      "the map cannot take focus"
+    ).toBe(true)
+
+    await page.keyboard.press("ArrowDown")
+
+    await expect
+      .poll(async () => (await center())[1], { message: "the arrow key did not pan the map" })
+      .not.toBe(before[1])
+
+    expect(problems).toEqual([])
+  })
+
   test("a click that places a vertex is not a click on the map", async ({ page }) => {
     // Every click while drawing also reaches `singleclick`. Without the guard it
     // fires on_map_click per vertex — and Popups listens for mapClick, so each
@@ -1018,6 +1073,47 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("a marker is reachable by keyboard, and opens its own popup", async ({ page }) => {
+    // Markers are painted into a canvas, so the hidden button list is the only
+    // way a keyboard reaches one at all.
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    await page.locator(CANVAS).focus()
+
+    // Past the zoom controls, which sit inside the canvas and come first.
+    const key = await tabTo(page, "[data-rover-focus]")
+    expect(key, "no feature button in the tab order").toBe("marker:1")
+
+    // Hidden until focused, then shown: a focus ring nobody can see is worse
+    // than none.
+    await expect(page.locator('[data-rover-focus="marker:1"]')).toBeVisible()
+
+    await page.keyboard.press("Enter")
+
+    const popup = page.locator(`${MAP} [data-rover-popup-for="marker:1"]`)
+    await expect(popup).toBeVisible()
+    await expect(page.locator(".log")).toContainText("marker 1")
+
+    expect(
+      await page.evaluate(() => Boolean(document.activeElement.closest(".rover-popup"))),
+      "focus stayed on the button instead of following into the popup"
+    ).toBe(true)
+
+    await page.keyboard.press("Escape")
+
+    await expect(popup).toBeHidden()
+    expect(
+      await page.evaluate(() => document.activeElement.dataset.roverFocus),
+      "focus was dropped on the body instead of handed back"
+    ).toBe("marker:1")
+
+    expect(problems).toEqual([])
+  })
+
   test("draws a point, the type the server asked for", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)
@@ -1035,6 +1131,103 @@ test.describe("the playground", () => {
 
     await expect(page.locator(".log")).toContainText("drew drawn-1 (Point)")
     expect((await drawState(page)).sketch).toBe(0)
+
+    expect(problems).toEqual([])
+  })
+
+  test("a pointer click is left alone by the focus handling", async ({ page }) => {
+    // Only a keyboard opening moves focus. A mouse user has their attention
+    // where they clicked and must not be sent anywhere.
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    const marker = await markerPixel(page, 1)
+    await page.locator(CANVAS).click({ position: marker })
+
+    await expect(page.locator(`${MAP} [data-rover-popup-for="marker:1"]`)).toBeVisible()
+
+    expect(
+      await page.evaluate(() => Boolean(document.activeElement.closest(".rover-popup"))),
+      "a pointer click moved focus into the popup"
+    ).toBe(false)
+
+    expect(problems).toEqual([])
+  })
+  test("a clustered marker is still reachable by keyboard", async ({ page }) => {
+    // markerFor(featureById(id)) returns null for a marker OpenLayers has
+    // grouped, so resolving the button that way made every grouped marker's tab
+    // stop a silent no-op — under clustering, which is the documented answer to
+    // hundreds of markers and exactly when this list matters most.
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    await page.getByRole("button", { name: /^Crowd:/ }).click()
+    await page.getByRole("button", { name: "Cluster: off" }).click()
+    await expect(page.getByRole("button", { name: /^Cluster: on/ })).toBeVisible()
+
+    // The premise: marker 1 has no rendered feature of its own any more.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (selector) => document.querySelector(selector)._rover.markerLayer.featureById("1"),
+          MAP
+        )
+      )
+      .toBeNull()
+
+    await page.locator('[data-rover-focus="marker:1"]').focus()
+    await page.keyboard.press("Enter")
+
+    await expect(page.locator(".log")).toContainText("marker 1")
+
+    // A grouped marker has no popup — the popup would point at the group's
+    // centre — so focus must stay where it was rather than be dropped.
+    expect(
+      await page.evaluate(() => document.activeElement.dataset.roverFocus),
+      "focus was dropped when no popup opened"
+    ).toBe("marker:1")
+
+    expect(problems).toEqual([])
+  })
+  test("locking the map takes it out of the tab order, and unlocking puts it back", async ({
+    page,
+  }) => {
+    // The canvas is phx-update="ignore", and LiveView merges only data-* onto an
+    // ignored element — so tabindex and aria-label rendered by the server are
+    // written once at mount and never again. Without the client re-applying
+    // them, a map that locks itself stays a focusable role="application" that
+    // does nothing.
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    const tabindex = () => page.locator(CANVAS).getAttribute("tabindex")
+
+    expect(await tabindex()).toBe("0")
+
+    await page.getByRole("button", { name: "Interactive: on" }).click()
+    await expect(page.getByRole("button", { name: "Interactive: off" })).toBeVisible()
+
+    await expect.poll(tabindex, { message: "a locked map is still a tab stop" }).toBeNull()
+    // And this map's feature buttons went with it: a locked map withholds every
+    // click. Scoped to this map — the second one on the page is untouched, which
+    // is the point of locking one and not the other.
+    await expect(page.locator(`${MAP} [data-rover-focus]`)).toHaveCount(0)
+
+    await page.getByRole("button", { name: "Interactive: off" }).click()
+    await expect(page.getByRole("button", { name: "Interactive: on" })).toBeVisible()
+
+    await expect
+      .poll(tabindex, { message: "unlocking did not put the map back in the tab order" })
+      .toBe("0")
 
     expect(problems).toEqual([])
   })
