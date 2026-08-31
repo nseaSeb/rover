@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Dialyzer in CI**, and `mix dialyzer` locally. The public API is annotated
+  with `@spec` end to end and nothing ever checked those annotations against the
+  code. The PLT is written to `_build/plts`, so the `_build` cache CI already
+  keeps carries it; `:missing_return` and `:extra_return` are on, because a
+  `@spec` that has drifted from its function is the thing worth catching.
+- **A coverage floor.** `mix test --cover` now fails below the threshold declared
+  in `mix.exs`, and the lint row of the CI matrix runs it. The floor is a
+  ratchet: raise it when a release lands above it, never lower it to make a red
+  run green.
+
+### Removed
+
+- A `Rover.Shape` fallback clause that could not be reached — every caller of the
+  private `get/2` is already inside an `is_map/1` guard. Dialyzer's first find.
+
 ## [0.4.0] - 2026-08-12
 
 ### Added
@@ -323,6 +342,8 @@ them.
   back as strings and will not match.
 - `fit` governs *re*fitting; the initial framing is separate.
 
+[Unreleased]: https://github.com/nseaSeb/rover/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/nseaSeb/rover/releases/tag/v0.4.0
 [0.3.2]: https://github.com/nseaSeb/rover/releases/tag/v0.3.2
 [0.3.1]: https://github.com/nseaSeb/rover/releases/tag/v0.3.1
 [0.3.0]: https://github.com/nseaSeb/rover/releases/tag/v0.3.0

@@ -326,8 +326,6 @@ defmodule Rover.Shape do
     ArgumentError -> nil
   end
 
-  defp get(_other, _key), do: nil
-
   defp extract(source, field, opts) do
     case Keyword.fetch(opts, field) do
       {:ok, accessor} -> read(source, accessor)

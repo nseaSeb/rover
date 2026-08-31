@@ -16,6 +16,8 @@ defmodule Rover.MixProject do
       listeners: [Phoenix.CodeReloader],
       deps: deps(),
       aliases: aliases(),
+      dialyzer: dialyzer(),
+      test_coverage: test_coverage(),
       description: description(),
       package: package(),
       docs: docs(),
@@ -50,8 +52,34 @@ defmodule Rover.MixProject do
 
       # Dev / test tooling.
       {:lazy_html, ">= 0.1.0", only: :test},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
+  end
+
+  # The library is annotated end to end with `@spec`; without this, nothing ever
+  # checks those annotations against the code. The PLT lives under `_build` so the
+  # directory CI already caches carries it too, and so `mix clean` never touches it.
+  defp dialyzer do
+    [
+      plt_local_path: "_build/plts",
+      plt_core_path: "_build/plts",
+      plt_add_apps: [:ex_unit, :mix],
+      # `:missing_return` and `:extra_return` are what catch a `@spec` that has
+      # drifted from its function, which is the whole reason for running this.
+      flags: [:error_handling, :extra_return, :missing_return, :unknown, :unmatched_returns]
+    ]
+  end
+
+  # `mix test --cover` fails the run below the threshold, so the number is a floor
+  # to ratchet upwards, not a target. Raise it when a release lands above it;
+  # never lower it to make a red run green.
+  #
+  # `test/support` is on the :test elixirc_paths, so its helpers land in the total
+  # unless excluded — and a helper is always fully exercised, which would let new
+  # test scaffolding raise the number without covering a line of the library.
+  defp test_coverage do
+    [summary: [threshold: 94], ignore_modules: [Rover.MapCase]]
   end
 
   defp aliases do

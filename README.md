@@ -455,8 +455,14 @@ mix deps.get
 mix assets.build      # npm install + esbuild the bundles
 mix dev               # playground on http://localhost:4020
 mix precommit         # format, compile --warnings-as-errors, both test suites
+mix test --cover      # the suite, plus the coverage floor CI enforces
+mix dialyzer          # checks the @specs; the first run builds the PLT
 mix assets.test.browser   # the browser suite, in a real Chromium
+bin/ci                # every check CI runs, in a container, on your working tree
 ```
+
+`mix precommit` stays fast on purpose, so the two slow checks — Dialyzer and the
+browser suite — live in CI and in `bin/ci` rather than in front of every commit.
 
 The browser suite is small on purpose. Everything below the component — the
 canvas, the popup DOM, the tile URLs the browser actually requests — lives where

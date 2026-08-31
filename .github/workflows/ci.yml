@@ -71,8 +71,50 @@ jobs:
           MIX_ENV: test
 
       - run: mix test
+        if: '!matrix.lint'
         env:
           MIX_ENV: test
+
+      # One row measures coverage; the others just run the suite. `mix test
+      # --cover` fails below the threshold declared in mix.exs.
+      - name: Run tests with coverage
+        if: matrix.lint
+        run: mix test --cover
+        env:
+          MIX_ENV: test
+
+  dialyzer:
+    name: Dialyzer
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.5"
+          otp-version: "28.1"
+
+      # The PLT lives in `_build/plts`, so caching `_build` caches it too. The
+      # restore-keys fall back to the last PLT when mix.lock moves: dialyxir then
+      # updates it in place instead of spending two minutes rebuilding it. The
+      # Elixir/OTP pair is part of the key because `_build` is toolchain-specific —
+      # without it, bumping the versions below would restore a build no step can
+      # reuse.
+      - name: Cache deps and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            deps
+            _build
+          key: dialyzer-${{ runner.os }}-1.19.5-28.1-${{ hashFiles('mix.lock') }}
+          restore-keys: dialyzer-${{ runner.os }}-1.19.5-28.1-
+
+      - run: mix deps.get
+
+      # :dev, not :test — dev/ is on the :dev elixirc_paths, so this checks the
+      # playground as well as the library.
+      - run: mix dialyzer --format github
 
   javascript:
     name: JavaScript runtime

@@ -25,8 +25,14 @@ mix deps.unlock --check-unused
 echo "==> mix compile --warnings-as-errors"
 MIX_ENV=test mix compile --warnings-as-errors
 
-echo "==> mix test"
-MIX_ENV=test mix test
+echo "==> mix test --cover"
+MIX_ENV=test mix test --cover
+
+# In :dev, matching ci.yml: dev/ is on the :dev elixirc_paths, so the playground
+# is checked too. The first run builds the PLT into _build/plts, which bin/ci
+# keeps in a volume — later runs cost a couple of seconds.
+echo "==> mix dialyzer"
+mix dialyzer
 
 echo "==> npm ci (assets)"
 npm ci --prefix assets
