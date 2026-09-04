@@ -1,8 +1,10 @@
 import Map from "ol/Map.js"
 import View from "ol/View.js"
 import Overlay from "ol/Overlay.js"
+import LayerGroup from "ol/layer/Group.js"
 import TileLayer from "ol/layer/Tile.js"
 import XYZ from "ol/source/XYZ.js"
+import { apply as applyVectorStyle } from "ol-mapbox-style"
 import Attribution from "ol/control/Attribution.js"
 import FullScreen from "ol/control/FullScreen.js"
 import Rotate from "ol/control/Rotate.js"
@@ -53,8 +55,12 @@ export class RoverMap {
     this.shapeLayer = new ShapeLayer()
     this.drawLayer = new DrawLayer()
     this.heatmapLayer = new HeatmapLayer()
-    this.tileLayer = new TileLayer({ zIndex: 0 })
-    this.applyTiles(this.config.tiles)
+    // A placeholder occupying slot 0 until the first applyTiles() call below
+    // replaces it. The basemap can be a raster ol/layer/Tile or a vector
+    // ol/layer/Group — two different OL classes, not just two sources on the
+    // same layer — so the slot holds whichever one the config calls for rather
+    // than a layer fixed for the map's lifetime.
+    this.basemapLayer = new TileLayer({ zIndex: 0, visible: false })
 
     this.map = new Map({
       target: element,
@@ -65,7 +71,7 @@ export class RoverMap {
       // gives a tabindex, so a keydown on the focused map now reaches them.
       keyboardEventTarget: element,
       layers: [
-        this.tileLayer,
+        this.basemapLayer,
         this.heatmapLayer.layer,
         this.shapeLayer.layer,
         this.drawLayer.layer,
@@ -82,6 +88,7 @@ export class RoverMap {
       }),
     })
 
+    this.applyTiles(this.config.tiles)
     this.markerLayer.setClustering(this.config.cluster)
     this.applyAccessibility(this.config)
 
@@ -263,22 +270,31 @@ export class RoverMap {
     this.quietUntil = now() + duration + 120
   }
 
+  /**
+   * Builds whichever layer type the resolved config calls for and swaps it into
+   * slot 0 of the map's layer array, replacing whatever basemap was there before.
+   *
+   * A vector style is applied to the group asynchronously (`ol-mapbox-style`'s
+   * `apply()` resolves once the style, sprite and first tiles have loaded), so
+   * the group is inserted into the map immediately and populates progressively
+   * as that promise resolves — the same way a raster `XYZ` layer already renders
+   * tile by tile as they arrive.
+   */
   applyTiles(tiles) {
-    if (!tiles) {
-      this.tileLayer.setSource(null)
-      this.tileLayer.setVisible(false)
-      return
-    }
+    const next = buildBasemapLayer(tiles)
+    next.setZIndex(0)
 
-    this.tileLayer.setVisible(true)
-    this.tileLayer.setSource(
-      new XYZ({
-        url: resolveRetina(tiles.url),
-        attributions: tiles.attributions || undefined,
-        maxZoom: tiles.maxZoom ?? 19,
-        crossOrigin: "anonymous",
-      })
-    )
+    const layers = this.map.getLayers()
+    layers.remove(this.basemapLayer)
+    this.basemapLayer.dispose()
+    layers.insertAt(0, next)
+    this.basemapLayer = next
+
+    if (tiles && tiles.type === "vector") {
+      applyVectorStyle(next, tiles.styleUrl)
+        .then((group) => setVectorAttributions(group, tiles.attributions))
+        .catch((error) => console.error("[rover] could not load vector basemap style:", error))
+    }
   }
 
   applyControls(config) {
@@ -863,6 +879,38 @@ function buildInteractions(config) {
 function resolveRetina(url) {
   const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1
   return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "")
+}
+
+/**
+ * What `applyTiles` builds for a given resolved tiles config — an `ol/layer/Tile`
+ * for raster, an empty `ol/layer/Group` for `ol-mapbox-style` to populate, or an
+ * invisible placeholder for no basemap at all. Exported so the construction
+ * logic is testable without a browser: which layer class gets built, and how, is
+ * plain data in, OL instance out — no canvas involved.
+ */
+export function buildBasemapLayer(tiles) {
+  if (!tiles) return new TileLayer({ visible: false })
+
+  if (tiles.type === "vector") return new LayerGroup()
+
+  return new TileLayer({
+    source: new XYZ({
+      url: resolveRetina(tiles.url),
+      attributions: tiles.attributions || undefined,
+      maxZoom: tiles.maxZoom ?? 19,
+      crossOrigin: "anonymous",
+    }),
+  })
+}
+
+// Attribution stays Rover's to own, not the style document's — the same
+// licence-compliance posture the raster path already takes, where Rover sets
+// the attribution string rather than trusting whatever a tile server declares.
+function setVectorAttributions(group, attributions) {
+  group.getLayers().forEach((layer) => {
+    const source = layer.getSource && layer.getSource()
+    if (source && source.setAttributions) source.setAttributions(attributions || undefined)
+  })
 }
 
 /**

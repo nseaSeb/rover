@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- **Vector basemaps**: `:carto_light_vector`, `:carto_dark_vector`, and
+  `:carto_voyager_vector`, rendered through `ol-mapbox-style` as native
+  OpenLayers vector tile layers alongside the existing raster presets, which
+  keep working unchanged. A generic `{:vector, style_url}` /
+  `{:vector, style_url, opts}` hatch, symmetric with the existing `{:xyz,
+  ...}` one, covers any other MapLibre-compatible style — Mapbox, MapTiler,
+  or self-hosted. `carto_api_key` config and the per-call `key:` opt apply to
+  the three vector presets exactly as they already do to their raster
+  counterparts.
+
 ## [0.5.0] - 2026-08-31
 
 ### Added

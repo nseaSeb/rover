@@ -103,10 +103,11 @@ describe("priv/static/rover.external.js", () => {
 
     // If esbuild ever stopped honouring `external: ["ol", "ol/*"]`, this build
     // would silently become a second copy of the bundled one — same bytes as
-    // rover.js, 35x the size it advertises.
+    // rover.js, roughly 5x the size it advertises even with ol-mapbox-style's
+    // own dependencies (chiefly the MapLibre style spec) bundled in here too.
     assert.ok(specifiers.length > 0, "no bare ol imports survived")
     assert.ok(
-      source.length < 200_000,
+      source.length < 450_000,
       `external build is ${source.length} bytes — OpenLayers looks inlined`,
     )
   })

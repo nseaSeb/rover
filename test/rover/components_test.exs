@@ -248,6 +248,7 @@ defmodule Rover.ComponentsTest do
     test "default to OpenStreetMap, attribution included" do
       tiles = config(render_map([]))["tiles"]
 
+      assert tiles["type"] == "raster"
       assert tiles["url"] =~ "tile.openstreetmap.org"
       assert tiles["attributions"] =~ "OpenStreetMap"
       assert tiles["maxZoom"] == 19
@@ -260,7 +261,25 @@ defmodule Rover.ComponentsTest do
     test "accept an arbitrary tile server" do
       tiles = config(render_map(tiles: {:xyz, "https://x/{z}/{x}/{y}.png"}))["tiles"]
 
+      assert tiles["type"] == "raster"
       assert tiles["url"] == "https://x/{z}/{x}/{y}.png"
+    end
+
+    test "accept a vector preset" do
+      tiles = config(render_map(tiles: :carto_voyager_vector))["tiles"]
+
+      assert tiles["type"] == "vector"
+      assert tiles["styleUrl"] =~ "cartocdn.com/gl/voyager"
+      assert tiles["attributions"] =~ "CARTO"
+      assert tiles["maxZoom"] == 24
+      refute Map.has_key?(tiles, "url")
+    end
+
+    test "accept an arbitrary vector style" do
+      tiles = config(render_map(tiles: {:vector, "https://x/style.json"}))["tiles"]
+
+      assert tiles["type"] == "vector"
+      assert tiles["styleUrl"] == "https://x/style.json"
     end
 
     test ":none leaves the config without any basemap" do

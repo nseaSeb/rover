@@ -5,8 +5,8 @@ defmodule Rover.TilesTest do
 
   alias Rover.Tiles
 
-  test "every preset carries a url and an attribution" do
-    for preset <- Tiles.presets() do
+  test "every raster preset carries a url and an attribution" do
+    for preset <- Tiles.presets(), Tiles.resolve!(preset).type == :raster do
       resolved = Tiles.resolve!(preset)
 
       assert is_binary(resolved.url), "#{preset} has no url"
@@ -14,6 +14,20 @@ defmodule Rover.TilesTest do
 
       assert is_binary(resolved.attributions) and resolved.attributions != "",
              "#{preset} ships without an attribution, which is a licensing problem"
+    end
+  end
+
+  test "every vector preset carries a style_url and an attribution" do
+    for preset <- Tiles.presets(), Tiles.resolve!(preset).type == :vector do
+      resolved = Tiles.resolve!(preset)
+
+      assert is_binary(resolved.style_url), "#{preset} has no style_url"
+      assert resolved.style_url =~ "style.json"
+
+      assert is_binary(resolved.attributions) and resolved.attributions != "",
+             "#{preset} ships without an attribution, which is a licensing problem"
+
+      assert resolved.max_zoom == 24
     end
   end
 
@@ -30,6 +44,7 @@ defmodule Rover.TilesTest do
 
   test "xyz tiles default to zoom 19 and no attribution" do
     assert Tiles.resolve!({:xyz, "https://x/{z}/{x}/{y}.png"}) == %{
+             type: :raster,
              url: "https://x/{z}/{x}/{y}.png",
              attributions: nil,
              max_zoom: 19
@@ -42,6 +57,38 @@ defmodule Rover.TilesTest do
 
     assert resolved.max_zoom == 14
     assert resolved.attributions == "©"
+  end
+
+  test "vector tiles default to zoom 24 and no attribution" do
+    assert Tiles.resolve!({:vector, "https://x/style.json"}) == %{
+             type: :vector,
+             style_url: "https://x/style.json",
+             attributions: nil,
+             max_zoom: 24
+           }
+  end
+
+  test "vector tiles take options" do
+    resolved =
+      Tiles.resolve!({:vector, "https://x/style.json", max_zoom: 20, attributions: "©"})
+
+    assert resolved.max_zoom == 20
+    assert resolved.attributions == "©"
+  end
+
+  test "vector presets resolve tagged as vector, with a style_url and no url" do
+    for preset <- [:carto_light_vector, :carto_dark_vector, :carto_voyager_vector] do
+      resolved = Tiles.resolve!(preset)
+
+      assert resolved.type == :vector
+      assert resolved.style_url =~ "cartocdn.com/gl/"
+      refute Map.has_key?(resolved, :url)
+    end
+  end
+
+  test "raster presets resolve tagged as raster" do
+    assert Tiles.resolve!(:carto_dark).type == :raster
+    assert Tiles.resolve!(:osm).type == :raster
   end
 
   test "rejects anything else" do
@@ -68,12 +115,29 @@ defmodule Rover.TilesTest do
                "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
     end
 
-    test "a configured default key is appended to every carto preset" do
+    test "a configured default key is appended to every raster carto preset" do
       Application.put_env(:rover, Tiles, carto_api_key: "configured-key")
 
       for preset <- [:carto_light, :carto_dark, :carto_voyager] do
         assert Tiles.resolve!(preset).url =~ "?key=configured-key"
       end
+    end
+
+    test "a configured default key is appended to every vector carto preset's style_url" do
+      Application.put_env(:rover, Tiles, carto_api_key: "configured-key")
+
+      for preset <- [:carto_light_vector, :carto_dark_vector, :carto_voyager_vector] do
+        assert Tiles.resolve!(preset).style_url =~ "?key=configured-key"
+      end
+    end
+
+    test "a per-call key overrides the configured default on a vector preset" do
+      Application.put_env(:rover, Tiles, carto_api_key: "configured-key")
+
+      resolved = Tiles.resolve!({:carto_voyager_vector, key: "call-key"})
+
+      assert resolved.style_url =~ "?key=call-key"
+      refute resolved.style_url =~ "configured-key"
     end
 
     test "a per-call key overrides the configured default" do

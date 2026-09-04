@@ -12,6 +12,12 @@ import { expect, test } from "@playwright/test"
  *   - an open popup silently restored to `hidden` by a LiveView patch (0.2)
  *   - a tile URL built with the wrong FORMAT, which renders as nothing at all
  *
+ * One scenario reaches out to Carto's real vector tile CDN rather than
+ * stubbing it: a vector basemap is `ol-mapbox-style` fetching a style
+ * document, its sprite, and MVT tiles, then building OL vector layers from
+ * all three, none of which a stubbed 1x1 PNG can stand in for. It is the only
+ * place that whole pipeline is exercised end to end.
+ *
  * Each scenario below was confirmed to go red when its bug is reintroduced. A
  * regression test nobody has watched fail proves nothing.
  */
@@ -46,6 +52,58 @@ async function stubTiles(page) {
   })
 
   return urls
+}
+
+/**
+ * Stub the three raster Carto endpoints the same way as the IGN tiles above, so
+ * cycling through them on the way to the vector preset is fast and offline. Their
+ * URLs are all under `basemaps.cartocdn.com` but never overlap the vector style
+ * document (`.../gl/*-gl-style/style.json`) or its tile source
+ * (`tiles.basemaps.cartocdn.com`), which stay unstubbed for the vector scenario.
+ */
+async function stubCartoRasterTiles(page) {
+  await page.route(
+    "**://basemaps.cartocdn.com/{light_all,dark_all,rastertiles/voyager}/**",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        headers: { "access-control-allow-origin": "*" },
+        body: TILE,
+      })
+  )
+}
+
+/**
+ * Whether anything has been painted at a given pixel, across every canvas OL has
+ * rendered into the map element — the basemap's own canvas among them.
+ *
+ * Vector tiles are drawn as vector data straight onto a `<canvas>`, not an image
+ * element, so unlike a cross-origin raster tile there is no CORS taint to worry
+ * about when reading pixels back out. Compositing every layer's canvas onto one
+ * scratch canvas and reading a single pixel from it mirrors what the browser
+ * itself shows the user, without assuming which canvas belongs to which layer.
+ */
+async function canvasHasPaintedPixelAt(page, selector, pixel) {
+  return page.evaluate(
+    ([sel, point]) => {
+      const root = document.querySelector(sel)
+      const canvases = Array.from(root.querySelectorAll("canvas")).filter(
+        (canvas) => canvas.width > 0 && canvas.height > 0
+      )
+      if (canvases.length === 0) return false
+
+      const composite = document.createElement("canvas")
+      composite.width = canvases[0].width
+      composite.height = canvases[0].height
+      const ctx = composite.getContext("2d")
+      canvases.forEach((canvas) => ctx.drawImage(canvas, 0, 0))
+
+      const { data } = ctx.getImageData(point.x, point.y, 1, 1)
+      return data[3] !== 0
+    },
+    [selector, pixel]
+  )
 }
 
 /** Fail the test on anything the page logs as broken. Cheap, and catches a lot. */
@@ -944,6 +1002,37 @@ test.describe("the playground", () => {
 
     expect(problems).toEqual([])
   })
+
+  test("paints a vector basemap end to end", async ({ page }) => {
+    await stubTiles(page)
+    await stubCartoRasterTiles(page)
+    const problems = failOnPageErrors(page)
+
+    // No shapes: the only thing that can paint a pixel outside the three
+    // markers is the basemap itself.
+    await page.goto("/?shapes=none")
+    await mapReady(page)
+
+    // ign_plan -> ign_ortho -> carto_light -> carto_dark -> carto_voyager_vector.
+    // The first three are stubbed above; only the last one hits Carto's real
+    // vector tile CDN for its style document, sprite, and MVT tiles.
+    for (let clicks = 0; clicks < 4; clicks += 1) {
+      await page.getByRole("button", { name: /^Tiles:/ }).click()
+    }
+    await expect(page.getByRole("button", { name: "Tiles: carto_voyager_vector" })).toBeVisible()
+
+    const pixel = await emptyPixel(page)
+
+    // ol-mapbox-style resolves progressively as the style, sprite and first
+    // tiles load over the real network, so this is the one assertion in the
+    // suite that needs real time rather than a stubbed, instant response.
+    await expect
+      .poll(() => canvasHasPaintedPixelAt(page, MAP, pixel), { timeout: 20_000 })
+      .toBe(true)
+
+    expect(problems).toEqual([])
+  })
+
   test("draws a polygon, and the sketch becomes a shape the server owns", async ({ page }) => {
     // The scratch layer's whole reason for existing: a feature Draw put straight
     // into ShapeLayer's source would be untracked by `entries`, so the server's

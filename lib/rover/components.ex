@@ -194,7 +194,9 @@ defmodule Rover.Components do
     default: [],
     doc: "Any of `:radius`, `:blur`, `:opacity`, `:gradient`. See `Rover.Heatmap.style!/1`."
 
-  attr :tiles, :any, default: :osm, doc: "A `Rover.Tiles` preset, `{:xyz, url}`, or `:none`."
+  attr :tiles, :any,
+    default: :osm,
+    doc: "A `Rover.Tiles` preset, `{:xyz, url}`, `{:vector, style_url}`, or `:none`."
 
   attr :fit, :any,
     default: nil,
@@ -527,8 +529,21 @@ defmodule Rover.Components do
       nil ->
         nil
 
+      %{type: :vector} = resolved ->
+        %{
+          type: "vector",
+          styleUrl: resolved.style_url,
+          attributions: resolved.attributions,
+          maxZoom: resolved.max_zoom
+        }
+
       resolved ->
-        %{url: resolved.url, attributions: resolved.attributions, maxZoom: resolved.max_zoom}
+        %{
+          type: "raster",
+          url: resolved.url,
+          attributions: resolved.attributions,
+          maxZoom: resolved.max_zoom
+        }
     end
   end
 

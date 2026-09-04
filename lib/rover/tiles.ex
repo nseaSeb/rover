@@ -1,12 +1,14 @@
 defmodule Rover.Tiles do
   @moduledoc """
-  Named basemaps, and the escape hatch to any XYZ tile server.
+  Named basemaps, and the escape hatches to any raster or vector tile server.
 
   Pass one to `Rover.Components.map/1`:
 
       <.map id="m" tiles={:carto_light} ... />
       <.map id="m" tiles={{:xyz, "https://tiles.example.com/{z}/{x}/{y}.png"}} ... />
       <.map id="m" tiles={{:xyz, url, attributions: "© Example", max_zoom: 18}} ... />
+      <.map id="m" tiles={:carto_light_vector} ... />
+      <.map id="m" tiles={{:vector, "https://example.com/style.json"}} ... />
 
   Every preset carries the attribution its provider requires, and Rover renders
   it in the map's attribution control. Removing it is usually a licence
@@ -37,13 +39,22 @@ defmodule Rover.Tiles do
 
       <.map id="m" tiles={{:carto_dark, key: "YOUR_KEY"}} ... />
 
-  Carto also say the raster (PNG) service is being retired in favour of vector
-  tiles, and that they are considering freezing its data updates — the
-  cartography would stay where it is while vector keeps moving. No date is
-  published for either. Rover's map renders basemaps through OpenLayers' raster
-  `XYZ` source today, so the presets here stay on raster until Rover grows a
-  vector tile layer; the key you request now covers both services, so nothing is
-  wasted when it does.
+  Carto is retiring these raster endpoints in favor of vector tiles (MapLibre-
+  style GL JSON served as MVT); `:carto_light`, `:carto_dark`, and
+  `:carto_voyager` keep working for existing configurations, but a new caller
+  should reach for their vector counterparts instead:
+
+      <.map id="m" tiles={:carto_light_vector} ... />
+
+  `:carto_light_vector`, `:carto_dark_vector`, and `:carto_voyager_vector` take
+  the same `carto_api_key` configuration and per-call `key:` opt described
+  above. For any other MapLibre-compatible style (Mapbox, MapTiler,
+  self-hosted), pass its style URL directly:
+
+      <.map id="m" tiles={{:vector, "https://api.maptiler.com/maps/streets/style.json?key=YOUR_KEY"}} ... />
+
+  Raster stays fully supported — it is not being removed — but it is the
+  deprecated path for the three Carto presets above.
 
   ## France
 
@@ -119,6 +130,18 @@ defmodule Rover.Tiles do
       url: @ign_wmts <> "&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&FORMAT=image/jpeg",
       attributions: @ign_attribution,
       max_zoom: 19
+    },
+    carto_light_vector: %{
+      style_url: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+      attributions: @carto_attribution
+    },
+    carto_dark_vector: %{
+      style_url: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+      attributions: @carto_attribution
+    },
+    carto_voyager_vector: %{
+      style_url: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+      attributions: @carto_attribution
     }
   }
 
@@ -132,6 +155,9 @@ defmodule Rover.Tiles do
           | :esri_world_imagery
           | :ign_plan
           | :ign_ortho
+          | :carto_light_vector
+          | :carto_dark_vector
+          | :carto_voyager_vector
 
   @type t ::
           preset()
@@ -139,8 +165,41 @@ defmodule Rover.Tiles do
           | :none
           | {:xyz, String.t()}
           | {:xyz, String.t(), keyword()}
+          | {:vector, String.t()}
+          | {:vector, String.t(), keyword()}
 
-  @carto_presets [:carto_light, :carto_dark, :carto_voyager]
+  @raster_presets [
+    :osm,
+    :osm_hot,
+    :carto_light,
+    :carto_dark,
+    :carto_voyager,
+    :opentopomap,
+    :esri_world_imagery,
+    :ign_plan,
+    :ign_ortho
+  ]
+
+  @vector_presets [
+    :carto_light_vector,
+    :carto_dark_vector,
+    :carto_voyager_vector
+  ]
+
+  @carto_presets [
+    :carto_light,
+    :carto_dark,
+    :carto_voyager,
+    :carto_light_vector,
+    :carto_dark_vector,
+    :carto_voyager_vector
+  ]
+
+  # No pixelation ceiling applies to vector tiles the way it does to raster —
+  # they overzoom crisply past their source data's native zoom — so this exists
+  # only so `fitMaxZoom/2` and the view's zoom ceiling have a number to work
+  # with, not because 24 is a real limit being enforced anywhere.
+  @vector_max_zoom 24
 
   @doc """
   The list of available preset names.
@@ -165,7 +224,13 @@ defmodule Rover.Tiles do
       19
 
       iex> Rover.Tiles.resolve!({:xyz, "https://x/{z}/{x}/{y}.png", attributions: "© Me"})
-      %{attributions: "© Me", max_zoom: 19, url: "https://x/{z}/{x}/{y}.png"}
+      %{type: :raster, attributions: "© Me", max_zoom: 19, url: "https://x/{z}/{x}/{y}.png"}
+
+      iex> Rover.Tiles.resolve!(:carto_light_vector).type
+      :vector
+
+      iex> Rover.Tiles.resolve!({:vector, "https://example.com/style.json"})
+      %{type: :vector, attributions: nil, max_zoom: 24, style_url: "https://example.com/style.json"}
 
       iex> Rover.Tiles.resolve!(:none)
       nil
@@ -180,7 +245,7 @@ defmodule Rover.Tiles do
     case Map.fetch(@presets, name) do
       {:ok, tiles} ->
         key = Keyword.get(opts, :key, default_key(name))
-        apply_key(tiles, key)
+        tiles |> tag_type(name) |> apply_key(key)
 
       :error ->
         raise ArgumentError, """
@@ -198,9 +263,21 @@ defmodule Rover.Tiles do
 
   def resolve!({:xyz, url, opts}) when is_binary(url) and is_list(opts) do
     %{
+      type: :raster,
       url: url,
       attributions: Keyword.get(opts, :attributions),
       max_zoom: Keyword.get(opts, :max_zoom, 19)
+    }
+  end
+
+  def resolve!({:vector, style_url}), do: resolve!({:vector, style_url, []})
+
+  def resolve!({:vector, style_url, opts}) when is_binary(style_url) and is_list(opts) do
+    %{
+      type: :vector,
+      style_url: style_url,
+      attributions: Keyword.get(opts, :attributions),
+      max_zoom: Keyword.get(opts, :max_zoom, @vector_max_zoom)
     }
   end
 
@@ -209,8 +286,15 @@ defmodule Rover.Tiles do
     invalid tiles: #{inspect(other)}.
 
     Expected a preset name (#{Enum.map_join(presets(), ", ", &inspect/1)}), `:none`,
-    `{preset, opts}`, or `{:xyz, url}` / `{:xyz, url, opts}`.
+    `{preset, opts}`, `{:xyz, url}` / `{:xyz, url, opts}`, or
+    `{:vector, style_url}` / `{:vector, style_url, opts}`.
     """
+  end
+
+  defp tag_type(tiles, name) when name in @raster_presets, do: Map.put(tiles, :type, :raster)
+
+  defp tag_type(tiles, name) when name in @vector_presets do
+    tiles |> Map.put_new(:max_zoom, @vector_max_zoom) |> Map.put(:type, :vector)
   end
 
   # Only the Carto presets have a configured default — every other preset's
@@ -224,8 +308,16 @@ defmodule Rover.Tiles do
 
   defp apply_key(tiles, nil), do: tiles
 
-  defp apply_key(tiles, key) when is_binary(key) do
-    separator = if String.contains?(tiles.url, "?"), do: "&", else: "?"
-    %{tiles | url: tiles.url <> separator <> "key=" <> URI.encode_www_form(key)}
+  defp apply_key(%{style_url: style_url} = tiles, key) when is_binary(key) do
+    %{tiles | style_url: inject_key(style_url, key)}
+  end
+
+  defp apply_key(%{url: url} = tiles, key) when is_binary(key) do
+    %{tiles | url: inject_key(url, key)}
+  end
+
+  defp inject_key(url, key) do
+    separator = if String.contains?(url, "?"), do: "&", else: "?"
+    url <> separator <> "key=" <> URI.encode_www_form(key)
   end
 end

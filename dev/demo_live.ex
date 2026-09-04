@@ -357,6 +357,7 @@ defmodule RoverDev.DemoLive do
         :ign_plan -> :ign_ortho
         :ign_ortho -> :carto_light
         :carto_light -> :carto_dark
+        :carto_dark -> :carto_voyager_vector
         _ -> :ign_plan
       end
 

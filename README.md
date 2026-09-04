@@ -442,12 +442,22 @@ than quietly drawing your marker in the middle of the Pacific.
 
 ```heex
 <.map id="m" tiles={:carto_dark} ... />
+<.map id="m" tiles={:carto_dark_vector} ... />
 <.map id="m" tiles={{:xyz, "https://tiles.example.com/{z}/{x}/{y}.png", attributions: "© Example"}} ... />
+<.map id="m" tiles={{:vector, "https://api.maptiler.com/maps/streets/style.json?key=YOUR_KEY"}} ... />
 <.map id="m" tiles={:none} ... />
 ```
 
-Presets: `:osm`, `:osm_hot`, `:carto_light`, `:carto_dark`, `:carto_voyager`,
-`:opentopomap`, `:esri_world_imagery`, `:ign_plan`, `:ign_ortho`.
+Raster presets: `:osm`, `:osm_hot`, `:carto_light`, `:carto_dark`,
+`:carto_voyager`, `:opentopomap`, `:esri_world_imagery`, `:ign_plan`,
+`:ign_ortho`. Vector presets: `:carto_light_vector`, `:carto_dark_vector`,
+`:carto_voyager_vector`.
+
+Vector tiles are sharper at any zoom or pixel density and stay on a fresher
+data cadence than their raster counterparts — see
+[Carto's basemaps FAQ](https://docs.carto.com/faqs/carto-basemaps) for the full
+comparison. New code should reach for a vector preset; the raster ones keep
+working exactly as they do today for anything already built on them.
 
 The two IGN presets serve the French [Géoportail](https://www.geoportail.gouv.fr/)
 — the reference plan and the aerial orthophotography. Unlike the demo endpoints
@@ -455,15 +465,16 @@ below they are meant for production use.
 
 Each one carries the attribution its provider requires, and Rover renders it.
 The OSM and Carto presets point at **public demo servers with usage policies
-that forbid production traffic** — for anything real, point `{:xyz, …}` at tiles
-you are entitled to use.
+that forbid production traffic** — for anything real, point `{:xyz, …}` (or,
+for a vector style, `{:vector, …}`) at tiles you are entitled to use.
 
-**Carto's basemaps now need an API key.** Without one the tiles still load —
-they are served with `API KEY REQUIRED` stamped diagonally across every one, so
-the symptom is a legible map wearing a watermark rather than a blank map or an
-error in the console. The key is free, issued by return email with no queue and
-no Carto account, and covers 5 million tile requests a month across their raster
-and vector services. Attribution must stay visible, which Rover renders for you.
+Carto now requires an API key on all six of its presets, raster and vector
+alike. Without one the tiles still load — they are served with
+`API KEY REQUIRED` stamped diagonally across every one, so the symptom is a
+legible map wearing a watermark rather than a blank map or an error in the
+console. The key is free, issued by return email with no queue and no Carto
+account, and covers 5 million tile requests a month across their raster and
+vector services. Attribution must stay visible, which Rover renders for you.
 Request one at <https://carto.com/basemaps/apikey/>, then:
 
 ```elixir
@@ -474,13 +485,12 @@ config :rover, Rover.Tiles, carto_api_key: "YOUR_KEY"
 ```heex
 <%!-- or per call, which overrides the configured default --%>
 <.map id="m" tiles={{:carto_dark, key: "YOUR_KEY"}} ... />
+<.map id="m" tiles={{:carto_dark_vector, key: "YOUR_KEY"}} ... />
 ```
 
 Carto also says the raster (PNG) service is being retired in favour of vector
 tiles, and that they are considering freezing its data updates. No date is
-published. Rover's OpenLayers basemap layer is raster-only today, so treat the
-Carto presets as a transitional option rather than a long-term one — the key you
-request now covers the vector service too, whenever Rover reaches it.
+published — prefer a `carto_*_vector` preset for anything new.
 
 ## What "only update what changed" actually means
 
