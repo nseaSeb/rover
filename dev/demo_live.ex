@@ -77,9 +77,16 @@ defmodule RoverDev.DemoLive do
   # shapes would still look correct. With the parcel alone, two markers fall
   # outside — which is exactly the framing bug worth guarding against, and it can
   # only be reproduced on a fresh mount.
+  #
+  # `?scenery=1` strips the main map of its shape handler and shape popup, so its
+  # shapes are pure scenery. The browser suite needs it too: a filled polygon is
+  # hit-testable across its whole interior, and the one guard that matters — a
+  # click inside it still reaching `on_map_click` — cannot be reproduced on a map
+  # whose shapes are clickable.
   @impl true
   def handle_params(params, _uri, socket) do
-    {:noreply, assign(socket, shapes: shapes(shape_mode(params)))}
+    {:noreply,
+     assign(socket, shapes: shapes(shape_mode(params)), scenery: params["scenery"] == "1")}
   end
 
   defp shape_mode(%{"shapes" => "parcel"}), do: :parcel_only
@@ -135,7 +142,7 @@ defmodule RoverDev.DemoLive do
       controls={[:zoom, :attribution, :scale_line]}
       on_marker_click="marker_clicked"
       on_cluster_click="cluster_clicked"
-      on_shape_click="shape_clicked"
+      on_shape_click={if @scenery, do: nil, else: "shape_clicked"}
       on_map_click="map_clicked"
       on_move_end="moved"
       on_marker_drag_end="marker_dragged"
@@ -150,7 +157,7 @@ defmodule RoverDev.DemoLive do
         <div>{fmt(marker.lat)}, {fmt(marker.lon)}</div>
         <button data-rover-popup-close>Close</button>
       </:popup>
-      <:shape_popup :let={shape}>
+      <:shape_popup :let={shape} :if={!@scenery}>
         <strong>{shape.label || shape.id}</strong>
         <div>{shape_detail(shape)}</div>
         <button data-rover-popup-close>Close</button>
@@ -474,7 +481,11 @@ defmodule RoverDev.DemoLive do
       fill_color: "#7c3aed",
       fill_opacity: 0.18,
       width: 2,
-      label: id,
+      # No label on a point: text drawn across a dot hides the dot, and — the
+      # reason the browser suite cares — text is paintable and hit-testable on
+      # its own, so a labelled point looked present even when the point itself
+      # rendered as nothing.
+      label: if(type == "Point", do: nil, else: id),
       rev: :erlang.phash2(geometry),
       # Drawn and then reshaped, which is the pair of features working together.
       editable: true

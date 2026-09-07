@@ -42,17 +42,20 @@ export class Popups {
     this.roverMap = roverMap
     this.current = null
 
-    roverMap.on("markerClick", ({ id }) => this.open("marker", id))
+    // `observe`, not `on`: this layer reacts to clicks, it is not a reason for the
+    // map to claim them. Whether a shape has a popup to open is the server's to
+    // say, and it does, in the config.
+    roverMap.observe("markerClick", ({ id }) => this.open("marker", id))
     // A shape with no popup still dismisses whatever was open, which is what a
     // click on "not this popup" should do.
-    roverMap.on("shapeClick", ({ id, lat, lon }) =>
+    roverMap.observe("shapeClick", ({ id, lat, lon }) =>
       this.open("shape", id, project(lat, lon))
     )
     // Any click that is not on this popup dismisses it — including one that lands on
     // a group, which claims the click and would otherwise leave the popup anchored
     // to a marker the view has just moved away from.
-    roverMap.on("clusterClick", () => this.close())
-    roverMap.on("mapClick", () => this.close())
+    roverMap.observe("clusterClick", () => this.close())
+    roverMap.observe("mapClick", () => this.close())
 
     this.onPostrender = () => this.position()
     roverMap.map.on("postrender", this.onPostrender)

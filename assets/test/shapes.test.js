@@ -347,4 +347,14 @@ describe("styleForShape", () => {
 
     assert.equal(fill, "rgba(0,0,0,0.5)")
   })
+
+  // The regression this exists for: stroke and fill paint lines and areas, and a
+  // Point has neither, so a style without an image rendered every point shape —
+  // a drawn point echoed back by the server among them — as nothing at all.
+  it("carries an image, so a Point has something to be drawn as", () => {
+    const image = styleForShape({ id: 1, color: "#7c3aed" }).getImage()
+
+    assert.ok(image, "no image style: a Point geometry would render as nothing")
+    assert.equal(image.getFill().getColor(), "#7c3aed")
+  })
 })

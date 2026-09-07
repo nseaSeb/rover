@@ -1,6 +1,7 @@
 import GeoJSON from "ol/format/GeoJSON.js"
 import VectorLayer from "ol/layer/Vector.js"
 import VectorSource from "ol/source/Vector.js"
+import Circle from "ol/style/Circle.js"
 import Fill from "ol/style/Fill.js"
 import Stroke from "ol/style/Stroke.js"
 import Style from "ol/style/Style.js"
@@ -13,6 +14,10 @@ const SHAPE_KEY = "roverShape"
 const DEFAULT_COLOR = "#2563eb"
 const DEFAULT_WIDTH = 2
 const DEFAULT_FILL_OPACITY = 0.12
+// The dot a Point is drawn as. Stroke and fill paint lines and areas; a point
+// has neither, so a style without an image renders it as nothing at all —
+// and a drawn point echoed back by the server simply vanished.
+const POINT_RADIUS = 6
 const CACHE_LIMIT = 256
 
 // Separate from the marker style cache on purpose. That one is a module-level
@@ -215,9 +220,17 @@ function buildStyle(shape) {
   const color = shape.color || DEFAULT_COLOR
   const opacity = shape.fill_opacity ?? DEFAULT_FILL_OPACITY
 
+  const width = shape.width || DEFAULT_WIDTH
+
   const style = new Style({
-    stroke: new Stroke({ color, width: shape.width || DEFAULT_WIDTH }),
+    stroke: new Stroke({ color, width }),
     fill: new Fill({ color: withOpacity(shape.fill_color || color, opacity) }),
+    // Only a Point or MultiPoint reads this; every other geometry ignores it.
+    image: new Circle({
+      radius: POINT_RADIUS,
+      fill: new Fill({ color }),
+      stroke: new Stroke({ color: "rgba(255, 255, 255, 0.9)", width: Math.min(width, 3) }),
+    }),
   })
 
   if (shape.label) {
