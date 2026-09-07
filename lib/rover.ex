@@ -272,6 +272,9 @@ defmodule Rover do
       iex> Rover.bbox({45.0, 4.0, 46.0, 5.0})
       {45.0, 4.0, 46.0, 5.0}
 
+      iex> Rover.bbox(%{"south" => 45.0, "west" => 4.0, "north" => 46.0, "east" => 5.0})
+      {45.0, 4.0, 46.0, 5.0}
+
       iex> Rover.bbox([])
       nil
   """
@@ -280,6 +283,14 @@ defmodule Rover do
       when is_number(south) and is_number(west) and is_number(north) and is_number(east) do
     {south / 1, west / 1, north / 1, east / 1}
   end
+
+  # The box `on_move_end` delivers, so a handler can hand it straight back to
+  # `fit_to/4` — with string keys as it arrives, or atom keys once decoded.
+  def bbox(%{"south" => south, "west" => west, "north" => north, "east" => east}),
+    do: bbox({south, west, north, east})
+
+  def bbox(%{south: south, west: west, north: north, east: east}),
+    do: bbox({south, west, north, east})
 
   def bbox(content) when is_list(content) do
     content
