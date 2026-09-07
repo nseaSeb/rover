@@ -212,6 +212,12 @@ defmodule Rover.Tiles do
   @spec presets() :: [preset()]
   def presets, do: @presets |> Map.keys() |> Enum.sort()
 
+  # What `{preset, opts}` reads, and what `{:xyz, url, opts}` / `{:vector, url, opts}`
+  # read. Anything else used to be dropped on the floor: `{:osm, max_zoom: 18}` was
+  # `:osm`, with no word about the option it lost.
+  @preset_options [:key, :max_zoom, :attributions]
+  @source_options [:max_zoom, :attributions]
+
   @doc """
   Resolves a tile specification into the map handed to the JavaScript runtime.
 
@@ -244,8 +250,13 @@ defmodule Rover.Tiles do
   def resolve!({name, opts}) when is_atom(name) and is_list(opts) do
     case Map.fetch(@presets, name) do
       {:ok, tiles} ->
+        validate_opts!(opts, @preset_options, {name, opts})
         key = Keyword.get(opts, :key, default_key(name))
-        tiles |> tag_type(name) |> apply_key(key)
+
+        tiles
+        |> tag_type(name)
+        |> Map.merge(Map.new(Keyword.take(opts, [:max_zoom, :attributions])))
+        |> apply_key(key)
 
       :error ->
         raise ArgumentError, """
@@ -262,6 +273,8 @@ defmodule Rover.Tiles do
   def resolve!({:xyz, url}), do: resolve!({:xyz, url, []})
 
   def resolve!({:xyz, url, opts}) when is_binary(url) and is_list(opts) do
+    validate_opts!(opts, @source_options, {:xyz, url, opts})
+
     %{
       type: :raster,
       url: url,
@@ -273,6 +286,8 @@ defmodule Rover.Tiles do
   def resolve!({:vector, style_url}), do: resolve!({:vector, style_url, []})
 
   def resolve!({:vector, style_url, opts}) when is_binary(style_url) and is_list(opts) do
+    validate_opts!(opts, @source_options, {:vector, style_url, opts})
+
     %{
       type: :vector,
       style_url: style_url,
@@ -289,6 +304,17 @@ defmodule Rover.Tiles do
     `{preset, opts}`, `{:xyz, url}` / `{:xyz, url, opts}`, or
     `{:vector, style_url}` / `{:vector, style_url, opts}`.
     """
+  end
+
+  defp validate_opts!(opts, known, spec) do
+    Enum.each(opts, fn option ->
+      (match?({name, _value} when is_atom(name), option) and elem(option, 0) in known) ||
+        raise ArgumentError, """
+        unknown tiles option #{inspect(option)} in #{inspect(spec)}.
+
+        Expected any of: #{Enum.map_join(known, ", ", &inspect/1)}.
+        """
+    end)
   end
 
   defp tag_type(tiles, name) when name in @raster_presets, do: Map.put(tiles, :type, :raster)

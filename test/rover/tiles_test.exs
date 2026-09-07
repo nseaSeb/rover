@@ -51,6 +51,27 @@ defmodule Rover.TilesTest do
            }
   end
 
+  test "a preset takes max_zoom and attributions, like an explicit url does" do
+    resolved = Tiles.resolve!({:osm, max_zoom: 17, attributions: "© Me"})
+
+    assert resolved.url == Tiles.resolve!(:osm).url
+    assert resolved.max_zoom == 17
+    assert resolved.attributions == "© Me"
+  end
+
+  test "a preset rejects an option it does not read, rather than dropping it" do
+    # `{:osm, maxzoom: 18}` used to resolve as plain `:osm`, with nothing to say.
+    assert_raise ArgumentError, ~r/unknown tiles option \{:maxzoom, 18\}/, fn ->
+      Tiles.resolve!({:osm, maxzoom: 18})
+    end
+  end
+
+  test "an explicit url rejects an option it does not read" do
+    assert_raise ArgumentError, ~r/unknown tiles option \{:key, "k"\}/, fn ->
+      Tiles.resolve!({:xyz, "https://x/{z}/{x}/{y}.png", key: "k"})
+    end
+  end
+
   test "xyz tiles take options" do
     resolved =
       Tiles.resolve!({:xyz, "https://x/{z}/{x}/{y}.png", max_zoom: 14, attributions: "©"})

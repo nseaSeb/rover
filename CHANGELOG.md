@@ -33,6 +33,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The event hands you `"bbox" => %{"south" => …}`; the functions wanted a
   `{south, west, north, east}` tuple, so the one value you had could not be
   handed back without repacking it. Both key styles are read now.
+- **`{preset, opts}` dropped every option but `:key`.** `{:osm, max_zoom: 18}`
+  resolved as plain `:osm`, with nothing to say about the option it lost, while
+  `{:xyz, url, opts}` honoured `:max_zoom` and `:attributions` all along. A
+  preset now takes both, and every tiles form rejects an option it does not
+  read rather than ignoring it.
 - **Tearing a map down left its interactions, controls and tooltip alive.**
   Detaching the map from its element does not dispose it; the editing and
   dragging interactions kept their listeners on the shape and marker sources,
