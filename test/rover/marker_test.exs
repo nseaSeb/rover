@@ -120,6 +120,35 @@ defmodule Rover.MarkerTest do
       assert_raise ArgumentError, ~r/cannot build a Rover.Marker/, fn -> Marker.new!("nope") end
     end
 
+    test "takes an anchor, a rotation and an opacity for the image" do
+      marker =
+        Marker.new!(%{id: 1, lat: 45.0, lon: 4.0, anchor: [0.5, 0.5], rotation: 90, opacity: 0.5})
+
+      assert marker.anchor == [0.5, 0.5]
+      assert marker.rotation == 90.0
+      assert marker.opacity == 0.5
+    end
+
+    test "rejects an anchor that is not two fractions" do
+      assert_raise ArgumentError, ~r/marker :anchor to be \[x, y\]/, fn ->
+        Marker.new!(%{id: 1, lat: 45.0, lon: 4.0, anchor: [0.5, 1, 0]})
+      end
+
+      assert_raise ArgumentError, ~r/marker :anchor/, fn ->
+        Marker.new!(%{id: 1, lat: 45.0, lon: 4.0, anchor: [13, 36]})
+      end
+    end
+
+    test "rejects an opacity outside 0..1 and a non-numeric rotation" do
+      assert_raise ArgumentError, ~r/marker :opacity/, fn ->
+        Marker.new!(%{id: 1, lat: 45.0, lon: 4.0, opacity: 1.5})
+      end
+
+      assert_raise ArgumentError, ~r/marker :rotation/, fn ->
+        Marker.new!(%{id: 1, lat: 45.0, lon: 4.0, rotation: "north"})
+      end
+    end
+
     test "rejects a non-numeric scale" do
       assert_raise ArgumentError, ~r/:scale/, fn ->
         Marker.new!(%{id: 1, lat: 45.0, lon: 4.0, scale: "big"})
@@ -155,6 +184,17 @@ defmodule Rover.MarkerTest do
       assert Marker.new!(%{id: 1, lat: 45.0, lon: 4.0, draggable: true})
              |> Marker.dump()
              |> Map.fetch!(:draggable)
+    end
+
+    test "keeps the image fields only when set" do
+      dumped = Marker.new!(%{id: 1, lat: 45.0, lon: 4.0}) |> Marker.dump()
+
+      refute Map.has_key?(dumped, :anchor)
+      refute Map.has_key?(dumped, :rotation)
+      refute Map.has_key?(dumped, :opacity)
+
+      dumped = Marker.new!(%{id: 1, lat: 45.0, lon: 4.0, anchor: [0.5, 0.5]}) |> Marker.dump()
+      assert dumped.anchor == [0.5, 0.5]
     end
 
     test "carries :data through untouched" do

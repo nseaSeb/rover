@@ -1356,6 +1356,31 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("a popup clears an icon by the icon's own height, not the pin's", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    // An 80px icon anchored at its top: the image hangs *below* the coordinate,
+    // so above it there is nothing to clear. A popup offset that assumed the
+    // 36px pin floats 36px up in the air.
+    await page.goto("/?icon=tall")
+    await mapReady(page)
+
+    const pixel = await markerPixel(page, 1)
+    await page.locator(CANVAS).click({ position: pixel })
+
+    const popup = page.locator(`${MAP} [data-rover-popup-for="marker:1"]`)
+    await expect(popup).toBeVisible()
+
+    // The icon's size is only known once it has loaded; the popup follows a frame
+    // later, hence the poll. 8px is the gap a popup keeps from whatever it clears.
+    await expect
+      .poll(() => popup.evaluate((node) => parseFloat(node.style.top)))
+      .toBeCloseTo(pixel.y - 8, 0)
+
+    expect(problems).toEqual([])
+  })
+
   test("without :mouse_wheel_zoom the wheel leaves the zoom alone", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)

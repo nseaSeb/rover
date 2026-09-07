@@ -285,5 +285,8 @@ function appearanceOf(marker) {
     marker.emoji || "",
     marker.icon || "",
     marker.scale || "",
+    (marker.anchor || []).join(","),
+    marker.rotation || "",
+    marker.opacity ?? "",
   ].join("|")
 }

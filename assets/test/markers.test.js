@@ -3,6 +3,7 @@ import { describe, it } from "node:test"
 
 import { MarkerLayer } from "../js/markers.js"
 import { project, unproject } from "../js/coords.js"
+import { styleFor } from "../js/styles.js"
 
 const at = (id, lat, lon, rest = {}) => ({ id, lat, lon, ...rest })
 
@@ -70,6 +71,21 @@ describe("MarkerLayer.reconcile", () => {
 
     assert.equal(feature(layer, 1).getGeometry(), geometry, "restyling rebuilt the geometry")
     assert.notEqual(feature(layer, 1).getStyle(), styleBefore, "the new colour was not applied")
+  })
+
+  it("restyles a marker whose heading alone changed", () => {
+    // A vehicle turning: same place, same icon, new rotation. Left out of the
+    // appearance hash, the turn would be skipped as "unchanged".
+    const layer = new MarkerLayer()
+    layer.reconcile([at(1, 45.75, 4.85, { icon: "van.png", rotation: 0 })])
+
+    const geometry = feature(layer, 1).getGeometry()
+    const styleBefore = feature(layer, 1).getStyle()
+
+    layer.reconcile([at(1, 45.75, 4.85, { icon: "van.png", rotation: 90 })])
+
+    assert.equal(feature(layer, 1).getGeometry(), geometry, "turning rebuilt the geometry")
+    assert.notEqual(feature(layer, 1).getStyle(), styleBefore, "the new heading was not applied")
   })
 
   it("does nothing at all when the list is identical", () => {
@@ -175,3 +191,31 @@ function feature(layer, id) {
   const entry = layer.entries.get(String(id))
   return entry && entry.feature
 }
+
+describe("styleFor", () => {
+  it("anchors a pin at its tip by default", () => {
+    const [style] = styleFor(at(1, 45.75, 4.85))
+
+    // Fractions of the image, not pixels: the pin is 26×36 and its tip is the
+    // bottom centre.
+    assert.deepEqual(style.getImage().anchor_, [0.5, 1])
+  })
+
+  it("passes anchor, rotation and opacity to the icon, with degrees turned to radians", () => {
+    const [style] = styleFor(
+      at(1, 45.75, 4.85, { icon: "van.png", anchor: [0.5, 0.5], rotation: 90, opacity: 0.5 })
+    )
+    const image = style.getImage()
+
+    assert.deepEqual(image.anchor_, [0.5, 0.5])
+    assert.ok(Math.abs(image.getRotation() - Math.PI / 2) < 1e-9)
+    assert.equal(image.getOpacity(), 0.5)
+  })
+
+  it("keys the cache on them, so two headings are two styles", () => {
+    const north = styleFor(at(1, 45.75, 4.85, { icon: "van.png", rotation: 0 }))
+    const east = styleFor(at(1, 45.75, 4.85, { icon: "van.png", rotation: 90 }))
+
+    assert.notEqual(north, east)
+  })
+})

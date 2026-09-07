@@ -24,6 +24,9 @@ defmodule Rover.Marker do
   | `:emoji` | string | An emoji drawn in place of the pin, e.g. `"🏠"`. |
   | `:icon` | string | URL of an image to use instead of the default pin. |
   | `:scale` | float | Size multiplier applied to the pin or icon. |
+  | `:anchor` | `[x, y]` | Where on the image the coordinate sits, as fractions of its size: `[0.5, 1]` (bottom centre, the default) for a pin, `[0.5, 0.5]` for a dot or a badge. Pin or `:icon` only. |
+  | `:rotation` | float | Degrees clockwise, for an `:icon` that has a heading — a vehicle, an arrow. Pin or `:icon` only. |
+  | `:opacity` | float | 0 to 1. Pin or `:icon` only. |
   | `:tooltip` | string | Shown on hover. Defaults to `:label`. |
   | `:draggable` | boolean | Lets the user move the marker (see `on_marker_drag_end`). |
   | `:data` | map | Echoed back verbatim in marker events. |
@@ -52,6 +55,9 @@ defmodule Rover.Marker do
           emoji: String.t() | nil,
           icon: String.t() | nil,
           scale: float() | nil,
+          anchor: [float()] | nil,
+          rotation: float() | nil,
+          opacity: float() | nil,
           tooltip: String.t() | nil,
           draggable: boolean(),
           data: map() | nil
@@ -67,6 +73,9 @@ defmodule Rover.Marker do
     :emoji,
     :icon,
     :scale,
+    :anchor,
+    :rotation,
+    :opacity,
     :tooltip,
     :data,
     draggable: false
@@ -79,6 +88,9 @@ defmodule Rover.Marker do
     emoji: [:emoji, "emoji"],
     icon: [:icon, "icon"],
     scale: [:scale, "scale"],
+    anchor: [:anchor, "anchor"],
+    rotation: [:rotation, "rotation"],
+    opacity: [:opacity, "opacity"],
     tooltip: [:tooltip, "tooltip"],
     draggable: [:draggable, "draggable"],
     data: [:data, "data"]
@@ -122,6 +134,9 @@ defmodule Rover.Marker do
       emoji: source |> extract(:emoji, opts) |> to_string_or_nil(),
       icon: source |> extract(:icon, opts) |> to_string_or_nil(),
       scale: source |> extract(:scale, opts) |> to_float_or_nil(),
+      anchor: source |> extract(:anchor, opts) |> to_anchor_or_nil(),
+      rotation: source |> extract(:rotation, opts) |> to_float_or_nil(:rotation),
+      opacity: source |> extract(:opacity, opts) |> to_opacity_or_nil(),
       tooltip: source |> extract(:tooltip, opts) |> to_string_or_nil(),
       draggable: extract(source, :draggable, opts) == true,
       data: extract(source, :data, opts)
@@ -289,10 +304,36 @@ defmodule Rover.Marker do
   defp to_string_or_nil(value) when is_binary(value), do: value
   defp to_string_or_nil(value), do: to_string(value)
 
-  defp to_float_or_nil(nil), do: nil
-  defp to_float_or_nil(value) when is_number(value), do: value / 1
+  defp to_float_or_nil(value, field \\ :scale)
+  defp to_float_or_nil(nil, _field), do: nil
+  defp to_float_or_nil(value, _field) when is_number(value), do: value / 1
 
-  defp to_float_or_nil(value) do
-    raise ArgumentError, "expected a number for marker :scale, got: #{inspect(value)}"
+  defp to_float_or_nil(value, field) do
+    raise ArgumentError, "expected a number for marker #{inspect(field)}, got: #{inspect(value)}"
+  end
+
+  defp to_opacity_or_nil(nil), do: nil
+  defp to_opacity_or_nil(value) when is_number(value) and value >= 0 and value <= 1, do: value / 1
+
+  defp to_opacity_or_nil(value) do
+    raise ArgumentError,
+          "expected a number from 0 to 1 for marker :opacity, got: #{inspect(value)}"
+  end
+
+  # Fractions of the image, both axes, so `[0.5, 1]` is the bottom centre
+  # whatever the image's size — the one form that survives a change of icon.
+  defp to_anchor_or_nil(nil), do: nil
+
+  defp to_anchor_or_nil([x, y])
+       when is_number(x) and is_number(y) and x >= 0 and x <= 1 and y >= 0 and y <= 1 do
+    [x / 1, y / 1]
+  end
+
+  defp to_anchor_or_nil(value) do
+    raise ArgumentError, """
+    expected marker :anchor to be [x, y], two fractions from 0 to 1, got: #{inspect(value)}.
+
+    [0.5, 1] is the bottom centre of the image, where a pin's tip is; [0.5, 0.5] its middle.
+    """
   end
 end

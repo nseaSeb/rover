@@ -106,6 +106,9 @@ schemas:
 | `:emoji` | An emoji drawn in place of the pin, e.g. `"🏠"`. |
 | `:icon` | URL of an image to use instead of the pin. |
 | `:scale` | Size multiplier. |
+| `:anchor` | Where on the image the coordinate sits, as `[x, y]` fractions: `[0.5, 1]` (the default) is a pin's tip, `[0.5, 0.5]` the middle of a dot or badge. |
+| `:rotation` | Degrees clockwise, for an `:icon` with a heading. |
+| `:opacity` | 0 to 1. |
 | `:tooltip` | Shown on hover. Defaults to the label. |
 | `:draggable` | Lets the user move it — see `on_marker_drag_end`. |
 | `:data` | Any map; echoed back verbatim in events. |

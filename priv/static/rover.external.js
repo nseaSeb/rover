@@ -24,10 +24,125 @@ function round(value) {
   return Math.round(value * 1e7) / 1e7;
 }
 
+// js/styles.js
+import Style from "ol/style/Style.js";
+import Circle from "ol/style/Circle.js";
+import Icon from "ol/style/Icon.js";
+import Text from "ol/style/Text.js";
+import Fill from "ol/style/Fill.js";
+import Stroke from "ol/style/Stroke.js";
+var DEFAULT_COLOR = "#e11d48";
+var cache = /* @__PURE__ */ new Map();
+var CACHE_LIMIT = 512;
+function styleFor(marker) {
+  const key = [
+    marker.emoji || "",
+    marker.icon || "",
+    marker.color || DEFAULT_COLOR,
+    marker.scale || 1,
+    marker.label || "",
+    (marker.anchor || DEFAULT_ANCHOR).join(","),
+    marker.rotation || 0,
+    marker.opacity ?? 1
+  ].join("|");
+  let style = cache.get(key);
+  if (!style) {
+    style = buildStyle(marker);
+    if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value);
+    cache.set(key, style);
+  }
+  return style;
+}
+function buildStyle(marker) {
+  const scale = marker.scale || 1;
+  const styles = marker.emoji ? [new Style({ text: emojiText(marker.emoji, scale) })] : [new Style({ image: pinImage(marker, scale) })];
+  if (marker.label) {
+    const label = labelText(marker.label);
+    if (marker.emoji) {
+      styles.push(new Style({ text: label }));
+    } else {
+      styles[0].setText(label);
+    }
+  }
+  return styles;
+}
+var DEFAULT_ANCHOR = [0.5, 1];
+function pinImage(marker, scale) {
+  return new Icon({
+    src: marker.icon || pinDataUri(marker.color || DEFAULT_COLOR),
+    anchor: marker.anchor || DEFAULT_ANCHOR,
+    scale,
+    // Degrees on the server, where a heading is a human number; radians here.
+    rotation: (marker.rotation || 0) * Math.PI / 180,
+    opacity: marker.opacity ?? 1
+  });
+}
+function emojiText(emoji, scale) {
+  return new Text({
+    text: emoji,
+    font: `${Math.round(22 * scale)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`,
+    // Sit the glyph on the coordinate the way a pin's tip does.
+    textBaseline: "bottom",
+    offsetY: 4
+  });
+}
+function labelText(text) {
+  return new Text({
+    text,
+    font: "500 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
+    offsetY: 8,
+    textBaseline: "top",
+    fill: new Fill({ color: "#111827" }),
+    // A halo rather than a background box: legible over any tile, without
+    // drawing a rectangle over the map.
+    stroke: new Stroke({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
+    overflow: true
+  });
+}
+function pinDataUri(color) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="36" viewBox="0 0 26 36">
+<path d="M13 35.5S25.2 21.6 25.2 13A12.2 12.2 0 1 0 .8 13c0 8.6 12.2 22.5 12.2 22.5z" fill="${color}" stroke="rgba(0,0,0,0.22)" stroke-width="1"/>
+<circle cx="13" cy="12.8" r="4.4" fill="#ffffff" fill-opacity="0.92"/>
+</svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+var clusterCache = /* @__PURE__ */ new Map();
+var CLUSTER_COLOR = "#2563eb";
+function clusterStyle(count) {
+  let style = clusterCache.get(count);
+  if (!style) {
+    const radius = Math.min(28, 12 + Math.log2(count) * 3);
+    style = new Style({
+      image: new Circle({
+        radius,
+        fill: new Fill({ color: withAlpha(CLUSTER_COLOR, 0.85) }),
+        stroke: new Stroke({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
+      }),
+      text: new Text({
+        text: String(count),
+        font: "600 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
+        fill: new Fill({ color: "#ffffff" })
+      })
+    });
+    if (clusterCache.size >= CACHE_LIMIT) clusterCache.delete(clusterCache.keys().next().value);
+    clusterCache.set(count, style);
+  }
+  return style;
+}
+function withAlpha(hex, alpha) {
+  const digits = hex.slice(1);
+  return [
+    parseInt(digits.slice(0, 2), 16),
+    parseInt(digits.slice(2, 4), 16),
+    parseInt(digits.slice(4, 6), 16),
+    alpha
+  ];
+}
+
 // js/popups.js
-var OFFSET_PX = 44;
+var GAP_PX = 8;
 var SHAPE_OFFSET_PX = 12;
-var BELOW_OFFSET_PX = 8;
+var PIN_OFFSET_PX = 36 + GAP_PX;
 var Popups = class {
   constructor(rootEl, roverMap) {
     this.root = rootEl;
@@ -101,12 +216,34 @@ var Popups = class {
     if (!node || !coordinate) return this.close();
     const pixel = this.roverMap.map.getPixelFromCoordinate(coordinate);
     if (!pixel) return;
-    const offset = this.current.kind === "marker" ? OFFSET_PX : SHAPE_OFFSET_PX;
+    const { above, below: under } = this.current.kind === "marker" ? this.markerOffsets() : { above: SHAPE_OFFSET_PX, below: GAP_PX };
     const [x, y] = pixel;
-    const below = y - offset - node.offsetHeight < 0;
+    const below = y - above - node.offsetHeight < 0;
     node.classList.toggle("rover-popup--below", below);
     node.style.left = `${Math.round(x)}px`;
-    node.style.top = `${Math.round(below ? y + BELOW_OFFSET_PX : y - offset)}px`;
+    node.style.top = `${Math.round(below ? y + under : y - above)}px`;
+  }
+  /**
+   * How much of the current marker's image sits above its coordinate, and how
+   * much below — each plus the gap — so the popup clears the image whatever its
+   * anchor. Read off the style rather than assumed: an `:icon` is any size, and
+   * says with `:anchor` where on it the coordinate sits.
+   */
+  markerOffsets() {
+    const marker = this.roverMap.markerLayer.markerById(this.current.id);
+    if (!marker) return { above: PIN_OFFSET_PX, below: GAP_PX };
+    if (marker.emoji) {
+      return { above: Math.round(22 * (marker.scale || 1)) + GAP_PX, below: GAP_PX };
+    }
+    const image = styleFor(marker)[0].getImage();
+    const anchor2 = image && image.getAnchor();
+    const size = image && image.getSize();
+    if (!anchor2 || !size) return { above: PIN_OFFSET_PX, below: GAP_PX };
+    const scale = image.getScaleArray()[1];
+    return {
+      above: anchor2[1] * scale + GAP_PX,
+      below: (size[1] - anchor2[1]) * scale + GAP_PX
+    };
   }
   /**
    * Called after LiveView patches the element.
@@ -8507,12 +8644,12 @@ import { distance } from "ol/coordinate.js";
 import { getCenter } from "ol/extent.js";
 import { toPromise as toPromise2 } from "ol/functions.js";
 import RenderFeature from "ol/render/Feature.js";
-import Circle from "ol/style/Circle.js";
-import Fill from "ol/style/Fill.js";
-import Icon from "ol/style/Icon.js";
-import Stroke from "ol/style/Stroke.js";
-import Style from "ol/style/Style.js";
-import Text from "ol/style/Text.js";
+import Circle2 from "ol/style/Circle.js";
+import Fill2 from "ol/style/Fill.js";
+import Icon2 from "ol/style/Icon.js";
+import Stroke2 from "ol/style/Stroke.js";
+import Style2 from "ol/style/Style.js";
+import Text2 from "ol/style/Text.js";
 
 // node_modules/ol-mapbox-style/src/text.js
 import { WORKER_OFFSCREEN_CANVAS } from "ol/has.js";
@@ -9439,8 +9576,8 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
                 ++stylesLength;
                 style = styles[stylesLength];
                 if (!style || !style.getFill() || style.getStroke() || style.getText()) {
-                  style = new Style({
-                    fill: new Fill()
+                  style = new Style2({
+                    fill: new Fill2()
                   });
                   styles[stylesLength] = style;
                 }
@@ -9508,9 +9645,9 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
               ++stylesLength;
               style = styles[stylesLength];
               if (!style || color && !style.getFill() || !color && style.getFill() || strokeColor && !style.getStroke() || !strokeColor && style.getStroke() || style.getText()) {
-                style = new Style({
-                  fill: color ? new Fill() : void 0,
-                  stroke: strokeColor ? new Stroke() : void 0
+                style = new Style2({
+                  fill: color ? new Fill2() : void 0,
+                  stroke: strokeColor ? new Stroke2() : void 0
                 });
                 styles[stylesLength] = style;
               }
@@ -9582,8 +9719,8 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
             ++stylesLength;
             style = styles[stylesLength];
             if (!style || !style.getStroke() || style.getFill() || style.getText()) {
-              style = new Style({
-                stroke: new Stroke()
+              style = new Style2({
+                stroke: new Stroke2()
               });
               styles[stylesLength] = style;
             }
@@ -9817,7 +9954,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
                           imageElement.height
                         ];
                       }
-                      iconImg = new Icon(iconOptions);
+                      iconImg = new Icon2(iconOptions);
                     } else {
                       const spriteImageData = spriteData[icon];
                       let img, size, offset;
@@ -9869,7 +10006,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
                         size = [spriteImageData.width, spriteImageData.height];
                         offset = [spriteImageData.x, spriteImageData.y];
                       }
-                      iconImg = new Icon({
+                      iconImg = new Icon2({
                         color: color2,
                         img,
                         // @ts-ignore
@@ -9889,7 +10026,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
                   ++stylesLength;
                   style = styles[stylesLength];
                   if (!style || !style.getImage() || style.getFill() || style.getStroke()) {
-                    style = new Style();
+                    style = new Style2();
                     styles[stylesLength] = style;
                   }
                   style.setGeometry(styleGeom);
@@ -9942,7 +10079,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
           ++stylesLength;
           style = styles[stylesLength];
           if (!style || !style.getImage() || style.getFill() || style.getStroke()) {
-            style = new Style();
+            style = new Style2();
             styles[stylesLength] = style;
           }
           const circleRadius = "circle-radius" in paint ? getValue(
@@ -10008,14 +10145,14 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
           const cache_key = circleRadius + "." + circleStrokeColor + "." + circleColor + "." + circleStrokeWidth + "." + circleTranslate[0] + "." + circleTranslate[1];
           iconImg = iconImageCache[cache_key];
           if (!iconImg) {
-            iconImg = new Circle({
+            iconImg = new Circle2({
               radius: circleRadius,
               displacement: [circleTranslate[0], -circleTranslate[1]],
-              stroke: circleStrokeColor && circleStrokeWidth > 0 ? new Stroke({
+              stroke: circleStrokeColor && circleStrokeWidth > 0 ? new Stroke2({
                 width: circleStrokeWidth,
                 color: circleStrokeColor
               }) : void 0,
-              fill: circleColor ? new Fill({
+              fill: circleColor ? new Fill2({
                 color: circleColor
               }) : void 0,
               declutterMode: "none"
@@ -10144,7 +10281,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
             ++stylesLength;
             style = styles[stylesLength];
             if (!style || !style.getText() || style.getFill() || style.getStroke()) {
-              style = new Style();
+              style = new Style2();
               styles[stylesLength] = style;
             }
             style.setImage(void 0);
@@ -10161,7 +10298,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
           }
           text = style.getText();
           if (!text || "getDeclutterMode" in text && text.getDeclutterMode() !== declutterMode) {
-            text = new Text({
+            text = new Text2({
               padding: [2, 2, 2, 2],
               // @ts-ignore
               declutterMode
@@ -10326,7 +10463,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
           text.setOffsetY(
             textOffset[1] * textSize + vOffset + textTranslate[1]
           );
-          const textFill = text.getFill() || new Fill();
+          const textFill = text.getFill() || new Fill2();
           textFill.setColor(
             colorWithOpacity(
               getValue(
@@ -10353,7 +10490,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
             opacity
           );
           if (haloColor && textHaloWidth > 0) {
-            const textStroke = text.getStroke() || new Stroke();
+            const textStroke = text.getStroke() || new Stroke2();
             textStroke.setColor(haloColor);
             textHaloWidth *= 2;
             const halfTextSize = 0.5 * textSize;
@@ -11436,10 +11573,10 @@ import { createEmpty, extend } from "ol/extent.js";
 // js/draw.js
 import VectorLayer2 from "ol/layer/Vector.js";
 import VectorSource2 from "ol/source/Vector.js";
-import Circle2 from "ol/style/Circle.js";
-import Fill2 from "ol/style/Fill.js";
-import Stroke2 from "ol/style/Stroke.js";
-import Style2 from "ol/style/Style.js";
+import Circle3 from "ol/style/Circle.js";
+import Fill3 from "ol/style/Fill.js";
+import Stroke3 from "ol/style/Stroke.js";
+import Style3 from "ol/style/Style.js";
 var PENDING_COLOR = "#2563eb";
 var TYPES = /* @__PURE__ */ new Set(["Point", "LineString", "Polygon"]);
 function drawTypeFor(type) {
@@ -11463,14 +11600,14 @@ var DrawLayer = class {
   }
 };
 function pendingStyle() {
-  return new Style2({
-    stroke: new Stroke2({ color: PENDING_COLOR, width: 2, lineDash: [6, 5] }),
-    fill: new Fill2({ color: [37, 99, 235, 0.08] }),
+  return new Style3({
+    stroke: new Stroke3({ color: PENDING_COLOR, width: 2, lineDash: [6, 5] }),
+    fill: new Fill3({ color: [37, 99, 235, 0.08] }),
     // A drawn Point has no stroke or fill to show.
-    image: new Circle2({
+    image: new Circle3({
       radius: 5,
-      fill: new Fill2({ color: PENDING_COLOR }),
-      stroke: new Stroke2({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
+      fill: new Fill3({ color: PENDING_COLOR }),
+      stroke: new Stroke3({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
     })
   });
 }
@@ -11538,112 +11675,6 @@ import Point2 from "ol/geom/Point.js";
 import VectorLayer3 from "ol/layer/Vector.js";
 import Cluster from "ol/source/Cluster.js";
 import VectorSource4 from "ol/source/Vector.js";
-
-// js/styles.js
-import Style3 from "ol/style/Style.js";
-import Circle3 from "ol/style/Circle.js";
-import Icon2 from "ol/style/Icon.js";
-import Text2 from "ol/style/Text.js";
-import Fill3 from "ol/style/Fill.js";
-import Stroke3 from "ol/style/Stroke.js";
-var DEFAULT_COLOR = "#e11d48";
-var cache = /* @__PURE__ */ new Map();
-var CACHE_LIMIT = 512;
-function styleFor(marker) {
-  const key = [
-    marker.emoji || "",
-    marker.icon || "",
-    marker.color || DEFAULT_COLOR,
-    marker.scale || 1,
-    marker.label || ""
-  ].join("|");
-  let style = cache.get(key);
-  if (!style) {
-    style = buildStyle(marker);
-    if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value);
-    cache.set(key, style);
-  }
-  return style;
-}
-function buildStyle(marker) {
-  const scale = marker.scale || 1;
-  const styles = marker.emoji ? [new Style3({ text: emojiText(marker.emoji, scale) })] : [new Style3({ image: pinImage(marker, scale) })];
-  if (marker.label) {
-    const label = labelText(marker.label);
-    if (marker.emoji) {
-      styles.push(new Style3({ text: label }));
-    } else {
-      styles[0].setText(label);
-    }
-  }
-  return styles;
-}
-function pinImage(marker, scale) {
-  return marker.icon ? new Icon2({ src: marker.icon, anchor: [0.5, 1], scale }) : new Icon2({ src: pinDataUri(marker.color || DEFAULT_COLOR), anchor: [0.5, 1], scale });
-}
-function emojiText(emoji, scale) {
-  return new Text2({
-    text: emoji,
-    font: `${Math.round(22 * scale)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`,
-    // Sit the glyph on the coordinate the way a pin's tip does.
-    textBaseline: "bottom",
-    offsetY: 4
-  });
-}
-function labelText(text) {
-  return new Text2({
-    text,
-    font: "500 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
-    offsetY: 8,
-    textBaseline: "top",
-    fill: new Fill3({ color: "#111827" }),
-    // A halo rather than a background box: legible over any tile, without
-    // drawing a rectangle over the map.
-    stroke: new Stroke3({ color: "rgba(255, 255, 255, 0.92)", width: 3 }),
-    overflow: true
-  });
-}
-function pinDataUri(color) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="36" viewBox="0 0 26 36">
-<path d="M13 35.5S25.2 21.6 25.2 13A12.2 12.2 0 1 0 .8 13c0 8.6 12.2 22.5 12.2 22.5z" fill="${color}" stroke="rgba(0,0,0,0.22)" stroke-width="1"/>
-<circle cx="13" cy="12.8" r="4.4" fill="#ffffff" fill-opacity="0.92"/>
-</svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-var clusterCache = /* @__PURE__ */ new Map();
-var CLUSTER_COLOR = "#2563eb";
-function clusterStyle(count) {
-  let style = clusterCache.get(count);
-  if (!style) {
-    const radius = Math.min(28, 12 + Math.log2(count) * 3);
-    style = new Style3({
-      image: new Circle3({
-        radius,
-        fill: new Fill3({ color: withAlpha(CLUSTER_COLOR, 0.85) }),
-        stroke: new Stroke3({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
-      }),
-      text: new Text2({
-        text: String(count),
-        font: "600 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
-        fill: new Fill3({ color: "#ffffff" })
-      })
-    });
-    if (clusterCache.size >= CACHE_LIMIT) clusterCache.delete(clusterCache.keys().next().value);
-    clusterCache.set(count, style);
-  }
-  return style;
-}
-function withAlpha(hex, alpha) {
-  const digits = hex.slice(1);
-  return [
-    parseInt(digits.slice(0, 2), 16),
-    parseInt(digits.slice(2, 4), 16),
-    parseInt(digits.slice(4, 6), 16),
-    alpha
-  ];
-}
-
-// js/markers.js
 var ROVER_KEY = "rover";
 var MarkerLayer = class {
   constructor() {
@@ -11837,7 +11868,10 @@ function appearanceOf(marker) {
     marker.color || "",
     marker.emoji || "",
     marker.icon || "",
-    marker.scale || ""
+    marker.scale || "",
+    (marker.anchor || []).join(","),
+    marker.rotation || "",
+    marker.opacity ?? ""
   ].join("|");
 }
 

@@ -84,6 +84,11 @@ defmodule RoverDev.DemoLive do
   # click inside it still reaching `on_map_click` — cannot be reproduced on a map
   # whose shapes are clickable.
   #
+  # `?icon=tall` gives the first client an 80px icon anchored at its *top*, so the
+  # coordinate is where the image starts rather than where it ends. The browser
+  # suite needs it: a popup offset that assumed the built-in 36px pin lands 36px
+  # too high on this one.
+  #
   # `?interactions=no_wheel` renders the main map without `:mouse_wheel_zoom`,
   # which is what a map in the flow of a page wants and what the browser suite
   # needs to see a wheel event leave the zoom alone.
@@ -94,7 +99,24 @@ defmodule RoverDev.DemoLive do
        shapes: shapes(shape_mode(params)),
        scenery: params["scenery"] == "1",
        interactions: interactions(params["interactions"])
-     )}
+     )
+     |> then(fn socket ->
+       if params["icon"] == "tall", do: assign(socket, clients: tall_icon(socket)), else: socket
+     end)}
+  end
+
+  # Percent-encoded down to the unreserved set: `URI.encode/1` leaves `#` alone,
+  # and a `#` in a data URI starts a fragment — the colour cut the image short.
+  @tall_icon "data:image/svg+xml;charset=utf-8," <>
+               URI.encode(
+                 ~s(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="80"><rect width="24" height="80" rx="6" fill="#7c3aed"/></svg>),
+                 &URI.char_unreserved?/1
+               )
+
+  defp tall_icon(socket) do
+    [first | rest] = socket.assigns.clients
+
+    [first |> Map.delete(:emoji) |> Map.merge(%{icon: @tall_icon, anchor: [0.5, 0]}) | rest]
   end
 
   @all_interactions [
