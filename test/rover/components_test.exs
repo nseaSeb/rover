@@ -323,6 +323,45 @@ defmodule Rover.ComponentsTest do
     end
   end
 
+  describe "interactions" do
+    test "default to every gesture, so nothing changes for a map that says nothing" do
+      interactions = config(render_map([]))["interactions"]
+
+      assert interactions == %{
+               "dragRotate" => true,
+               "doubleClickZoom" => true,
+               "dragPan" => true,
+               "pinchRotate" => true,
+               "pinchZoom" => true,
+               "keyboardPan" => true,
+               "keyboardZoom" => true,
+               "mouseWheelZoom" => true,
+               "dragZoom" => true
+             }
+    end
+
+    test "are an allow-list, camelised for the client" do
+      interactions = config(render_map(interactions: [:drag_pan, :pinch_zoom]))["interactions"]
+
+      assert interactions["dragPan"]
+      assert interactions["pinchZoom"]
+      refute interactions["mouseWheelZoom"]
+      refute interactions["dragRotate"]
+    end
+
+    test "reject an unknown interaction, and name the known ones" do
+      assert_raise ArgumentError, ~r/unknown map interaction :scroll.*:mouse_wheel_zoom/s, fn ->
+        render_map(interactions: [:scroll])
+      end
+    end
+
+    test "reject a non-list" do
+      assert_raise ArgumentError, ~r/expected `interactions` to be a list/, fn ->
+        render_map(interactions: :none)
+      end
+    end
+  end
+
   describe "events" do
     test "are absent unless requested" do
       assert config(render_map([]))["events"] == %{}

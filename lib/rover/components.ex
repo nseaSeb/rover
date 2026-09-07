@@ -220,6 +220,37 @@ defmodule Rover.Components do
     credit — renders without it.
     """
 
+  @known_interactions [
+    :drag_rotate,
+    :double_click_zoom,
+    :drag_pan,
+    :pinch_rotate,
+    :pinch_zoom,
+    :keyboard_pan,
+    :keyboard_zoom,
+    :mouse_wheel_zoom,
+    :drag_zoom
+  ]
+
+  attr :interactions, :list,
+    default: @known_interactions,
+    doc: """
+    The gestures the map answers to, from `:drag_pan`, `:mouse_wheel_zoom`,
+    `:double_click_zoom`, `:pinch_zoom`, `:keyboard_pan`, `:keyboard_zoom`,
+    `:drag_rotate`, `:pinch_rotate` and `:drag_zoom` (shift-drag a box). All of
+    them by default. A map in the flow of a page usually wants
+    `interactions={[:drag_pan, :pinch_zoom, :double_click_zoom, :keyboard_pan, :keyboard_zoom]}`
+    — without `:mouse_wheel_zoom` the wheel scrolls the page instead of the map,
+    and without the two rotations a shift-drag cannot leave the map crooked.
+    Note that a view already rotated stays so; `:rotate` in `controls` is the
+    way back.
+
+    `interactions={[]}` is not `interactive={false}`: it removes the gestures
+    and keeps the tooltips, the clicks and the cursor. Dragging a `:draggable`
+    marker, reshaping an `:editable` shape and drawing are not in this list and
+    cannot be removed through it.
+    """
+
   attr :interactive, :boolean,
     default: true,
     doc: """
@@ -474,6 +505,7 @@ defmodule Rover.Components do
       fitPadding: assigns.fit_padding,
       cluster: encode_cluster(assigns.cluster),
       controls: encode_controls(assigns.controls, assigns.tiles),
+      interactions: encode_interactions(assigns.interactions),
       interactive: assigns.interactive,
       # A shape with a popup is a click target even when no handler is wired, and
       # only the server knows whether the slot was given. Without this the client
@@ -633,6 +665,25 @@ defmodule Rover.Components do
 
   defp encode_controls(other, _tiles) do
     raise ArgumentError, "expected `controls` to be a list, got: #{inspect(other)}"
+  end
+
+  defp encode_interactions(interactions) when is_list(interactions) do
+    Enum.each(interactions, fn interaction ->
+      interaction in @known_interactions ||
+        raise ArgumentError, """
+        unknown map interaction #{inspect(interaction)}.
+
+        Expected any of: #{Enum.map_join(@known_interactions, ", ", &inspect/1)}.
+        """
+    end)
+
+    Map.new(@known_interactions, fn interaction ->
+      {camelize(interaction), interaction in interactions}
+    end)
+  end
+
+  defp encode_interactions(other) do
+    raise ArgumentError, "expected `interactions` to be a list, got: #{inspect(other)}"
   end
 
   defp encode_target(nil), do: nil

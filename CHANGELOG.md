@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`interactions`**, an allow-list of the gestures a map answers to, mirror of
+  `controls`: `:drag_pan`, `:mouse_wheel_zoom`, `:double_click_zoom`,
+  `:pinch_zoom`, `:keyboard_pan`, `:keyboard_zoom`, `:drag_rotate`,
+  `:pinch_rotate`, `:drag_zoom`. All of them by default, so nothing changes for
+  a map that says nothing. The two reasons to trim it: a map in the flow of a
+  page should leave the wheel to the page, and a shift-drag should not be able
+  to leave the map crooked with no way back. `interactions={[]}` is not
+  `interactive={false}` — tooltips, clicks and the cursor stay — and Rover's
+  own dragging, editing and drawing interactions are not on the list.
+
 ### Changed
 
 - **The attribution control is on whenever the map has a basemap**, whether

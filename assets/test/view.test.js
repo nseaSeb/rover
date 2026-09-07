@@ -2,7 +2,9 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 
 import {
+  buildInteractions,
   fitMaxZoom,
+  gesturesFor,
   isTextEntry,
   normalizeConfig,
   parseFocusKey,
@@ -148,6 +150,48 @@ describe("the union of both layers", () => {
     assert.ok(union[0] < shapes.extent[0], "the union did not extend west to the marker")
     assert.ok(union[3] > shapes.extent[3], "the union did not extend north to the marker")
     assert.ok(union[2] >= shapes.extent[2], "the union lost the parcel's eastern edge")
+  })
+})
+
+describe("gesturesFor", () => {
+  const all = [
+    "dragRotate",
+    "doubleClickZoom",
+    "dragPan",
+    "pinchRotate",
+    "pinchZoom",
+    "keyboardPan",
+    "keyboardZoom",
+    "mouseWheelZoom",
+    "dragZoom",
+  ]
+
+  it("names every gesture, in ol's order, when the config says nothing", () => {
+    // The order is load-bearing: OpenLayers offers an event to the most recently
+    // added interaction first, so this must match `ol/interaction/defaults`.
+    assert.deepEqual(gesturesFor(config({})), all)
+  })
+
+  it("drops exactly the gestures switched off", () => {
+    const off = { mouseWheelZoom: false, dragRotate: false }
+
+    assert.deepEqual(
+      gesturesFor(config({ interactions: off })),
+      all.filter((name) => name !== "mouseWheelZoom" && name !== "dragRotate")
+    )
+  })
+
+  it("names nothing for a locked map, whatever the list says", () => {
+    assert.deepEqual(gesturesFor(config({ interactive: false, interactions: { dragPan: true } })), [])
+  })
+
+  it("builds a DragPan with its inertia", () => {
+    // Everything but dragPan off: the others need a document to be constructed.
+    const off = Object.fromEntries(all.filter((n) => n !== "dragPan").map((n) => [n, false]))
+    const [dragPan] = buildInteractions(config({ interactions: off }))
+
+    assert.equal(dragPan.constructor.name, "DragPan")
+    assert.ok(dragPan.kinetic_, "a DragPan without a Kinetic stops dead when the pointer lifts")
   })
 })
 

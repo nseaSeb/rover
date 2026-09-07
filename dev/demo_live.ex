@@ -83,11 +83,34 @@ defmodule RoverDev.DemoLive do
   # hit-testable across its whole interior, and the one guard that matters — a
   # click inside it still reaching `on_map_click` — cannot be reproduced on a map
   # whose shapes are clickable.
+  #
+  # `?interactions=no_wheel` renders the main map without `:mouse_wheel_zoom`,
+  # which is what a map in the flow of a page wants and what the browser suite
+  # needs to see a wheel event leave the zoom alone.
   @impl true
   def handle_params(params, _uri, socket) do
     {:noreply,
-     assign(socket, shapes: shapes(shape_mode(params)), scenery: params["scenery"] == "1")}
+     assign(socket,
+       shapes: shapes(shape_mode(params)),
+       scenery: params["scenery"] == "1",
+       interactions: interactions(params["interactions"])
+     )}
   end
+
+  @all_interactions [
+    :drag_rotate,
+    :double_click_zoom,
+    :drag_pan,
+    :pinch_rotate,
+    :pinch_zoom,
+    :keyboard_pan,
+    :keyboard_zoom,
+    :mouse_wheel_zoom,
+    :drag_zoom
+  ]
+
+  defp interactions("no_wheel"), do: @all_interactions -- [:mouse_wheel_zoom]
+  defp interactions(_), do: @all_interactions
 
   defp shape_mode(%{"shapes" => "parcel"}), do: :parcel_only
   defp shape_mode(%{"shapes" => "route"}), do: :route_only
@@ -132,6 +155,7 @@ defmodule RoverDev.DemoLive do
       id="clients"
       label="Clients around Lyon"
       interactive={@interactive}
+      interactions={@interactions}
       markers={if @crowd, do: @clients ++ crowd(), else: @clients}
       cluster={@cluster}
       shapes={@shapes}
