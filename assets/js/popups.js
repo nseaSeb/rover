@@ -1,15 +1,18 @@
 import { project } from "./coords.js"
+import { styleFor } from "./styles.js"
 
-// How far above the coordinate the popup floats: enough to clear a pin, which is
-// 36px tall and anchored at its tip. A shape is anchored where it was clicked, so
-// it needs less.
-const OFFSET_PX = 44
+// The gap a popup keeps from whatever it clears. Above a marker it clears the
+// part of the image drawn above the coordinate — a pin's 36px, all of it, since
+// a pin is anchored at its tip; an icon anchored at its centre, half of it —
+// and that is read off the icon itself in `markerOffsets`. A shape is anchored
+// where it was clicked, so it needs only a little.
+const GAP_PX = 8
 const SHAPE_OFFSET_PX = 12
 
-// When the balloon would be clipped by the container's top edge, it flips below
-// the pin instead. `.rover-map` hides its overflow — a clipped popup is not
-// partly visible, it is gone.
-const BELOW_OFFSET_PX = 8
+// Until an icon has loaded its size is unknown, and so is how much of it sits
+// above the coordinate. The built-in pin's answer stands in: `position()` runs
+// on every frame, so the real one takes over the moment the image lands.
+const PIN_OFFSET_PX = 36 + GAP_PX
 
 /**
  * Marker popups, positioned by hand rather than by an OpenLayers Overlay.
@@ -154,13 +157,50 @@ export class Popups {
     const pixel = this.roverMap.map.getPixelFromCoordinate(coordinate)
     if (!pixel) return
 
-    const offset = this.current.kind === "marker" ? OFFSET_PX : SHAPE_OFFSET_PX
+    const { above, below: under } =
+      this.current.kind === "marker"
+        ? this.markerOffsets()
+        : { above: SHAPE_OFFSET_PX, below: GAP_PX }
     const [x, y] = pixel
-    const below = y - offset - node.offsetHeight < 0
+    // When the balloon would be clipped by the container's top edge, it flips
+    // below the image instead. `.rover-map` hides its overflow — a clipped popup
+    // is not partly visible, it is gone.
+    const below = y - above - node.offsetHeight < 0
 
     node.classList.toggle("rover-popup--below", below)
     node.style.left = `${Math.round(x)}px`
-    node.style.top = `${Math.round(below ? y + BELOW_OFFSET_PX : y - offset)}px`
+    node.style.top = `${Math.round(below ? y + under : y - above)}px`
+  }
+
+  /**
+   * How much of the current marker's image sits above its coordinate, and how
+   * much below — each plus the gap — so the popup clears the image whatever its
+   * anchor. Read off the style rather than assumed: an `:icon` is any size, and
+   * says with `:anchor` where on it the coordinate sits.
+   */
+  markerOffsets() {
+    const marker = this.roverMap.markerLayer.markerById(this.current.id)
+    if (!marker) return { above: PIN_OFFSET_PX, below: GAP_PX }
+
+    // An emoji is text sat on the coordinate, its glyph 22px tall at scale 1.
+    if (marker.emoji) {
+      return { above: Math.round(22 * (marker.scale || 1)) + GAP_PX, below: GAP_PX }
+    }
+
+    // styleFor rather than the feature's own style: under clustering the feature
+    // on screen is the cluster wrapper, which carries no per-marker style.
+    const image = styleFor(marker)[0].getImage()
+    const anchor = image && image.getAnchor()
+    const size = image && image.getSize()
+    if (!anchor || !size) return { above: PIN_OFFSET_PX, below: GAP_PX }
+
+    // getAnchor() is in image pixels and does not apply the scale.
+    const scale = image.getScaleArray()[1]
+
+    return {
+      above: anchor[1] * scale + GAP_PX,
+      below: (size[1] - anchor[1]) * scale + GAP_PX,
+    }
   }
 
   /**

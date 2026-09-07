@@ -24,6 +24,9 @@ export function styleFor(marker) {
     marker.color || DEFAULT_COLOR,
     marker.scale || 1,
     marker.label || "",
+    (marker.anchor || DEFAULT_ANCHOR).join(","),
+    marker.rotation || 0,
+    marker.opacity ?? 1,
   ].join("|")
 
   let style = cache.get(key)
@@ -62,10 +65,19 @@ function buildStyle(marker) {
   return styles
 }
 
+// Bottom centre: where a pin's tip is. An `:icon` with a different shape says
+// where its own coordinate sits, as fractions of its size.
+export const DEFAULT_ANCHOR = [0.5, 1]
+
 function pinImage(marker, scale) {
-  return marker.icon
-    ? new Icon({ src: marker.icon, anchor: [0.5, 1], scale })
-    : new Icon({ src: pinDataUri(marker.color || DEFAULT_COLOR), anchor: [0.5, 1], scale })
+  return new Icon({
+    src: marker.icon || pinDataUri(marker.color || DEFAULT_COLOR),
+    anchor: marker.anchor || DEFAULT_ANCHOR,
+    scale,
+    // Degrees on the server, where a heading is a human number; radians here.
+    rotation: ((marker.rotation || 0) * Math.PI) / 180,
+    opacity: marker.opacity ?? 1,
+  })
 }
 
 // Drawn as canvas text rather than a DOM overlay, so an emoji marker keeps

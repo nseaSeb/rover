@@ -18,6 +18,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `interactive={false}` — tooltips, clicks and the cursor stay — and Rover's
   own dragging, editing and drawing interactions are not on the list.
 
+- **`:anchor`, `:rotation` and `:opacity` on markers**, for the pin or an
+  `:icon`. `:anchor` is `[x, y]` as fractions of the image — `[0.5, 1]`, the
+  default, is a pin's tip; `[0.5, 0.5]` the middle of a dot or a badge.
+  `:rotation` is in degrees, clockwise, for an icon with a heading. A marker's
+  popup now clears the image by the image's own height above the coordinate,
+  read off the icon once it has loaded, rather than the built-in pin's 36px —
+  a taller icon used to be overlapped, a centred one floated above nothing.
+
 ### Changed
 
 - **The attribution control is on whenever the map has a basemap**, whether
