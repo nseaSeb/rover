@@ -11416,12 +11416,21 @@ import FullScreen from "ol/control/FullScreen.js";
 import Rotate from "ol/control/Rotate.js";
 import ScaleLine from "ol/control/ScaleLine.js";
 import Zoom from "ol/control/Zoom.js";
+import Kinetic from "ol/Kinetic.js";
 import { never } from "ol/events/condition.js";
+import DoubleClickZoom from "ol/interaction/DoubleClickZoom.js";
+import DragPan from "ol/interaction/DragPan.js";
+import DragRotate from "ol/interaction/DragRotate.js";
+import DragZoom from "ol/interaction/DragZoom.js";
 import Draw from "ol/interaction/Draw.js";
+import KeyboardPan from "ol/interaction/KeyboardPan.js";
+import KeyboardZoom from "ol/interaction/KeyboardZoom.js";
 import Modify from "ol/interaction/Modify.js";
+import MouseWheelZoom from "ol/interaction/MouseWheelZoom.js";
+import PinchRotate from "ol/interaction/PinchRotate.js";
+import PinchZoom from "ol/interaction/PinchZoom.js";
 import Snap from "ol/interaction/Snap.js";
 import Translate from "ol/interaction/Translate.js";
-import { defaults as defaultInteractions } from "ol/interaction/defaults.js";
 import { createEmpty, extend } from "ol/extent.js";
 
 // js/draw.js
@@ -12151,7 +12160,9 @@ var RoverMap = class {
     if (changed(previous.controls, next.controls) || previous.interactive !== next.interactive) {
       this.applyControls(next);
     }
-    if (previous.interactive !== next.interactive) this.applyInteractions(next);
+    if (previous.interactive !== next.interactive || changed(previous.interactions, next.interactions)) {
+      this.applyInteractions(next);
+    }
     if (previous.interactive !== next.interactive || previous.label !== next.label) {
       this.applyAccessibility(next);
     }
@@ -12646,8 +12657,37 @@ function buildControls(config) {
   if (!locked && wanted.rotate) controls.push(new Rotate());
   return controls;
 }
+var GESTURES = [
+  "dragRotate",
+  "doubleClickZoom",
+  "dragPan",
+  "pinchRotate",
+  "pinchZoom",
+  "keyboardPan",
+  "keyboardZoom",
+  "mouseWheelZoom",
+  "dragZoom"
+];
+var GESTURE_BUILDERS = {
+  dragRotate: () => new DragRotate(),
+  doubleClickZoom: () => new DoubleClickZoom(),
+  // The kinetic is what gives a drag its inertia; `defaults()` builds one with
+  // these numbers, and a DragPan without it stops dead when the pointer lifts.
+  dragPan: () => new DragPan({ kinetic: new Kinetic(-5e-3, 0.05, 100) }),
+  pinchRotate: () => new PinchRotate(),
+  pinchZoom: () => new PinchZoom(),
+  keyboardPan: () => new KeyboardPan(),
+  keyboardZoom: () => new KeyboardZoom(),
+  mouseWheelZoom: () => new MouseWheelZoom(),
+  dragZoom: () => new DragZoom()
+};
+function gesturesFor(config) {
+  if (config.interactive === false) return [];
+  const wanted = config.interactions || {};
+  return GESTURES.filter((name) => wanted[name] !== false);
+}
 function buildInteractions(config) {
-  return config.interactive === false ? [] : defaultInteractions().getArray();
+  return gesturesFor(config).map((name) => GESTURE_BUILDERS[name]());
 }
 function resolveRetina(url) {
   const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;

@@ -10,12 +10,21 @@ import FullScreen from "ol/control/FullScreen.js"
 import Rotate from "ol/control/Rotate.js"
 import ScaleLine from "ol/control/ScaleLine.js"
 import Zoom from "ol/control/Zoom.js"
+import Kinetic from "ol/Kinetic.js"
 import { never } from "ol/events/condition.js"
+import DoubleClickZoom from "ol/interaction/DoubleClickZoom.js"
+import DragPan from "ol/interaction/DragPan.js"
+import DragRotate from "ol/interaction/DragRotate.js"
+import DragZoom from "ol/interaction/DragZoom.js"
 import Draw from "ol/interaction/Draw.js"
+import KeyboardPan from "ol/interaction/KeyboardPan.js"
+import KeyboardZoom from "ol/interaction/KeyboardZoom.js"
 import Modify from "ol/interaction/Modify.js"
+import MouseWheelZoom from "ol/interaction/MouseWheelZoom.js"
+import PinchRotate from "ol/interaction/PinchRotate.js"
+import PinchZoom from "ol/interaction/PinchZoom.js"
 import Snap from "ol/interaction/Snap.js"
 import Translate from "ol/interaction/Translate.js"
-import { defaults as defaultInteractions } from "ol/interaction/defaults.js"
 import { createEmpty, extend } from "ol/extent.js"
 
 import { extentToBbox, project, unproject } from "./coords.js"
@@ -181,7 +190,12 @@ export class RoverMap {
       this.applyControls(next)
     }
 
-    if (previous.interactive !== next.interactive) this.applyInteractions(next)
+    if (
+      previous.interactive !== next.interactive ||
+      changed(previous.interactions, next.interactions)
+    ) {
+      this.applyInteractions(next)
+    }
 
     if (previous.interactive !== next.interactive || previous.label !== next.label) {
       this.applyAccessibility(next)
@@ -893,8 +907,53 @@ function buildControls(config) {
   return controls
 }
 
-function buildInteractions(config) {
-  return config.interactive === false ? [] : defaultInteractions().getArray()
+// The gestures `ol/interaction/defaults` would install, in its order — which is
+// load-bearing: OpenLayers hands an event to the most recently added interaction
+// first. Rover's own Modify, Translate, Draw and Snap are added after these by
+// `applyInteractions`, and so are not on this list to be removed.
+const GESTURES = [
+  "dragRotate",
+  "doubleClickZoom",
+  "dragPan",
+  "pinchRotate",
+  "pinchZoom",
+  "keyboardPan",
+  "keyboardZoom",
+  "mouseWheelZoom",
+  "dragZoom",
+]
+
+const GESTURE_BUILDERS = {
+  dragRotate: () => new DragRotate(),
+  doubleClickZoom: () => new DoubleClickZoom(),
+  // The kinetic is what gives a drag its inertia; `defaults()` builds one with
+  // these numbers, and a DragPan without it stops dead when the pointer lifts.
+  dragPan: () => new DragPan({ kinetic: new Kinetic(-0.005, 0.05, 100) }),
+  pinchRotate: () => new PinchRotate(),
+  pinchZoom: () => new PinchZoom(),
+  keyboardPan: () => new KeyboardPan(),
+  keyboardZoom: () => new KeyboardZoom(),
+  mouseWheelZoom: () => new MouseWheelZoom(),
+  dragZoom: () => new DragZoom(),
+}
+
+/**
+ * Which gestures a config asks for, in ol's order: none on a locked map,
+ * otherwise every gesture the config does not switch off. An absent
+ * `interactions` means all of them, so a config built by hand keeps the map it
+ * always had. Names rather than instances so the choice can be tested without a
+ * document — DragZoom builds its box element the moment it is constructed.
+ */
+export function gesturesFor(config) {
+  if (config.interactive === false) return []
+
+  const wanted = config.interactions || {}
+
+  return GESTURES.filter((name) => wanted[name] !== false)
+}
+
+export function buildInteractions(config) {
+  return gesturesFor(config).map((name) => GESTURE_BUILDERS[name]())
 }
 
 // Carto and friends use Leaflet's `{r}` placeholder for retina tiles, which

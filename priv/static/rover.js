@@ -59906,7 +59906,9 @@ var RoverMap = class {
     if (changed(previous.controls, next.controls) || previous.interactive !== next.interactive) {
       this.applyControls(next);
     }
-    if (previous.interactive !== next.interactive) this.applyInteractions(next);
+    if (previous.interactive !== next.interactive || changed(previous.interactions, next.interactions)) {
+      this.applyInteractions(next);
+    }
     if (previous.interactive !== next.interactive || previous.label !== next.label) {
       this.applyAccessibility(next);
     }
@@ -60401,8 +60403,37 @@ function buildControls(config) {
   if (!locked && wanted.rotate) controls.push(new Rotate_default());
   return controls;
 }
+var GESTURES = [
+  "dragRotate",
+  "doubleClickZoom",
+  "dragPan",
+  "pinchRotate",
+  "pinchZoom",
+  "keyboardPan",
+  "keyboardZoom",
+  "mouseWheelZoom",
+  "dragZoom"
+];
+var GESTURE_BUILDERS = {
+  dragRotate: () => new DragRotate_default(),
+  doubleClickZoom: () => new DoubleClickZoom_default(),
+  // The kinetic is what gives a drag its inertia; `defaults()` builds one with
+  // these numbers, and a DragPan without it stops dead when the pointer lifts.
+  dragPan: () => new DragPan_default({ kinetic: new Kinetic_default(-5e-3, 0.05, 100) }),
+  pinchRotate: () => new PinchRotate_default(),
+  pinchZoom: () => new PinchZoom_default(),
+  keyboardPan: () => new KeyboardPan_default(),
+  keyboardZoom: () => new KeyboardZoom_default(),
+  mouseWheelZoom: () => new MouseWheelZoom_default(),
+  dragZoom: () => new DragZoom_default()
+};
+function gesturesFor(config) {
+  if (config.interactive === false) return [];
+  const wanted = config.interactions || {};
+  return GESTURES.filter((name) => wanted[name] !== false);
+}
 function buildInteractions(config) {
-  return config.interactive === false ? [] : defaults2().getArray();
+  return gesturesFor(config).map((name) => GESTURE_BUILDERS[name]());
 }
 function resolveRetina(url) {
   const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;

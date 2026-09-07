@@ -432,6 +432,20 @@ user can reach, and a basemap's own ceiling still applies on top.
 is rendered whenever there is a basemap, listed or not — every preset's provider
 requires it — so only `tiles={:none}` renders without it.
 
+`interactions` picks the gestures, all of them by default. A map in the flow of
+a page usually wants the wheel left to the page, and no way to leave the map
+crooked:
+
+```heex
+<.map id="m" interactions={[:drag_pan, :pinch_zoom, :double_click_zoom, :keyboard_pan, :keyboard_zoom]} />
+```
+
+The full list is `:drag_pan`, `:mouse_wheel_zoom`, `:double_click_zoom`,
+`:pinch_zoom`, `:keyboard_pan`, `:keyboard_zoom`, `:drag_rotate`, `:pinch_rotate`
+and `:drag_zoom`. `interactions={[]}` is not `interactive={false}` — the map
+keeps its tooltips, clicks and cursor, it just stops moving under the pointer —
+and dragging a marker, reshaping a shape or drawing are not gestures on this list.
+
 ## Moving the view without owning it
 
 `center` and `zoom` are attributes, which is right when the view *is* a property of

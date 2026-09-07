@@ -1356,6 +1356,40 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("without :mouse_wheel_zoom the wheel leaves the zoom alone", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    const zoom = () =>
+      page.evaluate((sel) => document.querySelector(sel)._rover.map.getView().getZoom(), MAP)
+
+    // The control case first: on the default map the wheel zooms, so a wheel event
+    // that reaches the map is known to have an effect the trimmed map must not show.
+    await page.goto("/")
+    await mapReady(page)
+    const before = await zoom()
+
+    await page.locator(CANVAS).hover({ position: await emptyPixel(page) })
+    await page.mouse.wheel(0, -300)
+    await expect.poll(zoom, { message: "the wheel did not zoom the default map" }).not.toBe(before)
+
+    await page.goto("/?interactions=no_wheel")
+    await mapReady(page)
+    const trimmed = await zoom()
+
+    await page.locator(CANVAS).hover({ position: await emptyPixel(page) })
+    await page.mouse.wheel(0, -300)
+    // A zoom animation takes a few hundred milliseconds to show; give it longer.
+    await page.waitForTimeout(600)
+    expect(await zoom()).toBe(trimmed)
+
+    // Trimmed, not locked: the map is still a map.
+    await page.locator(CANVAS).click({ position: await markerPixel(page, 1) })
+    await expect(page.locator(`${MAP} [data-rover-popup-for="marker:1"]`)).toBeVisible()
+
+    expect(problems).toEqual([])
+  })
+
   test("tearing the map down leaves nothing of it behind", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)
