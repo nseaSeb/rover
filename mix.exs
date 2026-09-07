@@ -139,6 +139,9 @@ defmodule Rover.MixProject do
       # this, RoverDev.DemoLive and friends end up in the published API reference.
       filter_modules: ~r/^Elixir\.Rover(\.|$)/,
       groups_for_modules: [
+        # `Rover` itself belonged to no group, so fly_to/4 and friends sat in an
+        # unnamed list above the two real ones.
+        Commands: [Rover],
         Components: [Rover.Components],
         Data: [Rover.Marker, Rover.Shape, Rover.Heatmap, Rover.Geo, Rover.Tiles]
       ]
