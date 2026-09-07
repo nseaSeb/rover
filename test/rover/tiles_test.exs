@@ -59,6 +59,15 @@ defmodule Rover.TilesTest do
     assert resolved.attributions == "© Me"
   end
 
+  test "a nil option leaves the preset's own value alone" do
+    # `{:osm, attributions: Application.get_env(...)}` with the config unset must
+    # not blank the credit the provider requires.
+    resolved = Tiles.resolve!({:osm, attributions: nil, max_zoom: nil})
+
+    assert resolved.attributions == Tiles.resolve!(:osm).attributions
+    assert resolved.max_zoom == Tiles.resolve!(:osm).max_zoom
+  end
+
   test "a preset rejects an option it does not read, rather than dropping it" do
     # `{:osm, maxzoom: 18}` used to resolve as plain `:osm`, with nothing to say.
     assert_raise ArgumentError, ~r/unknown tiles option \{:maxzoom, 18\}/, fn ->

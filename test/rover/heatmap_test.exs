@@ -55,6 +55,27 @@ defmodule Rover.HeatmapTest do
       end
     end
 
+    test "maps the coordinate from other keys, like markers do" do
+      rows = [%{x: 45.75, y: 4.85}]
+
+      assert Heatmap.new_all!(rows, lat: :x, lon: :y) == [%{lat: 45.75, lon: 4.85, weight: 1.0}]
+    end
+
+    test "mapping one axis still reads the other from its usual key" do
+      assert Heatmap.new_all!([%{x: 45.75, lon: 4.85}], lat: :x) == [
+               %{lat: 45.75, lon: 4.85, weight: 1.0}
+             ]
+    end
+
+    test "maps the coordinate off a struct, and by function" do
+      rows = [%{point: {45.75, 4.85}}]
+
+      assert Heatmap.new_all!(rows,
+               lat: fn row -> elem(row.point, 0) end,
+               lon: fn row -> elem(row.point, 1) end
+             ) == [%{lat: 45.75, lon: 4.85, weight: 1.0}]
+    end
+
     test "rejects a mapping naming a field it does not have" do
       # `weigth:` used to be ignored, and every point silently weighed 1.
       assert_raise ArgumentError, ~r/unknown heatmap field :weigth/, fn ->

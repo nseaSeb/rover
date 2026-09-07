@@ -69,6 +69,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `marker_fields={[:latitude]}` — the mapping written backwards — did the
   same. Both now raise, naming the fields Rover knows, the way `cluster` and
   `controls` already did for theirs.
+- **`heatmap_fields` maps the coordinate too.** `:lat` and `:lon` were accepted
+  by no one: unmapped they are read by `Rover.Geo`, which knows `:latitude`,
+  `:longitude` and `:lng` but not a schema's own names, and a mapping naming
+  them was ignored. They now work as they do for markers — including one axis
+  at a time, and by function.
+- **A `nil` tiles option no longer overwrites a preset's own value.**
+  `{:osm, attributions: Application.get_env(:my_app, :credit)}` with the config
+  unset would have blanked the OSM credit this release goes out of its way to
+  keep. Only options actually given are merged.
 - **`Rover.bbox/1` and `fit_to/4` accept the box `on_move_end` delivers.**
   The event hands you `"bbox" => %{"south" => …}`; the functions wanted a
   `{south, west, north, east}` tuple, so the one value you had could not be

@@ -5690,6 +5690,7 @@ var Text_default = Text;
 
 // js/styles.js
 var DEFAULT_COLOR = "#e11d48";
+var EMOJI_PX = 22;
 var cache3 = /* @__PURE__ */ new Map();
 var CACHE_LIMIT = 512;
 function styleFor(marker) {
@@ -5738,7 +5739,7 @@ function pinImage(marker, scale6) {
 function emojiText(emoji, scale6) {
   return new Text_default({
     text: emoji,
-    font: `${Math.round(22 * scale6)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`,
+    font: `${Math.round(EMOJI_PX * scale6)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`,
     // Sit the glyph on the coordinate the way a pin's tip does.
     textBaseline: "bottom",
     offsetY: 4
@@ -5800,7 +5801,7 @@ function withAlpha2(hex, alpha) {
 // js/popups.js
 var GAP_PX = 8;
 var SHAPE_OFFSET_PX = 12;
-var PIN_OFFSET_PX = 36 + GAP_PX;
+var PIN_FALLBACK = { above: 36 + GAP_PX, below: GAP_PX };
 var Popups = class {
   constructor(rootEl, roverMap) {
     this.root = rootEl;
@@ -5889,14 +5890,14 @@ var Popups = class {
    */
   markerOffsets() {
     const marker = this.roverMap.markerLayer.markerById(this.current.id);
-    if (!marker) return { above: PIN_OFFSET_PX, below: GAP_PX };
+    if (!marker) return PIN_FALLBACK;
     if (marker.emoji) {
-      return { above: Math.round(22 * (marker.scale || 1)) + GAP_PX, below: GAP_PX };
+      return { above: Math.round(EMOJI_PX * (marker.scale || 1)) + GAP_PX, below: GAP_PX };
     }
     const image = styleFor(marker)[0].getImage();
     const anchor2 = image && image.getAnchor();
     const size = image && image.getSize();
-    if (!anchor2 || !size) return { above: PIN_OFFSET_PX, below: GAP_PX };
+    if (!anchor2 || !size) return PIN_FALLBACK;
     const scale6 = image.getScaleArray()[1];
     return {
       above: anchor2[1] * scale6 + GAP_PX,
@@ -60439,17 +60440,6 @@ function buildControls(config) {
   if (!locked && wanted.rotate) controls.push(new Rotate_default());
   return controls;
 }
-var GESTURES = [
-  "dragRotate",
-  "doubleClickZoom",
-  "dragPan",
-  "pinchRotate",
-  "pinchZoom",
-  "keyboardPan",
-  "keyboardZoom",
-  "mouseWheelZoom",
-  "dragZoom"
-];
 var GESTURE_BUILDERS = {
   dragRotate: () => new DragRotate_default(),
   doubleClickZoom: () => new DoubleClickZoom_default(),
@@ -60463,6 +60453,7 @@ var GESTURE_BUILDERS = {
   mouseWheelZoom: () => new MouseWheelZoom_default(),
   dragZoom: () => new DragZoom_default()
 };
+var GESTURES = Object.keys(GESTURE_BUILDERS);
 function gesturesFor(config) {
   if (config.interactive === false) return [];
   const wanted = config.interactions || {};

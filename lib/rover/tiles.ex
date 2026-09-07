@@ -215,8 +215,8 @@ defmodule Rover.Tiles do
   # What `{preset, opts}` reads, and what `{:xyz, url, opts}` / `{:vector, url, opts}`
   # read. Anything else used to be dropped on the floor: `{:osm, max_zoom: 18}` was
   # `:osm`, with no word about the option it lost.
-  @preset_options [:key, :max_zoom, :attributions]
   @source_options [:max_zoom, :attributions]
+  @preset_options [:key | @source_options]
 
   @doc """
   Resolves a tile specification into the map handed to the JavaScript runtime.
@@ -255,7 +255,7 @@ defmodule Rover.Tiles do
 
         tiles
         |> tag_type(name)
-        |> Map.merge(Map.new(Keyword.take(opts, [:max_zoom, :attributions])))
+        |> Map.merge(preset_overrides(opts))
         |> apply_key(key)
 
       :error ->
@@ -304,6 +304,16 @@ defmodule Rover.Tiles do
     `{preset, opts}`, `{:xyz, url}` / `{:xyz, url, opts}`, or
     `{:vector, style_url}` / `{:vector, style_url, opts}`.
     """
+  end
+
+  # Only what was actually given: merging a `nil` over a preset would blank the
+  # attribution its provider requires, and `{:osm, attributions: @from_config}`
+  # with the config unset is the way that happens.
+  defp preset_overrides(opts) do
+    opts
+    |> Keyword.take(@source_options)
+    |> Enum.reject(fn {_option, value} -> is_nil(value) end)
+    |> Map.new()
   end
 
   defp validate_opts!(opts, known, spec) do
