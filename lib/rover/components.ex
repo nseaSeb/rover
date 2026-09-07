@@ -211,7 +211,13 @@ defmodule Rover.Components do
 
   attr :controls, :list,
     default: [:zoom, :attribution],
-    doc: "Any of `:zoom`, `:attribution`, `:scale_line`, `:full_screen`, `:rotate`."
+    doc: """
+    Any of `:zoom`, `:attribution`, `:scale_line`, `:full_screen`, `:rotate`.
+    `:attribution` is added whenever the map has a basemap, listed or not: every
+    preset's provider requires it, and a list that happened to leave it out is
+    not a decision to drop a licence condition. Only `tiles={:none}` — nothing to
+    credit — renders without it.
+    """
 
   attr :interactive, :boolean,
     default: true,
@@ -466,7 +472,7 @@ defmodule Rover.Components do
       fit: encode_fit(assigns.fit, assigns.center),
       fitPadding: assigns.fit_padding,
       cluster: encode_cluster(assigns.cluster),
-      controls: encode_controls(assigns.controls),
+      controls: encode_controls(assigns.controls, assigns.tiles),
       interactive: assigns.interactive,
       # A shape with a popup is a click target even when no handler is wired, and
       # only the server knows whether the slot was given. Without this the client
@@ -605,7 +611,7 @@ defmodule Rover.Components do
 
   @known_controls [:zoom, :attribution, :scale_line, :full_screen, :rotate]
 
-  defp encode_controls(controls) when is_list(controls) do
+  defp encode_controls(controls, tiles) when is_list(controls) do
     Enum.each(controls, fn control ->
       control in @known_controls ||
         raise ArgumentError, """
@@ -615,10 +621,16 @@ defmodule Rover.Components do
         """
     end)
 
+    # Forced rather than raised on: a list that omits it keeps rendering, and the
+    # control shows nothing for a source with no attribution text, so adding it
+    # is never visually wrong. Dropping it is: every preset's provider requires
+    # the credit as a condition of use.
+    controls = if tiles in [:none, nil], do: controls, else: [:attribution | controls]
+
     Map.new(@known_controls, fn control -> {camelize(control), control in controls} end)
   end
 
-  defp encode_controls(other) do
+  defp encode_controls(other, _tiles) do
     raise ArgumentError, "expected `controls` to be a list, got: #{inspect(other)}"
   end
 
