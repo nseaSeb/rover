@@ -468,6 +468,11 @@ defmodule Rover.Components do
       cluster: encode_cluster(assigns.cluster),
       controls: encode_controls(assigns.controls),
       interactive: assigns.interactive,
+      # A shape with a popup is a click target even when no handler is wired, and
+      # only the server knows whether the slot was given. Without this the client
+      # cannot tell a shape with a popup from scenery, which must not claim the
+      # click — a filled polygon would swallow every `on_map_click` inside it.
+      shapePopup: assigns.shape_popup != [] || nil,
       # Read back by the client to keep the canvas's `aria-label` and `tabindex`
       # in step: the element is `phx-update="ignore"`, and LiveView merges only
       # `data-*` attributes onto one of those.

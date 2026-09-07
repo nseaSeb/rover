@@ -498,6 +498,29 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("a scenery shape does not swallow the map click under it", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    // The parcel with neither on_shape_click nor a <:shape_popup>: pure scenery.
+    // Its fill is hit-testable across the whole interior, so a click inside it
+    // that did not reach on_map_click would mean the polygon claimed it.
+    await page.goto("/?shapes=parcel&scenery=1")
+    await mapReady(page)
+
+    const inside = await shapePixel(page, MAP)
+
+    // Not a target either: no pointer cursor over something a click does nothing to.
+    await page.locator(CANVAS).hover({ position: inside })
+    const cursor = await page.evaluate((sel) => document.querySelector(sel).style.cursor, CANVAS)
+    expect(cursor).toBe("")
+
+    await page.locator(CANVAS).click({ position: inside })
+    await expect(page.locator(".log")).toContainText("map clicked at")
+
+    expect(problems).toEqual([])
+  })
+
   test("renders a heat field, and rebuilds it only when the revision changes", async ({
     page,
   }) => {
@@ -1221,6 +1244,18 @@ test.describe("the playground", () => {
     await expect(page.locator(".log")).toContainText("drew drawn-1 (Point)")
     expect((await drawState(page)).sketch).toBe(0)
 
+    // The server's echo of the point is a shape now, and a shape must be visible:
+    // a Point has no stroke or fill to paint, so a style without an image renders
+    // it as nothing at all — and hit-tests as nothing, which is how this checks.
+    await expect
+      .poll(() =>
+        page.evaluate((sel) => {
+          const rover = document.querySelector(sel)._rover
+          return rover.featureAt([160, 160]).shape?.id ?? null
+        }, MAP)
+      )
+      .toBe("drawn-1")
+
     expect(problems).toEqual([])
   })
 
@@ -1318,6 +1353,32 @@ test.describe("the playground", () => {
       .poll(tabindex, { message: "unlocking did not put the map back in the tab order" })
       .toBe("0")
 
+    expect(problems).toEqual([])
+  })
+
+  test("tearing the map down leaves nothing of it behind", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    // What the hook does when LiveView removes the element. Detaching the target
+    // alone leaves the interactions, the tooltip overlay and the controls alive,
+    // each with listeners on a source or on the document, for as long as the
+    // page lives — which on a LiveView navigation is a long time.
+    const remains = await page.evaluate((sel) => {
+      const rover = document.querySelector(sel)._rover
+      rover.destroy()
+
+      return {
+        interactions: rover.map.getInteractions().getLength(),
+        overlays: rover.map.getOverlays().getLength(),
+        controls: rover.map.getControls().getLength(),
+      }
+    }, MAP)
+
+    expect(remains).toEqual({ interactions: 0, overlays: 0, controls: 0 })
     expect(problems).toEqual([])
   })
 })

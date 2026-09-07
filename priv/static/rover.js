@@ -1517,13 +1517,13 @@ var Popups = class {
     this.root = rootEl;
     this.roverMap = roverMap;
     this.current = null;
-    roverMap.on("markerClick", ({ id }) => this.open("marker", id));
-    roverMap.on(
+    roverMap.observe("markerClick", ({ id }) => this.open("marker", id));
+    roverMap.observe(
       "shapeClick",
       ({ id, lat, lon }) => this.open("shape", id, project(lat, lon))
     );
-    roverMap.on("clusterClick", () => this.close());
-    roverMap.on("mapClick", () => this.close());
+    roverMap.observe("clusterClick", () => this.close());
+    roverMap.observe("mapClick", () => this.close());
     this.onPostrender = () => this.position();
     roverMap.map.on("postrender", this.onPostrender);
     this.onKeydown = (event) => {
@@ -59600,6 +59600,7 @@ var SHAPE_KEY = "roverShape";
 var DEFAULT_COLOR2 = "#2563eb";
 var DEFAULT_WIDTH = 2;
 var DEFAULT_FILL_OPACITY = 0.12;
+var POINT_RADIUS = 6;
 var CACHE_LIMIT2 = 256;
 var cache4 = /* @__PURE__ */ new Map();
 var format = new GeoJSON_default({
@@ -59748,9 +59749,16 @@ function styleForShape(shape) {
 function buildStyle3(shape) {
   const color = shape.color || DEFAULT_COLOR2;
   const opacity = shape.fill_opacity ?? DEFAULT_FILL_OPACITY;
+  const width = shape.width || DEFAULT_WIDTH;
   const style = new Style_default({
-    stroke: new Stroke_default({ color, width: shape.width || DEFAULT_WIDTH }),
-    fill: new Fill_default({ color: withOpacity(shape.fill_color || color, opacity) })
+    stroke: new Stroke_default({ color, width }),
+    fill: new Fill_default({ color: withOpacity(shape.fill_color || color, opacity) }),
+    // Only a Point or MultiPoint reads this; every other geometry ignores it.
+    image: new Circle_default({
+      radius: POINT_RADIUS,
+      fill: new Fill_default({ color }),
+      stroke: new Stroke_default({ color: "rgba(255, 255, 255, 0.9)", width: Math.min(width, 3) })
+    })
   });
   if (shape.label) {
     style.setText(
@@ -59801,6 +59809,7 @@ var RoverMap = class {
     this.hasFitted = false;
     this.quietUntil = 0;
     this.listeners = {};
+    this.observers = {};
     this.drawing = null;
     this.markerLayer = new MarkerLayer();
     this.shapeLayer = new ShapeLayer();
@@ -60336,10 +60345,19 @@ var RoverMap = class {
     if (event) this.push(event, payload);
     const subscribers = this.listeners[name];
     if (subscribers) subscribers.forEach((fn) => fn(payload));
+    const observers = this.observers[name];
+    if (observers) observers.forEach((fn) => fn(payload));
   }
   on(name, fn) {
     this.listeners[name] = this.listeners[name] || [];
     this.listeners[name].push(fn);
+  }
+  // Subscribe without expressing interest: called for every event like `on()`,
+  // but invisible to `wants()`. For Rover's own components, which react to what
+  // happens without being a reason for it to happen.
+  observe(name, fn) {
+    this.observers[name] = this.observers[name] || [];
+    this.observers[name].push(fn);
   }
   wants(name) {
     return wantsEvent(this.config, this.listeners, name);
@@ -60357,7 +60375,7 @@ var RoverMap = class {
     this.drawLayer.dispose();
     this.shapeLayer.dispose();
     this.heatmapLayer.dispose();
-    this.map.setTarget(void 0);
+    this.map.dispose();
   }
 };
 function shouldRecenter(previous, next) {
@@ -60410,7 +60428,8 @@ function setVectorAttributions(group, attributions) {
 }
 function wantsEvent(config, listeners, name) {
   const subscribers = (listeners || {})[name];
-  return Boolean(((config || {}).events || {})[name]) || Boolean(subscribers && subscribers.length);
+  const popup = name === "shapeClick" && Boolean((config || {}).shapePopup);
+  return Boolean(((config || {}).events || {})[name]) || popup || Boolean(subscribers && subscribers.length);
 }
 function shouldFit({ hasFitted, derivedCenter, fit }) {
   if (!hasFitted && derivedCenter) return true;

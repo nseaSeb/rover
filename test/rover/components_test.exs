@@ -340,6 +340,15 @@ defmodule Rover.ComponentsTest do
     test "route to a live component when given a target" do
       assert config(render_map(target: 3, on_marker_click: "select"))["target"] == "3"
     end
+
+    test "tell the client when a shape popup was rendered" do
+      # The only way the client can tell a shape with a popup and no handler — a
+      # click target — from scenery, which must not claim the click.
+      shapes = [%{id: 1, geometry: %{"type" => "Point", "coordinates" => [4.0, 45.0]}}]
+
+      assert config(PopupHost.render_both(markers: [], shapes: shapes))["shapePopup"] == true
+      refute Map.has_key?(config(render_map(shapes: shapes)), "shapePopup")
+    end
   end
 
   describe "shapes" do

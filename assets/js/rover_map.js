@@ -44,7 +44,15 @@ export class RoverMap {
     // Client-side subscribers, kept separate from `push`. A popup must open on a
     // marker click even when the application never wired on_marker_click — the
     // server has no part to play in it.
+    //
+    // Two lists, because `wants()` counts one and not the other. `listeners` is
+    // the escape hatch: an application subscribing through `on()` is a reason to
+    // claim a click. `observers` is Rover's own machinery — the popup layer
+    // listens to every shape click to dismiss whatever is open, and counting
+    // that as interest made every shape on every map a target, so a decorative
+    // polygon swallowed each `on_map_click` inside it.
     this.listeners = {}
+    this.observers = {}
 
     // What `Rover.start_drawing/3` armed, or null. Held rather than inferred from
     // the interaction, because `applyInteractions` throws every interaction away
@@ -794,11 +802,22 @@ export class RoverMap {
 
     const subscribers = this.listeners[name]
     if (subscribers) subscribers.forEach((fn) => fn(payload))
+
+    const observers = this.observers[name]
+    if (observers) observers.forEach((fn) => fn(payload))
   }
 
   on(name, fn) {
     this.listeners[name] = this.listeners[name] || []
     this.listeners[name].push(fn)
+  }
+
+  // Subscribe without expressing interest: called for every event like `on()`,
+  // but invisible to `wants()`. For Rover's own components, which react to what
+  // happens without being a reason for it to happen.
+  observe(name, fn) {
+    this.observers[name] = this.observers[name] || []
+    this.observers[name].push(fn)
   }
 
   wants(name) {
@@ -823,7 +842,12 @@ export class RoverMap {
     this.drawLayer.dispose()
     this.shapeLayer.dispose()
     this.heatmapLayer.dispose()
-    this.map.setTarget(undefined)
+    // dispose(), not just setTarget(undefined): the map's own disposeInternal
+    // clears its controls, interactions and overlays. Detaching the target
+    // leaves all three alive — Modify and Translate with their source listeners,
+    // the tooltip overlay, and FullScreen with its document-level listener — for
+    // as long as the page does, which on a LiveView navigation is a long time.
+    this.map.dispose()
   }
 }
 
@@ -921,20 +945,29 @@ function setVectorAttributions(group, attributions) {
  * viewport size. `fit` then governs *re*fitting.
  */
 /**
- * Does anything care about this event — the server, or a client-side subscriber?
+ * Does anything care about this event — the server, a popup, or a client-side
+ * subscriber?
  *
- * Both matter, and for different reasons. A shape with no handler and no popup is
- * scenery: it must not claim the click, or a filled polygon swallows every
- * `on_map_click` across its whole interior. A shape with a popup and no handler is
- * interactive, and the server has no part in it.
+ * All three matter, and for different reasons. A shape with no handler and no
+ * popup is scenery: it must not claim the click, or a filled polygon swallows
+ * every `on_map_click` across its whole interior. A shape with a popup and no
+ * handler is interactive, and the server has no part in it — which is why the
+ * server says whether a `<:shape_popup>` was given (`config.shapePopup`) rather
+ * than the popup layer subscribing to say so: it subscribes on every map, popup
+ * or not, and for a while that made every shape a target.
  *
- * Pure, and exported, because the scenery case is the one the browser suite cannot
- * reach without a third map on the playground.
+ * Pure, and exported: the scenery case is reached by the browser suite through
+ * `?scenery=1`, but the table of who counts belongs in one place.
  */
 export function wantsEvent(config, listeners, name) {
   const subscribers = (listeners || {})[name]
+  const popup = name === "shapeClick" && Boolean((config || {}).shapePopup)
 
-  return Boolean(((config || {}).events || {})[name]) || Boolean(subscribers && subscribers.length)
+  return (
+    Boolean(((config || {}).events || {})[name]) ||
+    popup ||
+    Boolean(subscribers && subscribers.length)
+  )
 }
 
 export function shouldFit({ hasFitted, derivedCenter, fit }) {

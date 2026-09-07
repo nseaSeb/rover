@@ -156,9 +156,13 @@ describe("wantsEvent", () => {
     assert.equal(wantsEvent({ events: { shapeClick: "pick" } }, {}, "shapeClick"), true)
   })
 
+  it("is true when the server rendered a shape popup", () => {
+    // A shape popup needs no server handler. Keying the click on the configured
+    // event alone meant a <:shape_popup> could never open.
+    assert.equal(wantsEvent({ shapePopup: true }, {}, "shapeClick"), true)
+  })
+
   it("is true when only a client subscriber cares", () => {
-    // A shape popup needs no server. Keying the click on the configured event alone
-    // meant a <:shape_popup> could never open.
     assert.equal(wantsEvent({}, { shapeClick: [() => {}] }, "shapeClick"), true)
   })
 

@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **A shape with no handler and no popup swallowed `on_map_click`.** The rule
+  that such a shape is scenery — that it must not claim the click, or a filled
+  polygon eats every map click across its interior — was in the code and in
+  0.3.0's notes, and had never once fired. The popup layer subscribes to shape
+  clicks on every map, to dismiss whatever is open, and the client counted that
+  subscription as interest. Every shape on every map was therefore a click
+  target, with the pointer cursor to prove it, and a click inside a decorative
+  zone produced nothing at all. The server now says whether a `<:shape_popup>`
+  was rendered, and Rover's own subscribers no longer count. An application
+  subscribing through the JavaScript escape hatch still does.
+- **Point shapes rendered as nothing.** A shape style had a stroke and a fill,
+  which paint lines and areas; a `Point` has neither, so it drew as nothing —
+  including a point drawn with `start_drawing/3` and echoed back by the server,
+  which vanished the moment it was accepted. Point and MultiPoint shapes are now
+  drawn as a dot in the shape's colour.
+- **Tearing a map down left its interactions, controls and tooltip alive.**
+  Detaching the map from its element does not dispose it; the editing and
+  dragging interactions kept their listeners on the shape and marker sources,
+  and the full-screen control kept one on the document, for as long as the page
+  lived. The hook now disposes the map itself.
+
 ## [0.6.0] - 2026-09-04
 
 ### Added
