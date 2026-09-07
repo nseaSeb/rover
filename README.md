@@ -141,6 +141,7 @@ end
 | `on_move_end` | `%{"center" => [lat, lon], "zoom" =>, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
 | `on_marker_drag_end` | `%{"id" =>, "lat" =>, "lon" =>}` |
 | `on_shape_edit_end` | `%{"id" =>, "geometry" =>, "properties" =>, "data" =>}` |
+| `on_draw_end` | `%{"type" =>, "geometry" =>}` — no `"id"`: the shape does not exist until you make one |
 
 Inside a `Phoenix.LiveComponent`, add `target={@myself}`.
 
@@ -163,7 +164,9 @@ assign(socket,
 A bare geometry, a `Feature` or a `FeatureCollection`; atom or string keys; or an
 undecoded JSON string, so `ST_AsGeoJSON` output goes straight in. Fields:
 `:color`, `:width`, `:fill_color`, `:fill_opacity`, `:label`, `:tooltip`, `:rev`,
-`:data`, `:editable`.
+`:data`, `:editable`. `:geom` and `:geojson` are read as the geometry too, and
+`shape_fields={[geometry: :outline, label: :cadastral_ref]}` maps anything else,
+exactly as `marker_fields` does for markers.
 
 Shapes are **the one place Rover is not latitude-first** — GeoJSON is defined as
 `[longitude, latitude]` and the standard wins, because geometry is never typed by
@@ -323,6 +326,10 @@ A point needs only a coordinate; `:weight` is relative, 0 to 1, and defaults to 
 %{lat: 45.75, lon: 4.85, weight: 0.4}
 ```
 
+`heatmap_fields={[weight: :orders]}` reads the weight from another key, or from a
+function of the row — `weight: fn row -> row.orders / 40 end` — when the number
+needs scaling into range.
+
 No `:id` here, unlike markers and shapes. A heatmap is an aggregate — no individual
 point is visible in the result — so per-point identity would be ceremony that buys
 nothing. It is diffed by revision instead, like shapes, which also means a
@@ -400,6 +407,30 @@ for one map on a page and not enough for two:
 
 A button is named by the marker's `:label`, falling back to its `:tooltip`, then
 to `Marker <id>` — poor, but addressable, which no name at all is not.
+
+## Framing, zoom limits and controls
+
+A map given no `center` frames its content — markers, shapes and heat points
+together — the first time it appears, and `fit` says what happens after that:
+
+```heex
+<.map id="fleet" markers={@vehicles} fit={true} fit_padding={80} />
+```
+
+| `fit` | Meaning |
+|---|---|
+| `:once` | Frame the content once, then leave the view alone. The default when no `center` is given. |
+| `true` (or `:always`) | Refit on every change to the content. |
+| `false` | Never fit. The default when `center` is given — the view is yours. |
+
+`fit_padding` is the number of pixels kept clear around a fitted view, 48 by
+default. `zoom` is the initial zoom; `min_zoom` and `max_zoom` bound what the
+user can reach, and a basemap's own ceiling still applies on top.
+
+`controls` picks the buttons: any of `:zoom`, `:attribution`, `:scale_line`,
+`:full_screen`, `:rotate`, defaulting to `[:zoom, :attribution]`. The attribution
+is rendered whenever there is a basemap, listed or not — every preset's provider
+requires it — so only `tiles={:none}` renders without it.
 
 ## Moving the view without owning it
 

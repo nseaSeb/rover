@@ -201,10 +201,11 @@ defmodule Rover.Components do
   attr :fit, :any,
     default: nil,
     doc: """
-    Controls *re*fitting as markers change: `true` refits on every change,
-    `:once` or `false` do not. Defaults to `:once` when no `center` is given,
-    `false` otherwise. Note that a map given no `center` always fits once when it
-    first appears, whatever `fit` says — see "Framing versus refitting".
+    Controls *re*fitting as markers change: `true` (or `:always`) refits on
+    every change, `:once` or `false` do not. Defaults to `:once` when no `center`
+    is given, `false` otherwise. Note that a map given no `center` always fits
+    once when it first appears, whatever `fit` says — see "Framing versus
+    refitting".
     """
 
   attr :fit_padding, :integer, default: 48, doc: "Pixels kept clear around a fitted view."
@@ -567,7 +568,7 @@ defmodule Rover.Components do
 
   defp encode_fit(other, _center) do
     raise ArgumentError,
-          "invalid fit: #{inspect(other)}. Expected `:once`, `true`, `false` or `nil`."
+          "invalid fit: #{inspect(other)}. Expected `:once`, `true`, `:always`, `false` or `nil`."
   end
 
   @cluster_options [:distance, :min_distance, :zoom_on_click]
