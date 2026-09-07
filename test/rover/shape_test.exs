@@ -52,6 +52,20 @@ defmodule Rover.ShapeTest do
       assert shape.label == "AB"
     end
 
+    test "rejects a mapping naming a field Rover does not have" do
+      # A field never mapped falls back to its default keys, so a typo used to be
+      # silently ignored — `outline:` instead of `geometry:` read `:geometry`.
+      assert_raise ArgumentError, ~r/unknown shape field :outline/, fn ->
+        Shape.new!(%{id: 1, geometry: @polygon}, outline: :geometry)
+      end
+    end
+
+    test "rejects a mapping written as a bare list of keys" do
+      assert_raise ArgumentError, ~r/expected the shape field mapping to be a keyword list/, fn ->
+        Shape.new_all!([], [:geometry])
+      end
+    end
+
     test "decodes a JSON string, so ST_AsGeoJSON output goes straight in" do
       assert Shape.new!(%{id: 1, geometry: Jason.encode!(@polygon)}).geometry == @polygon
     end

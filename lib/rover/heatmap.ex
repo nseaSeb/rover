@@ -67,6 +67,8 @@ defmodule Rover.Heatmap do
   """
   @spec new_all!(Enumerable.t(), keyword()) :: [point()]
   def new_all!(points, opts \\ []) do
+    validate_mapping!(opts)
+
     points
     |> Enum.reject(&is_nil/1)
     |> Enum.flat_map(&normalise(&1, opts))
@@ -129,6 +131,38 @@ defmodule Rover.Heatmap do
   end
 
   # -- private ---------------------------------------------------------------
+
+  @fields Keyword.keys(@default_mapping)
+
+  # See Rover.Marker: a field never mapped falls back to its default keys, so a
+  # typo or a bare list of keys was silently ignored rather than reported.
+  defp validate_mapping!(opts) when is_list(opts) do
+    Enum.each(opts, fn
+      {field, _accessor} when field in @fields ->
+        :ok
+
+      {field, _accessor} ->
+        raise ArgumentError, """
+        unknown heatmap field #{inspect(field)} in the field mapping.
+
+        Expected any of: #{Enum.map_join(@fields, ", ", &inspect/1)}.
+        """
+
+      other ->
+        raise ArgumentError, """
+        expected the heatmap field mapping to be a keyword list, got #{inspect(other)} in #{inspect(opts)}.
+
+        A mapping goes from a Rover field to your key or accessor:
+
+            heatmap_fields={[weight: :orders]}
+        """
+    end)
+  end
+
+  defp validate_mapping!(other) do
+    raise ArgumentError,
+          "expected the heatmap field mapping to be a keyword list, got: #{inspect(other)}"
+  end
 
   defp normalise(source, opts) when is_map(source) do
     case Geo.coord(source) do
