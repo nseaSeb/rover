@@ -447,10 +447,27 @@ RoverKino.set_config(map, %{config | "center" => [48.8566, 2.3522], "zoom" => 13
 
 ## 6. Where to go next
 
-* `mix dev` in the repository — the LiveView playground, which is what your
-  application actually looks like.
+This notebook stops at markers and basemaps, which is where Rover started. The
+rest of the library — none of it needs anything this notebook has not already
+loaded — is documented in the README, section by section:
+
+* **Shapes** — GeoJSON outlines, routes and zones, `editable: true` to let the
+  user drag their vertices, and `Rover.start_drawing/3` to draw new ones. See
+  `Rover.Shape` for why geometry is the one place Rover is not latitude-first,
+  and what `:rev` buys you.
+* **Clustering** — `cluster={true}` groups hundreds of markers, without
+  touching how they are diffed.
+* **Heatmaps** — `heatmap={@rows}` for "where is there a lot of this?".
+* **Popups** — `<:popup>` and `<:shape_popup>` slots, rendered by LiveView and
+  positioned by Rover.
+* **Keyboard and screen readers** — every clickable feature is reachable
+  without a mouse.
+* **Moving the view without owning it** — `Rover.fly_to/4` and `Rover.fit_to/4`.
+
+And in the repository:
+
+* `mix dev` — the LiveView playground, which is what your application actually
+  looks like, with every feature above on one page.
 * `Rover.Components` docs — every attribute and every event.
 * `assets/test/markers.test.js` and `assets/test/shapes.test.js` — the
   reconciliation guarantees, asserted by object identity.
-* `Rover.Shape` — why geometry is the one place Rover is not latitude-first, and
-  what `:rev` buys you.
