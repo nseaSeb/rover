@@ -306,6 +306,16 @@ defmodule Rover.ComponentsTest do
       refute controls["zoom"]
     end
 
+    test "keep the attribution whenever there is a basemap to credit" do
+      # A list that leaves it out is not a decision to drop a licence condition.
+      assert config(render_map(controls: [:scale_line]))["controls"]["attribution"]
+      assert config(render_map(controls: []))["controls"]["attribution"]
+    end
+
+    test "drop the attribution only when there is nothing to credit" do
+      refute config(render_map(controls: [:scale_line], tiles: :none))["controls"]["attribution"]
+    end
+
     test "reject an unknown control" do
       assert_raise ArgumentError, ~r/unknown map control/, fn ->
         render_map(controls: [:minimap])

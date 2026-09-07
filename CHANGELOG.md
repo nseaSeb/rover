@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The attribution control is on whenever the map has a basemap**, whether
+  or not `controls` lists it. `controls={[:scale_line]}` used to drop it
+  silently, and every preset's provider requires the credit as a condition
+  of use — a list that happened to leave it out was never a decision to stop
+  honouring that. Forced rather than raised on: an existing list keeps
+  rendering, and the control shows nothing for a source with no attribution
+  text, so adding it is never visually wrong. `tiles={:none}` still renders
+  without it, there being nothing to credit.
+
 ### Fixed
 
 - **A shape with no handler and no popup swallowed `on_map_click`.** The rule
