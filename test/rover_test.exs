@@ -39,6 +39,13 @@ defmodule RoverTest do
       assert Rover.bbox({45, 4, 46, 5}) == {45.0, 4.0, 46.0, 5.0}
     end
 
+    test "accepts the bbox map on_move_end delivers, so it can be handed back" do
+      delivered = %{"south" => 45.0, "west" => 4.0, "north" => 46.0, "east" => 5.0}
+
+      assert Rover.bbox(delivered) == {45.0, 4.0, 46.0, 5.0}
+      assert Rover.bbox(%{south: 45, west: 4, north: 46, east: 5}) == {45.0, 4.0, 46.0, 5.0}
+    end
+
     test "wraps a single item" do
       assert Rover.bbox(%{id: 1, lat: 45.0, lon: 4.0}) == {45.0, 4.0, 45.0, 4.0}
     end

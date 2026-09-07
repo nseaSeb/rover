@@ -29,6 +29,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `marker_fields={[:latitude]}` — the mapping written backwards — did the
   same. Both now raise, naming the fields Rover knows, the way `cluster` and
   `controls` already did for theirs.
+- **`Rover.bbox/1` and `fit_to/4` accept the box `on_move_end` delivers.**
+  The event hands you `"bbox" => %{"south" => …}`; the functions wanted a
+  `{south, west, north, east}` tuple, so the one value you had could not be
+  handed back without repacking it. Both key styles are read now.
 - **Tearing a map down left its interactions, controls and tooltip alive.**
   Detaching the map from its element does not dispose it; the editing and
   dragging interactions kept their listeners on the shape and marker sources,
