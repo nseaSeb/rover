@@ -1415,6 +1415,41 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("follows a page's own theme, not only the system's", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    const controlBackground = () =>
+      page.evaluate((sel) => getComputedStyle(document.querySelector(`${sel} .ol-zoom button`)).backgroundColor, MAP)
+    const setTheme = (theme) =>
+      page.evaluate((value) => {
+        if (value) document.documentElement.dataset.theme = value
+        else delete document.documentElement.dataset.theme
+      }, theme)
+
+    // Polled throughout: the buttons transition their background over 120ms, and
+    // a computed style read the instant the theme changes is the old colour.
+    //
+    // Playwright's default scheme is light. A page that says dark gets dark
+    // whatever the OS thinks: a Tailwind app's toggle has nowhere else to reach.
+    const light = await controlBackground()
+    await setTheme("dark")
+    await expect.poll(controlBackground).not.toBe(light)
+    const dark = await controlBackground()
+
+    // And the other way round: a user who chose light on a dark OS gets light.
+    await setTheme(null)
+    await page.emulateMedia({ colorScheme: "dark" })
+    await expect.poll(controlBackground).toBe(dark)
+    await setTheme("light")
+    await expect.poll(controlBackground).toBe(light)
+
+    expect(problems).toEqual([])
+  })
+
   test("tearing the map down leaves nothing of it behind", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)
