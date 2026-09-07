@@ -55,6 +55,21 @@ defmodule Rover.HeatmapTest do
       end
     end
 
+    test "rejects a mapping naming a field it does not have" do
+      # `weigth:` used to be ignored, and every point silently weighed 1.
+      assert_raise ArgumentError, ~r/unknown heatmap field :weigth/, fn ->
+        Heatmap.new_all!([%{lat: 45.0, lon: 4.0, orders: 3}], weigth: :orders)
+      end
+    end
+
+    test "rejects a mapping written as a bare list of keys" do
+      assert_raise ArgumentError,
+                   ~r/expected the heatmap field mapping to be a keyword list/,
+                   fn ->
+                     Heatmap.new_all!([], [:orders])
+                   end
+    end
+
     test "rejects a non-numeric weight" do
       assert_raise ArgumentError, ~r/:weight/, fn ->
         Heatmap.new_all!([%{lat: 45.0, lon: 4.0, weight: "heavy"}])

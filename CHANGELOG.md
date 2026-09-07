@@ -23,6 +23,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   including a point drawn with `start_drawing/3` and echoed back by the server,
   which vanished the moment it was accepted. Point and MultiPoint shapes are now
   drawn as a dot in the shape's colour.
+- **A typo in `marker_fields`, `shape_fields` or `heatmap_fields` was silently
+  ignored.** A field that was never mapped falls back to its default keys, so
+  `marker_fields={[latitude: :lat]}` read `:lat` as if nothing had been said,
+  and `marker_fields={[:latitude]}` — the mapping written backwards — did the
+  same. Both now raise, naming the fields Rover knows, the way `cluster` and
+  `controls` already did for theirs.
 - **Tearing a map down left its interactions, controls and tooltip alive.**
   Detaching the map from its element does not dispose it; the editing and
   dragging interactions kept their listeners on the shape and marker sources,

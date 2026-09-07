@@ -143,6 +143,8 @@ defmodule Rover.Shape do
   end
 
   def new!(source, opts) when is_map(source) do
+    validate_mapping!(opts)
+
     geometry =
       source
       |> extract(:geometry, opts)
@@ -179,6 +181,10 @@ defmodule Rover.Shape do
   """
   @spec new_all!(Enumerable.t(), keyword()) :: [t()]
   def new_all!(shapes, opts \\ []) do
+    # Checked here as well as per shape, so an empty list still rejects a bad
+    # mapping — a typo should not wait for the first row to be reported.
+    validate_mapping!(opts)
+
     shapes
     |> Enum.reject(&is_nil/1)
     |> Enum.map(&new!(&1, opts))
@@ -324,6 +330,38 @@ defmodule Rover.Shape do
     end
   rescue
     ArgumentError -> nil
+  end
+
+  @fields Keyword.keys(@default_mapping)
+
+  # See Rover.Marker: a field never mapped falls back to its default keys, so a
+  # typo or a bare list of keys was silently ignored rather than reported.
+  defp validate_mapping!(opts) when is_list(opts) do
+    Enum.each(opts, fn
+      {field, _accessor} when field in @fields ->
+        :ok
+
+      {field, _accessor} ->
+        raise ArgumentError, """
+        unknown shape field #{inspect(field)} in the field mapping.
+
+        Expected any of: #{Enum.map_join(@fields, ", ", &inspect/1)}.
+        """
+
+      other ->
+        raise ArgumentError, """
+        expected the shape field mapping to be a keyword list, got #{inspect(other)} in #{inspect(opts)}.
+
+        A mapping goes from a Rover field to your key or accessor:
+
+            shape_fields={[geometry: :outline, label: :cadastral_ref]}
+        """
+    end)
+  end
+
+  defp validate_mapping!(other) do
+    raise ArgumentError,
+          "expected the shape field mapping to be a keyword list, got: #{inspect(other)}"
   end
 
   defp extract(source, field, opts) do

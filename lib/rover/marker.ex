@@ -110,6 +110,7 @@ defmodule Rover.Marker do
   end
 
   def new!(source, opts) when is_map(source) do
+    validate_mapping!(opts)
     {lat, lon} = coord_from(source, opts)
 
     %__MODULE__{
@@ -142,6 +143,10 @@ defmodule Rover.Marker do
   """
   @spec new_all!(Enumerable.t(), keyword()) :: [t()]
   def new_all!(markers, opts \\ []) do
+    # Checked here as well as per marker, so an empty list still rejects a bad
+    # mapping — a typo should not wait for the first row to be reported.
+    validate_mapping!(opts)
+
     markers
     |> Enum.reject(&is_nil/1)
     |> Enum.map(&new!(&1, opts))
@@ -169,6 +174,41 @@ defmodule Rover.Marker do
   end
 
   # -- private ---------------------------------------------------------------
+
+  @fields [:lat, :lon | Keyword.keys(@default_mapping)]
+
+  # A mapping that names no Rover field is a typo, and a bare list of keys is the
+  # mapping written backwards. Both used to be ignored: `Keyword.fetch/2` on a
+  # field never mapped returns `:error` and falls back to the default keys, so
+  # `marker_fields={[:latitude]}` quietly read `:lat` and raised about the
+  # coordinate instead — or worse, found one under the default key and used it.
+  defp validate_mapping!(opts) when is_list(opts) do
+    Enum.each(opts, fn
+      {field, _accessor} when field in @fields ->
+        :ok
+
+      {field, _accessor} ->
+        raise ArgumentError, """
+        unknown marker field #{inspect(field)} in the field mapping.
+
+        Expected any of: #{Enum.map_join(@fields, ", ", &inspect/1)}.
+        """
+
+      other ->
+        raise ArgumentError, """
+        expected the marker field mapping to be a keyword list, got #{inspect(other)} in #{inspect(opts)}.
+
+        A mapping goes from a Rover field to your key or accessor:
+
+            marker_fields={[lat: :latitude, lon: :longitude, label: :trade_name]}
+        """
+    end)
+  end
+
+  defp validate_mapping!(other) do
+    raise ArgumentError,
+          "expected the marker field mapping to be a keyword list, got: #{inspect(other)}"
+  end
 
   defp coord_from(source, opts) do
     overrides =

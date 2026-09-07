@@ -76,6 +76,22 @@ defmodule Rover.MarkerTest do
       assert marker.label == "client 3"
     end
 
+    test "rejects a mapping naming a field Rover does not have" do
+      # `Keyword.fetch/2` on a field never mapped returns :error and falls back to
+      # the defaults, so a typo used to be silently ignored.
+      assert_raise ArgumentError, ~r/unknown marker field :latitude/, fn ->
+        Marker.new!(%{id: 1, lat: 45.75, lon: 4.85}, latitude: :lat)
+      end
+    end
+
+    test "rejects a mapping written as a bare list of keys" do
+      assert_raise ArgumentError,
+                   ~r/expected the marker field mapping to be a keyword list/,
+                   fn ->
+                     Marker.new!(%{id: 1, lat: 45.75, lon: 4.85}, [:latitude])
+                   end
+    end
+
     test "rejects a field accessor of the wrong arity instead of reading nil" do
       assert_raise ArgumentError, ~r/1-arity function, got one of arity 2/, fn ->
         Marker.new!(%{id: 1, lat: 45.0, lon: 4.0}, label: fn _a, _b -> "x" end)
@@ -112,6 +128,12 @@ defmodule Rover.MarkerTest do
   end
 
   describe "new_all!/2" do
+    test "rejects a bad mapping even with nothing to map" do
+      assert_raise ArgumentError, ~r/unknown marker field :latitude/, fn ->
+        Marker.new_all!([], latitude: :lat)
+      end
+    end
+
     test "normalises a list and drops nils" do
       markers =
         Marker.new_all!([%{id: 1, lat: 45.0, lon: 4.0}, nil, %{id: 2, lat: 46.0, lon: 5.0}])
