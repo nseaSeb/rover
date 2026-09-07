@@ -346,11 +346,14 @@ export class RoverMap {
     // stopDrawing() below cancels an armed drawing outright rather than
     // remembering it across the toggle.
     //
-    // Nothing re-arms on the LiveView path: `interactive` is a boolean attribute,
-    // so this method only runs on a transition, and the only transition that can
-    // find a drawing armed is the one into a locked map. The re-arm is for a
-    // caller driving `setConfig` from JavaScript, where an unset `interactive`
-    // can turn into `true` with the mode still on.
+    // The re-arm matters on two paths. A caller driving `setConfig` from
+    // JavaScript can turn an unset `interactive` into `true` with the mode still
+    // on; and since `interactions` became an attribute, a re-render that changes
+    // it runs this while a drawing is armed. The mode survives that, the sketch
+    // in progress does not — the same trade `applyShapes` makes, and for the
+    // same reason: there is no way to hand an unfinished sketch to a new Draw.
+    // A map that arms drawing from a form whose other fields rewrite
+    // `interactions` should stop the mode before it does.
     const type = this.drawing && this.drawing.type
     this.stopDrawing()
     if (type && config.interactive !== false) this.armDrawing(type)
@@ -911,18 +914,6 @@ function buildControls(config) {
 // load-bearing: OpenLayers hands an event to the most recently added interaction
 // first. Rover's own Modify, Translate, Draw and Snap are added after these by
 // `applyInteractions`, and so are not on this list to be removed.
-const GESTURES = [
-  "dragRotate",
-  "doubleClickZoom",
-  "dragPan",
-  "pinchRotate",
-  "pinchZoom",
-  "keyboardPan",
-  "keyboardZoom",
-  "mouseWheelZoom",
-  "dragZoom",
-]
-
 const GESTURE_BUILDERS = {
   dragRotate: () => new DragRotate(),
   doubleClickZoom: () => new DoubleClickZoom(),
@@ -936,6 +927,9 @@ const GESTURE_BUILDERS = {
   mouseWheelZoom: () => new MouseWheelZoom(),
   dragZoom: () => new DragZoom(),
 }
+
+// String keys iterate in insertion order, so the object above is the order.
+const GESTURES = Object.keys(GESTURE_BUILDERS)
 
 /**
  * Which gestures a config asks for, in ol's order: none on a locked map,

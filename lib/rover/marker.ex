@@ -192,37 +192,10 @@ defmodule Rover.Marker do
 
   @fields [:lat, :lon | Keyword.keys(@default_mapping)]
 
-  # A mapping that names no Rover field is a typo, and a bare list of keys is the
-  # mapping written backwards. Both used to be ignored: `Keyword.fetch/2` on a
-  # field never mapped returns `:error` and falls back to the default keys, so
-  # `marker_fields={[:latitude]}` quietly read `:lat` and raised about the
-  # coordinate instead — or worse, found one under the default key and used it.
-  defp validate_mapping!(opts) when is_list(opts) do
-    Enum.each(opts, fn
-      {field, _accessor} when field in @fields ->
-        :ok
+  @mapping_example "marker_fields={[lat: :latitude, lon: :longitude, label: :trade_name]}"
 
-      {field, _accessor} ->
-        raise ArgumentError, """
-        unknown marker field #{inspect(field)} in the field mapping.
-
-        Expected any of: #{Enum.map_join(@fields, ", ", &inspect/1)}.
-        """
-
-      other ->
-        raise ArgumentError, """
-        expected the marker field mapping to be a keyword list, got #{inspect(other)} in #{inspect(opts)}.
-
-        A mapping goes from a Rover field to your key or accessor:
-
-            marker_fields={[lat: :latitude, lon: :longitude, label: :trade_name]}
-        """
-    end)
-  end
-
-  defp validate_mapping!(other) do
-    raise ArgumentError,
-          "expected the marker field mapping to be a keyword list, got: #{inspect(other)}"
+  defp validate_mapping!(opts) do
+    Rover.Mapping.validate!(opts, @fields, "marker", @mapping_example)
   end
 
   defp coord_from(source, opts) do

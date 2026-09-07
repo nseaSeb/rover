@@ -64,6 +64,9 @@ defmodule Rover.Heatmap do
 
       iex> Rover.Heatmap.new_all!([%{lat: nil, lon: nil}, %{lat: 45.75, lon: 4.85}])
       [%{lat: 45.75, lon: 4.85, weight: 1.0}]
+
+      iex> Rover.Heatmap.new_all!([%{y: 45.75, x: 4.85}], lat: :y, lon: :x)
+      [%{lat: 45.75, lon: 4.85, weight: 1.0}]
   """
   @spec new_all!(Enumerable.t(), keyword()) :: [point()]
   def new_all!(points, opts \\ []) do
@@ -132,46 +135,45 @@ defmodule Rover.Heatmap do
 
   # -- private ---------------------------------------------------------------
 
-  @fields Keyword.keys(@default_mapping)
+  # `:lat` and `:lon` are mappable without being in @default_mapping: unmapped,
+  # the coordinate is read by `Rover.Geo`, which already knows `:latitude`,
+  # `:longitude` and `:lng`.
+  @fields [:lat, :lon | Keyword.keys(@default_mapping)]
 
-  # See Rover.Marker: a field never mapped falls back to its default keys, so a
-  # typo or a bare list of keys was silently ignored rather than reported.
-  defp validate_mapping!(opts) when is_list(opts) do
-    Enum.each(opts, fn
-      {field, _accessor} when field in @fields ->
-        :ok
+  @mapping_example "heatmap_fields={[weight: :orders]}"
 
-      {field, _accessor} ->
-        raise ArgumentError, """
-        unknown heatmap field #{inspect(field)} in the field mapping.
-
-        Expected any of: #{Enum.map_join(@fields, ", ", &inspect/1)}.
-        """
-
-      other ->
-        raise ArgumentError, """
-        expected the heatmap field mapping to be a keyword list, got #{inspect(other)} in #{inspect(opts)}.
-
-        A mapping goes from a Rover field to your key or accessor:
-
-            heatmap_fields={[weight: :orders]}
-        """
-    end)
-  end
-
-  defp validate_mapping!(other) do
-    raise ArgumentError,
-          "expected the heatmap field mapping to be a keyword list, got: #{inspect(other)}"
+  defp validate_mapping!(opts) do
+    Rover.Mapping.validate!(opts, @fields, "heatmap", @mapping_example)
   end
 
   defp normalise(source, opts) when is_map(source) do
-    case Geo.coord(source) do
+    case coord_of(source, opts) do
       {:ok, {lat, lon}} -> [%{lat: lat, lon: lon, weight: weight(source, opts)}]
       :error -> []
     end
   end
 
   defp normalise(_other, _opts), do: []
+
+  # Mapped like a marker's, and for the same reason: a density query names its
+  # columns whatever the schema names them. Mapping one axis leaves the other to
+  # be read from its usual key.
+  defp coord_of(source, opts) do
+    overrides =
+      [:lat, :lon]
+      |> Enum.map(fn field -> {field, Keyword.get(opts, field)} end)
+      |> Enum.reject(fn {_field, accessor} -> is_nil(accessor) end)
+      |> Map.new(fn {field, accessor} -> {field, read(source, accessor, field)} end)
+
+    if overrides == %{} do
+      Geo.coord(source)
+    else
+      Geo.coord(Map.merge(plain(source), overrides))
+    end
+  end
+
+  defp plain(source) when is_struct(source), do: Map.from_struct(source)
+  defp plain(source), do: source
 
   defp weight(source, opts) do
     case read_weight(source, opts) do
@@ -188,26 +190,25 @@ defmodule Rover.Heatmap do
 
   defp read_weight(source, opts) do
     case Keyword.fetch(opts, :weight) do
-      {:ok, fun} when is_function(fun, 1) ->
-        fun.(source)
-
-      # See the note in Rover.Marker: a capture of the wrong arity is an easy
-      # mistake to make and used to be swallowed into the default weight.
-      {:ok, fun} when is_function(fun) ->
-        raise ArgumentError, """
-        heatmap :weight accessor must be a 1-arity function, got one of arity \
-        #{:erlang.fun_info(fun)[:arity]}.
-
-        If you wrote a capture containing a division, use fn instead:
-
-            fn row -> row.orders / 40 end
-        """
-
-      {:ok, key} ->
-        Map.get(source, key)
-
-      :error ->
-        Enum.find_value(@default_mapping[:weight], &Map.get(source, &1))
+      {:ok, accessor} -> read(source, accessor, :weight)
+      :error -> Enum.find_value(@default_mapping[:weight], &Map.get(source, &1))
     end
   end
+
+  defp read(source, fun, _field) when is_function(fun, 1), do: fun.(source)
+
+  # See the note in Rover.Marker: a capture of the wrong arity is an easy
+  # mistake to make and used to be swallowed into the default weight.
+  defp read(_source, fun, field) when is_function(fun) do
+    raise ArgumentError, """
+    heatmap #{inspect(field)} accessor must be a 1-arity function, got one of arity \
+    #{:erlang.fun_info(fun)[:arity]}.
+
+    If you wrote a capture containing a division, use fn instead:
+
+        fn row -> row.orders / 40 end
+    """
+  end
+
+  defp read(source, key, _field), do: Map.get(source, key)
 end

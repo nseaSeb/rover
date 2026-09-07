@@ -1,5 +1,5 @@
 import { project } from "./coords.js"
-import { styleFor } from "./styles.js"
+import { EMOJI_PX, styleFor } from "./styles.js"
 
 // The gap a popup keeps from whatever it clears. Above a marker it clears the
 // part of the image drawn above the coordinate — a pin's 36px, all of it, since
@@ -12,7 +12,7 @@ const SHAPE_OFFSET_PX = 12
 // Until an icon has loaded its size is unknown, and so is how much of it sits
 // above the coordinate. The built-in pin's answer stands in: `position()` runs
 // on every frame, so the real one takes over the moment the image lands.
-const PIN_OFFSET_PX = 36 + GAP_PX
+const PIN_FALLBACK = { above: 36 + GAP_PX, below: GAP_PX }
 
 /**
  * Marker popups, positioned by hand rather than by an OpenLayers Overlay.
@@ -180,11 +180,11 @@ export class Popups {
    */
   markerOffsets() {
     const marker = this.roverMap.markerLayer.markerById(this.current.id)
-    if (!marker) return { above: PIN_OFFSET_PX, below: GAP_PX }
+    if (!marker) return PIN_FALLBACK
 
-    // An emoji is text sat on the coordinate, its glyph 22px tall at scale 1.
+    // An emoji is text sat on the coordinate, drawn from its bottom edge up.
     if (marker.emoji) {
-      return { above: Math.round(22 * (marker.scale || 1)) + GAP_PX, below: GAP_PX }
+      return { above: Math.round(EMOJI_PX * (marker.scale || 1)) + GAP_PX, below: GAP_PX }
     }
 
     // styleFor rather than the feature's own style: under clustering the feature
@@ -192,7 +192,7 @@ export class Popups {
     const image = styleFor(marker)[0].getImage()
     const anchor = image && image.getAnchor()
     const size = image && image.getSize()
-    if (!anchor || !size) return { above: PIN_OFFSET_PX, below: GAP_PX }
+    if (!anchor || !size) return PIN_FALLBACK
 
     // getAnchor() is in image pixels and does not apply the scale.
     const scale = image.getScaleArray()[1]

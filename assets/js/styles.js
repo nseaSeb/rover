@@ -7,6 +7,10 @@ import Stroke from "ol/style/Stroke.js"
 
 export const DEFAULT_COLOR = "#e11d48"
 
+// The glyph's height at scale 1. Exported because popups.js needs it to clear an
+// emoji marker, and two copies of it drift.
+export const EMOJI_PX = 22
+
 // Styles are shared by every marker that looks the same. A thousand identical
 // pins allocate one Style, not a thousand — which is most of the difference
 // between a map that pans smoothly and one that stutters.
@@ -86,7 +90,7 @@ function pinImage(marker, scale) {
 function emojiText(emoji, scale) {
   return new Text({
     text: emoji,
-    font: `${Math.round(22 * scale)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`,
+    font: `${Math.round(EMOJI_PX * scale)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`,
     // Sit the glyph on the coordinate the way a pin's tip does.
     textBaseline: "bottom",
     offsetY: 4,

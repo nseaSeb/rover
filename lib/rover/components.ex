@@ -188,7 +188,11 @@ defmodule Rover.Components do
 
   attr :heatmap_fields, :list,
     default: [],
-    doc: "Field mapping for the heatmap, e.g. `[weight: fn r -> r.orders / 40 end]`."
+    doc: """
+    Field mapping for the heatmap: `:weight`, and `:lat` / `:lon` when the rows
+    name their coordinate something `Rover.Geo` does not already read — e.g.
+    `[weight: fn r -> r.orders / 40 end]` or `[lat: :y, lon: :x]`.
+    """
 
   attr :heatmap_style, :list,
     default: [],

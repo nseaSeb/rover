@@ -334,34 +334,10 @@ defmodule Rover.Shape do
 
   @fields Keyword.keys(@default_mapping)
 
-  # See Rover.Marker: a field never mapped falls back to its default keys, so a
-  # typo or a bare list of keys was silently ignored rather than reported.
-  defp validate_mapping!(opts) when is_list(opts) do
-    Enum.each(opts, fn
-      {field, _accessor} when field in @fields ->
-        :ok
+  @mapping_example "shape_fields={[geometry: :outline, label: :cadastral_ref]}"
 
-      {field, _accessor} ->
-        raise ArgumentError, """
-        unknown shape field #{inspect(field)} in the field mapping.
-
-        Expected any of: #{Enum.map_join(@fields, ", ", &inspect/1)}.
-        """
-
-      other ->
-        raise ArgumentError, """
-        expected the shape field mapping to be a keyword list, got #{inspect(other)} in #{inspect(opts)}.
-
-        A mapping goes from a Rover field to your key or accessor:
-
-            shape_fields={[geometry: :outline, label: :cadastral_ref]}
-        """
-    end)
-  end
-
-  defp validate_mapping!(other) do
-    raise ArgumentError,
-          "expected the shape field mapping to be a keyword list, got: #{inspect(other)}"
+  defp validate_mapping!(opts) do
+    Rover.Mapping.validate!(opts, @fields, "shape", @mapping_example)
   end
 
   defp extract(source, field, opts) do
