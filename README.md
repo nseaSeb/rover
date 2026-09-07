@@ -559,6 +559,31 @@ same way, keyed by id and compared by `:rev`. There are tests asserting exactly
 this, by object identity, in `assets/test/markers.test.js` and
 `assets/test/shapes.test.js`.
 
+## Dark mode and theming
+
+`rover.css` follows `prefers-color-scheme` on its own, and also a theme the page
+sets itself: `data-theme="dark"` or a `.dark` class on any ancestor — the root,
+in a Tailwind application — switches a map to dark whatever the OS prefers, and
+`data-theme="light"` or `.light` holds it light on a dark OS.
+
+Every colour is a custom property on `.rover-map`, so an application restyles a
+map without overriding a rule:
+
+```css
+.rover-map {
+  --rover-popup-bg: #fffbeb;
+  --rover-link: #b45309;
+}
+```
+
+The full list is at the top of `rover.css`. The basemap is not part of this —
+tiles are content, and already an attribute — so a page with a toggle pairs
+the two itself:
+
+```heex
+<.map id="m" tiles={if @dark, do: :carto_dark_vector, else: :carto_light_vector} />
+```
+
 ## Reaching OpenLayers when you need it
 
 `<.map>` is a floor, not a ceiling. The bundle also exports the pieces:

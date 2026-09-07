@@ -26,6 +26,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   read off the icon once it has loaded, rather than the built-in pin's 36px —
   a taller icon used to be overlapped, a centred one floated above nothing.
 
+- **Theming through CSS custom properties.** Every colour in `rover.css` is
+  now a `--rover-*` property on `.rover-map`, so an application restyles a map
+  by setting a variable rather than overriding a rule. Dark mode answers to
+  `data-theme="dark"` or a `.dark` class on an ancestor as well as to
+  `prefers-color-scheme`, and `data-theme="light"` / `.light` holds a map
+  light on a dark OS — the two things a page with its own theme toggle could
+  not do before. The basemap is deliberately not coupled to any of this: tiles
+  are content and already an attribute.
+
 ### Changed
 
 - **The attribution control is on whenever the map has a basemap**, whether

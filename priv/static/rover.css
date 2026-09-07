@@ -305,11 +305,63 @@
 
 /* css/rover.css */
 .rover-map {
+  --rover-bg: #eef1f5;
+  --rover-focus: #2563eb;
+  --rover-control-bg: #ffffff;
+  --rover-control-fg: #1f2937;
+  --rover-control-bg-hover: #f3f4f6;
+  --rover-control-fg-hover: #111827;
+  --rover-control-focus: #6366f1;
+  --rover-attribution-bg: rgb(255 255 255 / 0.85);
+  --rover-attribution-fg: #4b5563;
+  --rover-link: #4338ca;
+  --rover-scale-bg: rgb(255 255 255 / 0.85);
+  --rover-index-bg: #ffffff;
+  --rover-index-fg: #111827;
+  --rover-index-border: rgb(15 23 42 / 0.18);
+  --rover-tooltip-bg: rgb(17 24 39 / 0.92);
+  --rover-tooltip-fg: #f9fafb;
+  --rover-popup-bg: #ffffff;
+  --rover-popup-fg: #111827;
+  --rover-popup-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 6px 20px rgb(0 0 0 / 0.16);
+  --rover-tail-shadow: rgb(0 0 0 / 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  .rover-map:not(:where([data-theme=light], .light) .rover-map) {
+    --rover-bg: #1f2430;
+    --rover-control-bg: #262b36;
+    --rover-control-fg: #e5e7eb;
+    --rover-control-bg-hover: #333a48;
+    --rover-control-fg-hover: #ffffff;
+    --rover-attribution-bg: rgb(31 36 48 / 0.85);
+    --rover-attribution-fg: #cbd5e1;
+    --rover-link: #a5b4fc;
+    --rover-popup-bg: #1f2430;
+    --rover-popup-fg: #e5e7eb;
+    --rover-popup-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.5);
+    --rover-tail-shadow: rgb(0 0 0 / 0.25);
+  }
+}
+:where([data-theme=dark], .dark) .rover-map {
+  --rover-bg: #1f2430;
+  --rover-control-bg: #262b36;
+  --rover-control-fg: #e5e7eb;
+  --rover-control-bg-hover: #333a48;
+  --rover-control-fg-hover: #ffffff;
+  --rover-attribution-bg: rgb(31 36 48 / 0.85);
+  --rover-attribution-fg: #cbd5e1;
+  --rover-link: #a5b4fc;
+  --rover-popup-bg: #1f2430;
+  --rover-popup-fg: #e5e7eb;
+  --rover-popup-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.5);
+  --rover-tail-shadow: rgb(0 0 0 / 0.25);
+}
+.rover-map {
   position: relative;
   width: 100%;
   overflow: hidden;
   border-radius: 0.75rem;
-  background: #eef1f5;
+  background: var(--rover-bg);
 }
 .rover-map__canvas {
   position: absolute;
@@ -320,7 +372,7 @@
   cursor: crosshair !important;
 }
 .rover-map__canvas:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--rover-focus);
   outline-offset: -2px;
 }
 .rover-map__index {
@@ -347,17 +399,17 @@
   overflow: visible;
   clip-path: none;
   padding: 0.25rem 0.5rem;
-  border: 1px solid rgba(15, 23, 42, 0.18);
+  border: 1px solid var(--rover-index-border);
   border-radius: 0.375rem;
-  background: #ffffff;
-  color: #111827;
+  background: var(--rover-index-bg);
+  color: var(--rover-index-fg);
   font:
     500 12px ui-sans-serif,
     system-ui,
     -apple-system,
     sans-serif;
   cursor: pointer;
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--rover-focus);
   outline-offset: 1px;
 }
 .rover-map .ol-control {
@@ -381,18 +433,18 @@
   border-radius: 0;
   font-size: 1rem;
   font-weight: 500;
-  color: #1f2937;
-  background: #fff;
+  color: var(--rover-control-fg);
+  background: var(--rover-control-bg);
   transition: background-color 120ms ease;
 }
 .rover-map .ol-control button:hover,
 .rover-map .ol-control button:focus-visible {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--rover-control-bg-hover);
+  color: var(--rover-control-fg-hover);
   outline: none;
 }
 .rover-map .ol-control button:focus-visible {
-  box-shadow: inset 0 0 0 2px #6366f1;
+  box-shadow: inset 0 0 0 2px var(--rover-control-focus);
 }
 .rover-map .ol-attribution {
   right: 0;
@@ -400,20 +452,20 @@
   max-width: 100%;
   font-size: 0.6875rem;
   border-radius: 0.375rem 0 0 0;
-  background: rgb(255 255 255 / 0.85);
+  background: var(--rover-attribution-bg);
   backdrop-filter: blur(4px);
 }
 .rover-map .ol-attribution ul {
-  color: #4b5563;
+  color: var(--rover-attribution-fg);
   text-shadow: none;
 }
 .rover-map .ol-attribution a {
-  color: #4338ca;
+  color: var(--rover-link);
 }
 .rover-map .ol-scale-line {
   left: 0.75rem;
   bottom: 0.75rem;
-  background: rgb(255 255 255 / 0.85);
+  background: var(--rover-scale-bg);
   border-radius: 0.25rem;
 }
 .rover-tooltip {
@@ -423,8 +475,8 @@
   font-size: 0.75rem;
   line-height: 1.1rem;
   font-weight: 500;
-  color: #f9fafb;
-  background: rgb(17 24 39 / 0.92);
+  color: var(--rover-tooltip-fg);
+  background: var(--rover-tooltip-bg);
   border-radius: 0.375rem;
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
 }
@@ -439,10 +491,10 @@
   padding: 0.625rem 0.75rem;
   font-size: 0.8125rem;
   line-height: 1.35;
-  color: #111827;
-  background: #fff;
+  color: var(--rover-popup-fg);
+  background: var(--rover-popup-bg);
   border-radius: 0.5rem;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 6px 20px rgb(0 0 0 / 0.16);
+  box-shadow: var(--rover-popup-shadow);
 }
 .rover-popup[hidden] {
   display: none;
@@ -456,7 +508,7 @@
   height: 0.625rem;
   transform: translateX(-50%) rotate(45deg);
   background: inherit;
-  box-shadow: 2px 2px 4px rgb(0 0 0 / 0.08);
+  box-shadow: 2px 2px 4px var(--rover-tail-shadow);
 }
 .rover-popup--below {
   transform: translate(-50%, 0);
@@ -464,42 +516,8 @@
 .rover-popup--below::after {
   top: -0.3125rem;
   bottom: auto;
-  box-shadow: -2px -2px 4px rgb(0 0 0 / 0.08);
+  box-shadow: -2px -2px 4px var(--rover-tail-shadow);
 }
 .rover-popup [data-rover-popup-close] {
   cursor: pointer;
-}
-@media (prefers-color-scheme: dark) {
-  .rover-map {
-    background: #1f2430;
-  }
-  .rover-map .ol-control button {
-    color: #e5e7eb;
-    background: #262b36;
-  }
-  .rover-map .ol-control button:hover,
-  .rover-map .ol-control button:focus-visible {
-    background: #333a48;
-    color: #fff;
-  }
-  .rover-map .ol-attribution {
-    background: rgb(31 36 48 / 0.85);
-  }
-  .rover-map .ol-attribution ul {
-    color: #cbd5e1;
-  }
-  .rover-map .ol-attribution a {
-    color: #a5b4fc;
-  }
-  .rover-popup {
-    color: #e5e7eb;
-    background: #1f2430;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.5);
-  }
-  .rover-popup::after {
-    box-shadow: 2px 2px 4px rgb(0 0 0 / 0.25);
-  }
-  .rover-popup--below::after {
-    box-shadow: -2px -2px 4px rgb(0 0 0 / 0.25);
-  }
 }
