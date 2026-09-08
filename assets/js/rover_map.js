@@ -112,6 +112,7 @@ export class RoverMap {
 
     this.applyTiles(this.config.tiles)
     this.overlayLayers.reconcile(this.config.layers)
+    this.applyDeclutter(this.config)
     this.markerLayer.setClustering(this.config.cluster)
     this.applyAccessibility(this.config)
 
@@ -211,9 +212,28 @@ export class RoverMap {
 
     if (changed(previous.cluster, next.cluster)) this.markerLayer.setClustering(next.cluster)
 
+    if (previous.declutter !== next.declutter) this.applyDeclutter(next)
+
     const view = this.map.getView()
     if (previous.minZoom !== next.minZoom) view.setMinZoom(next.minZoom ?? 0)
     if (previous.maxZoom !== next.maxZoom) view.setMaxZoom(next.maxZoom ?? 28)
+  }
+
+  /**
+   * Hide labels that would overlap, or stop hiding them.
+   *
+   * One group name for both layers, because two layers decluttering separately
+   * declutter against themselves: a shape's label and a marker's would each
+   * survive its own layer and still be drawn over each other. Sharing the name
+   * puts them in one collision pass, which is the only arrangement that reads
+   * correctly — and, for the same reason, makes the two layers paint in that
+   * pass together, after every other layer.
+   */
+  applyDeclutter(config) {
+    const group = config.declutter ? "rover" : false
+
+    this.markerLayer.layer.setDeclutter(group)
+    this.shapeLayer.layer.setDeclutter(group)
   }
 
   animateTo(center, zoom) {

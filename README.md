@@ -338,6 +338,26 @@ point is visible in the result — so per-point identity would be ceremony that 
 nothing. It is diffed by revision instead, like shapes, which also means a
 style-only change restyles the layer without rebuilding the field.
 
+### Labels that get out of each other's way
+
+At density, labels overlap into an unreadable stack. `declutter` hides the ones
+that collide instead:
+
+```heex
+<.map id="clients" markers={@clients} declutter={true} />
+```
+
+Markers and shapes declutter together, so a shape's label yields to a marker's
+rather than each layer resolving its own collisions and both being drawn anyway.
+Pins, icons, emoji and cluster circles are never hidden — they are what the
+labels move out of the way of — and hit-testing, popups and the keyboard index
+are unaffected.
+
+Off by default, because it is a trade rather than an improvement: a label that
+loses a collision is not drawn at all, so on a dense map labels appear and
+disappear as the view moves. Clustering is usually the better answer to the
+same problem.
+
 ## Popups
 
 A slot, rendered once per marker and shown on click with no server round-trip:

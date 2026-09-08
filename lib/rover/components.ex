@@ -239,6 +239,19 @@ defmodule Rover.Components do
     rendered whenever a map has any layer at all.
     """
 
+  attr :declutter, :boolean,
+    default: false,
+    doc: """
+    Hides labels that would overlap, rather than drawing them on top of one
+    another. Markers and shapes declutter together, so a shape's label yields to
+    a marker's and neither is drawn twice over.
+
+    Off by default, because it is a trade rather than an improvement: a label
+    that loses is not drawn at all, and on a dense map that means labels
+    appearing and disappearing as the view moves. Pins, icons, emoji and cluster
+    circles are never hidden — they are what the labels move out of the way of.
+    """
+
   attr :fit, :any,
     default: nil,
     doc: """
@@ -546,6 +559,7 @@ defmodule Rover.Components do
       fit: encode_fit(assigns.fit, assigns.center),
       fitPadding: assigns.fit_padding,
       cluster: encode_cluster(assigns.cluster),
+      declutter: assigns.declutter || nil,
       controls: encode_controls(assigns.controls, assigns.tiles, assigns.layers),
       interactions: encode_interactions(assigns.interactions),
       interactive: assigns.interactive,

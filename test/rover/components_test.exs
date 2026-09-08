@@ -331,6 +331,16 @@ defmodule Rover.ComponentsTest do
     end
   end
 
+  describe "declutter" do
+    test "is absent unless asked for" do
+      refute Map.has_key?(config(render_map([])), "declutter")
+    end
+
+    test "reaches the client when asked for" do
+      assert config(render_map(declutter: true))["declutter"] == true
+    end
+  end
+
   describe "WMTS tiles" do
     test "reach the client as the document to read and the layer to read from it" do
       tiles =

@@ -72,6 +72,13 @@ function pinImage(marker, scale) {
   return new Icon({
     src: marker.icon || pinDataUri(marker.color || DEFAULT_COLOR),
     anchor: marker.anchor || DEFAULT_ANCHOR,
+    // A marker is the thing being labelled: hiding the pin to make room for
+    // text would be backwards. It still takes part as an obstacle, so labels
+    // move out of its way. Ignored entirely unless the layer declutters.
+    declutterMode: "obstacle",
+    // A marker is the thing being labelled: hiding the pin to make room for
+    // text would be backwards. It still takes part as an obstacle, so labels
+    // move out of its way. Ignored entirely unless the layer declutters.
     scale,
     // Degrees on the server, where a heading is a human number; radians here.
     rotation: (marker.rotation || 0) * Math.PI / 180,
@@ -82,6 +89,11 @@ function emojiText(emoji, scale) {
   return new Text({
     text: emoji,
     font: `${Math.round(EMOJI_PX * scale)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`,
+    // Text, but a marker: an emoji is the pin, not a label about one, so it is
+    // an obstacle like every other marker image rather than something to hide.
+    declutterMode: "obstacle",
+    // Text, but a marker: an emoji is the pin, not a label about one, so it is
+    // an obstacle like every other marker image rather than something to hide.
     // Sit the glyph on the coordinate the way a pin's tip does.
     textBaseline: "bottom",
     offsetY: 4
@@ -117,12 +129,18 @@ function clusterStyle(count) {
       image: new Circle({
         radius,
         fill: new Fill({ color: withAlpha(CLUSTER_COLOR, 0.85) }),
-        stroke: new Stroke({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
+        stroke: new Stroke({ color: "rgba(255, 255, 255, 0.9)", width: 2 }),
+        // A group is a marker like any other, and hiding one would take a dozen
+        // markers off the map at once.
+        declutterMode: "obstacle"
       }),
       text: new Text({
         text: String(count),
         font: "600 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
-        fill: new Fill({ color: "#ffffff" })
+        fill: new Fill({ color: "#ffffff" }),
+        // The count is part of the circle: a group drawn without its number is
+        // a blue dot meaning nothing.
+        declutterMode: "obstacle"
       })
     });
     if (clusterCache.size >= CACHE_LIMIT) clusterCache.delete(clusterCache.keys().next().value);
@@ -12167,7 +12185,10 @@ function buildStyle2(shape) {
     image: new Circle4({
       radius: POINT_RADIUS,
       fill: new Fill4({ color }),
-      stroke: new Stroke4({ color: "rgba(255, 255, 255, 0.9)", width: Math.min(width, 3) })
+      stroke: new Stroke4({ color: "rgba(255, 255, 255, 0.9)", width: Math.min(width, 3) }),
+      // The geometry itself, not a label about it — never hidden to make room
+      // for text. Only read when the layer declutters.
+      declutterMode: "obstacle"
     })
   });
   if (shape.label) {
@@ -12255,6 +12276,7 @@ var RoverMap = class {
     });
     this.applyTiles(this.config.tiles);
     this.overlayLayers.reconcile(this.config.layers);
+    this.applyDeclutter(this.config);
     this.markerLayer.setClustering(this.config.cluster);
     this.applyAccessibility(this.config);
     this.setupTooltip();
@@ -12327,9 +12349,25 @@ var RoverMap = class {
       this.applyAccessibility(next);
     }
     if (changed(previous.cluster, next.cluster)) this.markerLayer.setClustering(next.cluster);
+    if (previous.declutter !== next.declutter) this.applyDeclutter(next);
     const view = this.map.getView();
     if (previous.minZoom !== next.minZoom) view.setMinZoom(next.minZoom ?? 0);
     if (previous.maxZoom !== next.maxZoom) view.setMaxZoom(next.maxZoom ?? 28);
+  }
+  /**
+   * Hide labels that would overlap, or stop hiding them.
+   *
+   * One group name for both layers, because two layers decluttering separately
+   * declutter against themselves: a shape's label and a marker's would each
+   * survive its own layer and still be drawn over each other. Sharing the name
+   * puts them in one collision pass, which is the only arrangement that reads
+   * correctly — and, for the same reason, makes the two layers paint in that
+   * pass together, after every other layer.
+   */
+  applyDeclutter(config) {
+    const group = config.declutter ? "rover" : false;
+    this.markerLayer.layer.setDeclutter(group);
+    this.shapeLayer.layer.setDeclutter(group);
   }
   animateTo(center, zoom) {
     this.beQuiet(ANIMATION_MS);

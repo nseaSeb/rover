@@ -77,6 +77,13 @@ function pinImage(marker, scale) {
   return new Icon({
     src: marker.icon || pinDataUri(marker.color || DEFAULT_COLOR),
     anchor: marker.anchor || DEFAULT_ANCHOR,
+    // A marker is the thing being labelled: hiding the pin to make room for
+    // text would be backwards. It still takes part as an obstacle, so labels
+    // move out of its way. Ignored entirely unless the layer declutters.
+    declutterMode: "obstacle",
+    // A marker is the thing being labelled: hiding the pin to make room for
+    // text would be backwards. It still takes part as an obstacle, so labels
+    // move out of its way. Ignored entirely unless the layer declutters.
     scale,
     // Degrees on the server, where a heading is a human number; radians here.
     rotation: ((marker.rotation || 0) * Math.PI) / 180,
@@ -91,6 +98,11 @@ function emojiText(emoji, scale) {
   return new Text({
     text: emoji,
     font: `${Math.round(EMOJI_PX * scale)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`,
+    // Text, but a marker: an emoji is the pin, not a label about one, so it is
+    // an obstacle like every other marker image rather than something to hide.
+    declutterMode: "obstacle",
+    // Text, but a marker: an emoji is the pin, not a label about one, so it is
+    // an obstacle like every other marker image rather than something to hide.
     // Sit the glyph on the coordinate the way a pin's tip does.
     textBaseline: "bottom",
     offsetY: 4,
@@ -144,11 +156,17 @@ export function clusterStyle(count) {
         radius,
         fill: new Fill({ color: withAlpha(CLUSTER_COLOR, 0.85) }),
         stroke: new Stroke({ color: "rgba(255, 255, 255, 0.9)", width: 2 }),
+        // A group is a marker like any other, and hiding one would take a dozen
+        // markers off the map at once.
+        declutterMode: "obstacle",
       }),
       text: new Text({
         text: String(count),
         font: "600 12px ui-sans-serif, system-ui, -apple-system, sans-serif",
         fill: new Fill({ color: "#ffffff" }),
+        // The count is part of the circle: a group drawn without its number is
+        // a blue dot meaning nothing.
+        declutterMode: "obstacle",
       }),
     })
 
