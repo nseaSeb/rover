@@ -1422,30 +1422,53 @@ test.describe("the playground", () => {
     await page.goto("/")
     await mapReady(page)
 
-    const controlBackground = () =>
-      page.evaluate((sel) => getComputedStyle(document.querySelector(`${sel} .ol-zoom button`)).backgroundColor, MAP)
+    // The palette the container resolves, not a colour the buttons are painted:
+    // a custom property changes instantly, while `.ol-control button` transitions
+    // its background over 120ms. Sampling the paint means sampling an animation,
+    // and a value read mid-transition is a colour no theme ever declares — which
+    // is what made the first version of this test pass here and fail on CI.
+    const palette = () =>
+      page.evaluate(
+        (sel) => getComputedStyle(document.querySelector(sel)).getPropertyValue("--rover-control-bg").trim(),
+        MAP
+      )
     const setTheme = (theme) =>
       page.evaluate((value) => {
         if (value) document.documentElement.dataset.theme = value
         else delete document.documentElement.dataset.theme
       }, theme)
 
-    // Polled throughout: the buttons transition their background over 120ms, and
-    // a computed style read the instant the theme changes is the old colour.
-    //
     // Playwright's default scheme is light. A page that says dark gets dark
     // whatever the OS thinks: a Tailwind app's toggle has nowhere else to reach.
-    const light = await controlBackground()
+    const light = await palette()
     await setTheme("dark")
-    await expect.poll(controlBackground).not.toBe(light)
-    const dark = await controlBackground()
+    await expect.poll(palette, { message: "data-theme=dark did not darken the map" }).not.toBe(light)
+    const dark = await palette()
 
     // And the other way round: a user who chose light on a dark OS gets light.
     await setTheme(null)
     await page.emulateMedia({ colorScheme: "dark" })
-    await expect.poll(controlBackground).toBe(dark)
+    await expect.poll(palette, { message: "the OS preference was not honoured" }).toBe(dark)
     await setTheme("light")
-    await expect.poll(controlBackground).toBe(light)
+    await expect.poll(palette, { message: "data-theme=light lost to the dark OS" }).toBe(light)
+
+    // And the controls are actually painted from that property rather than from
+    // a colour of their own. Polled: this one does wait out the transition.
+    const paintsItsPalette = () =>
+      page.evaluate((sel) => {
+        const root = document.querySelector(sel)
+        // Let the browser resolve the token to the same notation getComputedStyle
+        // reports a background in, rather than comparing a hex to an rgb().
+        const probe = document.createElement("div")
+        probe.style.color = getComputedStyle(root).getPropertyValue("--rover-control-bg").trim()
+        root.appendChild(probe)
+        const resolved = getComputedStyle(probe).color
+        probe.remove()
+
+        return getComputedStyle(root.querySelector(".ol-zoom button")).backgroundColor === resolved
+      }, MAP)
+
+    await expect.poll(paintsItsPalette, { message: "the zoom buttons ignore --rover-control-bg" }).toBe(true)
 
     expect(problems).toEqual([])
   })
