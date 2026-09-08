@@ -202,6 +202,40 @@ defmodule Rover.Components do
     default: :osm,
     doc: "A `Rover.Tiles` preset, `{:xyz, url}`, `{:vector, style_url}`, or `:none`."
 
+  attr :layers, :list,
+    default: [],
+    doc: """
+    Tile layers drawn on top of the basemap and under everything else — a
+    cadastral overlay on a plan, orthophotography over a map, a weather field
+    over both. Each entry is `{:tiles, spec}` or `{:tiles, spec, opts}`, where
+    `spec` is anything `tiles` itself accepts:
+
+    ```heex
+    <.map
+      id="parcels"
+      tiles={:ign_plan}
+      layers={[
+        {:tiles, {:xyz, @cadastre_url, attributions: "© DGFiP"}, opacity: 0.6, min_zoom: 12},
+        {:tiles, :ign_ortho, visible: @ortho?}
+      ]}
+    />
+    ```
+
+      * `:opacity` — 0 to 1. Default `1`.
+      * `:visible` — draw it at all. Default `true`, and the way to toggle a
+        layer without paying for its tiles again when it comes back.
+      * `:min_zoom` / `:max_zoom` — the zoom range it is drawn over.
+      * `:id` — a stable name for the layer. Given one, a layer keeps its tiles
+        across a change of position in the list; without one, position *is* the
+        identity, and reordering rebuilds.
+
+    Layers are drawn in list order, all of them beneath the heatmap, the shapes
+    and the markers: this is a basemap you are building up, not a way to put
+    tiles over your own data. Each layer's attribution is collected by the
+    attribution control alongside the basemap's, which is why that control is
+    rendered whenever a map has any layer at all.
+    """
+
   attr :fit, :any,
     default: nil,
     doc: """
@@ -505,10 +539,11 @@ defmodule Rover.Components do
       minZoom: assigns.min_zoom,
       maxZoom: assigns.max_zoom,
       tiles: encode_tiles(assigns.tiles),
+      layers: encode_layers(assigns.layers),
       fit: encode_fit(assigns.fit, assigns.center),
       fitPadding: assigns.fit_padding,
       cluster: encode_cluster(assigns.cluster),
-      controls: encode_controls(assigns.controls, assigns.tiles),
+      controls: encode_controls(assigns.controls, assigns.tiles, assigns.layers),
       interactions: encode_interactions(assigns.interactions),
       interactive: assigns.interactive,
       # A shape with a popup is a click target even when no handler is wired, and
@@ -607,6 +642,71 @@ defmodule Rover.Components do
           "invalid fit: #{inspect(other)}. Expected `:once`, `true`, `:always`, `false` or `nil`."
   end
 
+  @layer_options [:id, :opacity, :visible, :min_zoom, :max_zoom]
+
+  defp encode_layers([]), do: nil
+
+  defp encode_layers(layers) when is_list(layers) do
+    Enum.map(layers, &encode_layer/1)
+  end
+
+  defp encode_layers(other) do
+    raise ArgumentError, "expected `layers` to be a list, got: #{inspect(other)}"
+  end
+
+  defp encode_layer({:tiles, spec}), do: encode_layer({:tiles, spec, []})
+
+  defp encode_layer({:tiles, spec, opts}) when is_list(opts) do
+    Keyword.keyword?(opts) ||
+      raise ArgumentError, """
+      invalid layer options: #{inspect(opts)}.
+
+      Expected a keyword list — `{:tiles, :ign_ortho, opacity: 0.6}`, not
+      `{:tiles, :ign_ortho, [:opacity]}`.
+      """
+
+    Enum.each(opts, fn {key, _value} ->
+      key in @layer_options ||
+        raise ArgumentError, """
+        unknown layer option #{inspect(key)}.
+
+        Expected any of: #{Enum.map_join(@layer_options, ", ", &inspect/1)}.
+        """
+    end)
+
+    tiles =
+      encode_tiles(spec) ||
+        raise ArgumentError, """
+        a layer must have tiles to draw, got: #{inspect(spec)}.
+
+        `:none` is how a *map* says it wants no basemap; a layer that draws
+        nothing is a layer to leave out of the list.
+        """
+
+    drop_nils(%{
+      id: opts |> Keyword.get(:id) |> encode_layer_id(),
+      tiles: tiles,
+      opacity: Keyword.get(opts, :opacity),
+      visible: Keyword.get(opts, :visible),
+      minZoom: Keyword.get(opts, :min_zoom),
+      maxZoom: Keyword.get(opts, :max_zoom)
+    })
+  end
+
+  defp encode_layer(other) do
+    raise ArgumentError, """
+    invalid layer: #{inspect(other)}.
+
+    Expected `{:tiles, spec}` or `{:tiles, spec, opts}`, where `spec` is anything
+    the `tiles` attribute accepts:
+
+        layers={[{:tiles, :ign_ortho, opacity: 0.6}]}
+    """
+  end
+
+  defp encode_layer_id(nil), do: nil
+  defp encode_layer_id(id), do: to_string(id)
+
   @cluster_options [:distance, :min_distance, :zoom_on_click]
 
   defp encode_cluster(false), do: nil
@@ -648,7 +748,7 @@ defmodule Rover.Components do
 
   @known_controls [:zoom, :attribution, :scale_line, :full_screen, :rotate]
 
-  defp encode_controls(controls, tiles) when is_list(controls) do
+  defp encode_controls(controls, tiles, layers) when is_list(controls) do
     Enum.each(controls, fn control ->
       control in @known_controls ||
         raise ArgumentError, """
@@ -662,12 +762,13 @@ defmodule Rover.Components do
     # control shows nothing for a source with no attribution text, so adding it
     # is never visually wrong. Dropping it is: every preset's provider requires
     # the credit as a condition of use.
-    controls = if tiles in [:none, nil], do: controls, else: [:attribution | controls]
+    nothing_to_credit? = tiles in [:none, nil] and layers == []
+    controls = if nothing_to_credit?, do: controls, else: [:attribution | controls]
 
     Map.new(@known_controls, fn control -> {camelize(control), control in controls} end)
   end
 
-  defp encode_controls(other, _tiles) do
+  defp encode_controls(other, _tiles, _layers) do
     raise ArgumentError, "expected `controls` to be a list, got: #{inspect(other)}"
   end
 

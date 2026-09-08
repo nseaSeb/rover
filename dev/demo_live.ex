@@ -57,6 +57,7 @@ defmodule RoverDev.DemoLive do
        clients: @clients,
        shapes: shapes(:both),
        tiles: :ign_plan,
+       overlay: false,
        heat: false,
        heat_radius: 14,
        cluster: false,
@@ -164,6 +165,7 @@ defmodule RoverDev.DemoLive do
       <button phx-click="remove">Remove the last marker</button>
       <button phx-click="cycle_shapes">Shapes: {shape_label(@shapes)}</button>
       <button phx-click="cycle_tiles">Tiles: {@tiles}</button>
+      <button phx-click="toggle_overlay">Overlay: {if @overlay, do: "ortho 55%", else: "off"}</button>
       <button phx-click="reset">Reset</button>
       <button phx-click="fly_paris">Fly to Paris</button>
       <button phx-click="fit_first">Fit the first client</button>
@@ -192,6 +194,7 @@ defmodule RoverDev.DemoLive do
       heatmap={if @heat, do: heat_points(), else: []}
       heatmap_style={[radius: @heat_radius, blur: 22, opacity: 0.85]}
       tiles={@tiles}
+      layers={overlay_layers(@overlay)}
       height="28rem"
       controls={[:zoom, :attribution, :scale_line]}
       on_marker_click="marker_clicked"
@@ -403,6 +406,20 @@ defmodule RoverDev.DemoLive do
      |> assign(clients: yard, crowd: false, cluster: true, shapes: [])
      |> Rover.fly_to("clients", {45.76405, 4.8357}, zoom: 18, duration: 0)
      |> log("two vans in a yard at zoom 18, clustered")}
+  end
+
+  # Orthophotography washed over the plan, which is what an overlay is for: the
+  # roads and labels of one basemap with the imagery of another under them, at an
+  # opacity the caller picks. Identified, so toggling the opacity keeps the tiles
+  # already fetched rather than asking for them again.
+  defp overlay_layers(false), do: []
+  defp overlay_layers(true), do: [{:tiles, :ign_ortho, opacity: 0.55, id: "ortho"}]
+
+  def handle_event("toggle_overlay", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(overlay: !socket.assigns.overlay)
+     |> log("ortho overlay #{if socket.assigns.overlay, do: "off", else: "on at 55%"}")}
   end
 
   def handle_event("toggle_crowd", _params, socket) do

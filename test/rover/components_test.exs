@@ -316,9 +316,83 @@ defmodule Rover.ComponentsTest do
       refute config(render_map(controls: [:scale_line], tiles: :none))["controls"]["attribution"]
     end
 
+    test "keep the attribution for a layer, even with no basemap under it" do
+      # A map with no basemap and an overlay still renders somebody's tiles.
+      controls =
+        config(render_map(controls: [], tiles: :none, layers: [{:tiles, :ign_ortho}]))["controls"]
+
+      assert controls["attribution"]
+    end
+
     test "reject an unknown control" do
       assert_raise ArgumentError, ~r/unknown map control/, fn ->
         render_map(controls: [:minimap])
+      end
+    end
+  end
+
+  describe "layers" do
+    test "are absent unless asked for, so a map without them carries nothing" do
+      refute Map.has_key?(config(render_map([])), "layers")
+    end
+
+    test "carry the same resolved tiles a basemap does" do
+      [layer] = config(render_map(layers: [{:tiles, :ign_ortho}]))["layers"]
+
+      assert layer["tiles"] == config(render_map(tiles: :ign_ortho))["tiles"]
+      # Nothing else: an option not given is not a null on the wire.
+      assert Map.keys(layer) == ["tiles"]
+    end
+
+    test "take their options, camelised for the client" do
+      layers = [{:tiles, :ign_ortho, opacity: 0.6, visible: false, min_zoom: 12, max_zoom: 18}]
+      [layer] = config(render_map(layers: layers))["layers"]
+
+      assert layer["opacity"] == 0.6
+      assert layer["visible"] == false
+      assert layer["minZoom"] == 12
+      assert layer["maxZoom"] == 18
+    end
+
+    test "keep the order they were given, which is the order they are drawn" do
+      layers = [{:tiles, :ign_ortho, id: "ortho"}, {:tiles, :osm, id: "osm"}]
+
+      assert config(render_map(layers: layers))["layers"] |> Enum.map(& &1["id"]) ==
+               ["ortho", "osm"]
+    end
+
+    test "accept any tiles form, including a vector style" do
+      layers = [{:tiles, {:vector, "https://example.com/style.json"}}]
+      [layer] = config(render_map(layers: layers))["layers"]
+
+      assert layer["tiles"]["type"] == "vector"
+    end
+
+    test "reject a layer with nothing to draw" do
+      # `:none` is how a map says it wants no basemap; a layer that draws nothing
+      # is one to leave out of the list.
+      assert_raise ArgumentError, ~r/a layer must have tiles to draw/, fn ->
+        render_map(layers: [{:tiles, :none}])
+      end
+    end
+
+    test "reject an unknown option and a malformed entry" do
+      assert_raise ArgumentError, ~r/unknown layer option :opacity_pct/, fn ->
+        render_map(layers: [{:tiles, :osm, opacity_pct: 60}])
+      end
+
+      assert_raise ArgumentError, ~r/invalid layer options/, fn ->
+        render_map(layers: [{:tiles, :osm, [:opacity]}])
+      end
+
+      assert_raise ArgumentError, ~r/invalid layer: :ign_ortho/, fn ->
+        render_map(layers: [:ign_ortho])
+      end
+    end
+
+    test "an unknown preset in a layer is reported by Rover.Tiles, as anywhere else" do
+      assert_raise ArgumentError, ~r/unknown tile preset :nope/, fn ->
+        render_map(layers: [{:tiles, :nope}])
       end
     end
   end

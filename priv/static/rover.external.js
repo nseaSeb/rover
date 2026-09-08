@@ -298,6 +298,338 @@ function cssEscape(value) {
 import Map4 from "ol/Map.js";
 import View2 from "ol/View.js";
 import Overlay from "ol/Overlay.js";
+import TileLayer3 from "ol/layer/Tile.js";
+import Attribution from "ol/control/Attribution.js";
+import FullScreen from "ol/control/FullScreen.js";
+import Rotate from "ol/control/Rotate.js";
+import ScaleLine from "ol/control/ScaleLine.js";
+import Zoom from "ol/control/Zoom.js";
+import Kinetic from "ol/Kinetic.js";
+import { never } from "ol/events/condition.js";
+import DoubleClickZoom from "ol/interaction/DoubleClickZoom.js";
+import DragPan from "ol/interaction/DragPan.js";
+import DragRotate from "ol/interaction/DragRotate.js";
+import DragZoom from "ol/interaction/DragZoom.js";
+import Draw from "ol/interaction/Draw.js";
+import KeyboardPan from "ol/interaction/KeyboardPan.js";
+import KeyboardZoom from "ol/interaction/KeyboardZoom.js";
+import Modify from "ol/interaction/Modify.js";
+import MouseWheelZoom from "ol/interaction/MouseWheelZoom.js";
+import PinchRotate from "ol/interaction/PinchRotate.js";
+import PinchZoom from "ol/interaction/PinchZoom.js";
+import Snap from "ol/interaction/Snap.js";
+import Translate from "ol/interaction/Translate.js";
+import { createEmpty, extend } from "ol/extent.js";
+
+// js/draw.js
+import VectorLayer from "ol/layer/Vector.js";
+import VectorSource from "ol/source/Vector.js";
+import Circle2 from "ol/style/Circle.js";
+import Fill2 from "ol/style/Fill.js";
+import Stroke2 from "ol/style/Stroke.js";
+import Style2 from "ol/style/Style.js";
+var PENDING_COLOR = "#2563eb";
+var TYPES = /* @__PURE__ */ new Set(["Point", "LineString", "Polygon"]);
+function drawTypeFor(type) {
+  return TYPES.has(type) ? type : null;
+}
+var DrawLayer = class {
+  constructor() {
+    this.source = new VectorSource({ wrapX: false });
+    this.layer = new VectorLayer({
+      source: this.source,
+      // Above the shapes it is about to become one of, below the markers.
+      zIndex: 6,
+      style: pendingStyle()
+    });
+  }
+  clear() {
+    this.source.clear();
+  }
+  dispose() {
+    this.source.clear();
+  }
+};
+function pendingStyle() {
+  return new Style2({
+    stroke: new Stroke2({ color: PENDING_COLOR, width: 2, lineDash: [6, 5] }),
+    fill: new Fill2({ color: [37, 99, 235, 0.08] }),
+    // A drawn Point has no stroke or fill to show.
+    image: new Circle2({
+      radius: 5,
+      fill: new Fill2({ color: PENDING_COLOR }),
+      stroke: new Stroke2({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
+    })
+  });
+}
+
+// js/heatmap.js
+import Feature from "ol/Feature.js";
+import Point from "ol/geom/Point.js";
+import HeatmapLayerOl from "ol/layer/Heatmap.js";
+import VectorSource2 from "ol/source/Vector.js";
+var HeatmapLayer = class {
+  constructor() {
+    this.source = new VectorSource2({ wrapX: false });
+    this.layer = new HeatmapLayerOl({
+      source: this.source,
+      // Under the shapes and the markers: a heat field is background, and covering
+      // a parcel outline with it would defeat both.
+      zIndex: 2,
+      weight: (feature) => feature.get("weight")
+    });
+    this.rev = null;
+    this.count = 0;
+  }
+  // A null payload means the map has no heat field at all — the attribute is absent
+  // rather than an empty object, so that every map without one carries nothing.
+  reconcile(payload) {
+    const { points = [], rev = null, style } = payload || {};
+    this.applyStyle(style);
+    const next = String(rev);
+    if (next === this.rev) return;
+    this.rev = next;
+    this.source.clear();
+    this.count = points.length;
+    if (points.length > 0) {
+      this.source.addFeatures(
+        points.map((point) => {
+          const feature = new Feature({ geometry: new Point(project(point.lat, point.lon)) });
+          feature.set("weight", point.weight ?? 1, true);
+          return feature;
+        })
+      );
+    }
+  }
+  applyStyle(style) {
+    if (!style) return;
+    if (typeof style.radius === "number") this.layer.setRadius(style.radius);
+    if (typeof style.blur === "number") this.layer.setBlur(style.blur);
+    if (typeof style.opacity === "number") this.layer.setOpacity(style.opacity);
+    if (Array.isArray(style.gradient) && style.gradient.length > 1) {
+      this.layer.setGradient(style.gradient);
+    }
+  }
+  get extent() {
+    return this.count > 0 ? this.source.getExtent() : null;
+  }
+  dispose() {
+    this.source.clear();
+    this.count = 0;
+    this.rev = null;
+  }
+};
+
+// js/markers.js
+import Feature2 from "ol/Feature.js";
+import Point2 from "ol/geom/Point.js";
+import VectorLayer2 from "ol/layer/Vector.js";
+import Cluster from "ol/source/Cluster.js";
+import VectorSource3 from "ol/source/Vector.js";
+var ROVER_KEY = "rover";
+var MarkerLayer = class {
+  constructor() {
+    this.source = new VectorSource3({ wrapX: false });
+    this.layer = new VectorLayer2({
+      source: this.source,
+      // Markers are the thing the user came for: keep them above every other
+      // layer regardless of the order layers happen to be added in.
+      zIndex: 10,
+      updateWhileAnimating: true,
+      updateWhileInteracting: true
+    });
+    this.entries = /* @__PURE__ */ new Map();
+    this.clusterSource = null;
+  }
+  /**
+   * Turn grouping on or off.
+   *
+   * Only the layer's source changes. The markers, their styles and the entry map
+   * are untouched, so toggling this mid-session costs nothing and loses nothing.
+   */
+  setClustering(options) {
+    this.releaseClusterSource();
+    if (!options) {
+      this.layer.setSource(this.source);
+      this.layer.setStyle(void 0);
+      return;
+    }
+    this.clusterSource = new Cluster({
+      source: this.source,
+      distance: options.distance ?? 40,
+      minDistance: options.minDistance ?? 20,
+      // Every other source here is built with wrapX: false; Cluster does not
+      // inherit it from the source it wraps, and VectorSource defaults to true —
+      // which would repeat the circles across world copies.
+      wrapX: false
+    });
+    this.layer.setSource(this.clusterSource);
+    this.layer.setStyle((feature) => this.styleForRendered(feature));
+  }
+  get clustering() {
+    return Boolean(this.clusterSource);
+  }
+  /**
+   * Detach a clusterer we are done with.
+   *
+   * `ol/source/Cluster` subscribes to the source it wraps in its constructor, and
+   * dropping the reference does not unsubscribe. Without this, every toggle of
+   * `cluster` leaves another live clusterer re-clustering the whole marker set on
+   * every reconcile, in a source nothing draws — five toggles cost five extra full
+   * passes per update, for the life of the LiveView.
+   */
+  releaseClusterSource() {
+    if (!this.clusterSource) return;
+    this.clusterSource.setSource(null);
+    this.clusterSource = null;
+  }
+  styleForRendered(feature) {
+    const members = feature.get("features");
+    if (!members) return void 0;
+    if (members.length === 1) {
+      const marker = members[0].get(ROVER_KEY);
+      return marker ? styleFor(marker) : void 0;
+    }
+    return clusterStyle(members.length);
+  }
+  /**
+   * The markers behind a rendered feature: one when it is a pin or a lone cluster,
+   * several when it is a group.
+   */
+  membersOf(feature) {
+    if (!feature) return [];
+    const members = feature.get("features");
+    if (!members) {
+      const marker = feature.get(ROVER_KEY);
+      return marker ? [marker] : [];
+    }
+    return members.map((member) => member.get(ROVER_KEY)).filter(Boolean);
+  }
+  reconcile(markers) {
+    const seen = /* @__PURE__ */ new Set();
+    const added = [];
+    const clusterSource = this.clusterSource;
+    if (clusterSource) clusterSource.setSource(null);
+    for (const marker of markers) {
+      const key = String(marker.id);
+      seen.add(key);
+      const geometryHash = `${marker.lat},${marker.lon}`;
+      const appearanceHash = appearanceOf(marker);
+      const entry = this.entries.get(key);
+      if (!entry) {
+        added.push(this.build(key, marker, geometryHash, appearanceHash));
+        continue;
+      }
+      if (entry.geometryHash !== geometryHash) {
+        entry.feature.getGeometry().setCoordinates(project(marker.lat, marker.lon));
+        entry.geometryHash = geometryHash;
+      }
+      if (entry.appearanceHash !== appearanceHash) {
+        entry.feature.setStyle(styleFor(marker));
+        entry.appearanceHash = appearanceHash;
+      }
+      entry.marker = marker;
+      entry.feature.setProperties({ [ROVER_KEY]: marker }, true);
+    }
+    for (const [key, entry] of this.entries) {
+      if (!seen.has(key)) {
+        this.source.removeFeature(entry.feature);
+        this.entries.delete(key);
+      }
+    }
+    if (added.length > 0) this.source.addFeatures(added);
+    if (clusterSource) clusterSource.setSource(this.source);
+  }
+  build(key, marker, geometryHash, appearanceHash) {
+    const feature = new Feature2({ geometry: new Point2(project(marker.lat, marker.lon)) });
+    feature.setId(key);
+    feature.setStyle(styleFor(marker));
+    feature.setProperties({ [ROVER_KEY]: marker }, true);
+    this.entries.set(key, { feature, marker, geometryHash, appearanceHash });
+    return feature;
+  }
+  /**
+   * The single marker a rendered feature stands for, or null.
+   *
+   * A group of twelve is not a marker: it has no id to report and no popup to open,
+   * so callers must handle it as a cluster instead of being handed one arbitrary
+   * member.
+   */
+  markerFor(feature) {
+    const members = this.membersOf(feature);
+    return members.length === 1 ? members[0] : null;
+  }
+  /** The markers of a rendered feature when it is a group of more than one. */
+  clusterFor(feature) {
+    const members = this.membersOf(feature);
+    return members.length > 1 ? members : null;
+  }
+  markerById(id) {
+    const entry = this.entries.get(String(id));
+    return entry && entry.marker;
+  }
+  /**
+   * The feature currently *on screen* for a marker — which is not always the
+   * feature the reconciler built.
+   *
+   * When clustering, a marker is drawn as part of a group whose geometry sits at the
+   * members' centroid. Anchoring a popup to the marker's own coordinate would point
+   * it away from the pin the user clicked. So a marker that has been grouped with
+   * others has no rendered feature of its own, and callers treat that as "nothing to
+   * point at" — which closes the popup.
+   */
+  featureById(id) {
+    const entry = this.entries.get(String(id));
+    if (!entry) return null;
+    if (!this.clusterSource) return entry.feature;
+    return this.clusterSource.getFeatures().find((cluster) => {
+      const members = cluster.get("features");
+      return members && members.length === 1 && members[0] === entry.feature;
+    }) || null;
+  }
+  /**
+   * Drop the cached geometry hash for a feature the client moved on its own.
+   *
+   * After a drag, the geometry no longer matches the coordinates the server
+   * sent. Without this, the next payload carrying those same coordinates hashes
+   * identically and is skipped as "unchanged" — so a rejected drag would stick,
+   * and the marker would stay wherever the user dropped it forever.
+   */
+  forgetGeometry(feature) {
+    const entry = feature && this.entries.get(String(feature.getId()));
+    if (entry) entry.geometryHash = null;
+  }
+  isDraggable(feature) {
+    if (this.clusterSource) return false;
+    const marker = this.markerFor(feature);
+    return Boolean(marker && marker.draggable);
+  }
+  get extent() {
+    return this.entries.size > 0 ? this.source.getExtent() : null;
+  }
+  dispose() {
+    this.releaseClusterSource();
+    this.source.clear();
+    this.entries.clear();
+  }
+};
+function appearanceOf(marker) {
+  return [
+    marker.label || "",
+    marker.color || "",
+    marker.emoji || "",
+    marker.icon || "",
+    marker.scale || "",
+    (marker.anchor || []).join(","),
+    marker.rotation || "",
+    marker.opacity ?? ""
+  ].join("|");
+}
+
+// js/overlays.js
+import LayerGroup3 from "ol/layer/Group.js";
+
+// js/tiles.js
 import LayerGroup2 from "ol/layer/Group.js";
 import TileLayer2 from "ol/layer/Tile.js";
 import XYZ from "ol/source/XYZ.js";
@@ -8048,7 +8380,7 @@ import { WORKER_OFFSCREEN_CANVAS as WORKER_OFFSCREEN_CANVAS2 } from "ol/has.js";
 import LayerGroup from "ol/layer/Group.js";
 import Layer from "ol/layer/Layer.js";
 import TileLayer from "ol/layer/Tile.js";
-import VectorLayer from "ol/layer/Vector.js";
+import VectorLayer3 from "ol/layer/Vector.js";
 import VectorTileLayer from "ol/layer/VectorTile.js";
 import { bbox as bboxStrategy } from "ol/loadingstrategy.js";
 import {
@@ -8060,7 +8392,7 @@ import {
 import { METERS_PER_UNIT } from "ol/proj/Units.js";
 import Source from "ol/source/Source.js";
 import TileJSON from "ol/source/TileJSON.js";
-import VectorSource from "ol/source/Vector.js";
+import VectorSource4 from "ol/source/Vector.js";
 import VectorTileSource, { defaultLoadFunction } from "ol/source/VectorTile.js";
 import { createXYZ } from "ol/tilegrid.js";
 import TileGrid from "ol/tilegrid/TileGrid.js";
@@ -8656,11 +8988,11 @@ import { distance } from "ol/coordinate.js";
 import { getCenter } from "ol/extent.js";
 import { toPromise as toPromise2 } from "ol/functions.js";
 import RenderFeature from "ol/render/Feature.js";
-import Circle2 from "ol/style/Circle.js";
-import Fill2 from "ol/style/Fill.js";
+import Circle3 from "ol/style/Circle.js";
+import Fill3 from "ol/style/Fill.js";
 import Icon2 from "ol/style/Icon.js";
-import Stroke2 from "ol/style/Stroke.js";
-import Style2 from "ol/style/Style.js";
+import Stroke3 from "ol/style/Stroke.js";
+import Style3 from "ol/style/Style.js";
 import Text2 from "ol/style/Text.js";
 
 // node_modules/ol-mapbox-style/src/text.js
@@ -9588,8 +9920,8 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
                 ++stylesLength;
                 style = styles[stylesLength];
                 if (!style || !style.getFill() || style.getStroke() || style.getText()) {
-                  style = new Style2({
-                    fill: new Fill2()
+                  style = new Style3({
+                    fill: new Fill3()
                   });
                   styles[stylesLength] = style;
                 }
@@ -9657,9 +9989,9 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
               ++stylesLength;
               style = styles[stylesLength];
               if (!style || color && !style.getFill() || !color && style.getFill() || strokeColor && !style.getStroke() || !strokeColor && style.getStroke() || style.getText()) {
-                style = new Style2({
-                  fill: color ? new Fill2() : void 0,
-                  stroke: strokeColor ? new Stroke2() : void 0
+                style = new Style3({
+                  fill: color ? new Fill3() : void 0,
+                  stroke: strokeColor ? new Stroke3() : void 0
                 });
                 styles[stylesLength] = style;
               }
@@ -9731,8 +10063,8 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
             ++stylesLength;
             style = styles[stylesLength];
             if (!style || !style.getStroke() || style.getFill() || style.getText()) {
-              style = new Style2({
-                stroke: new Stroke2()
+              style = new Style3({
+                stroke: new Stroke3()
               });
               styles[stylesLength] = style;
             }
@@ -10038,7 +10370,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
                   ++stylesLength;
                   style = styles[stylesLength];
                   if (!style || !style.getImage() || style.getFill() || style.getStroke()) {
-                    style = new Style2();
+                    style = new Style3();
                     styles[stylesLength] = style;
                   }
                   style.setGeometry(styleGeom);
@@ -10091,7 +10423,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
           ++stylesLength;
           style = styles[stylesLength];
           if (!style || !style.getImage() || style.getFill() || style.getStroke()) {
-            style = new Style2();
+            style = new Style3();
             styles[stylesLength] = style;
           }
           const circleRadius = "circle-radius" in paint ? getValue(
@@ -10157,14 +10489,14 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
           const cache_key = circleRadius + "." + circleStrokeColor + "." + circleColor + "." + circleStrokeWidth + "." + circleTranslate[0] + "." + circleTranslate[1];
           iconImg = iconImageCache[cache_key];
           if (!iconImg) {
-            iconImg = new Circle2({
+            iconImg = new Circle3({
               radius: circleRadius,
               displacement: [circleTranslate[0], -circleTranslate[1]],
-              stroke: circleStrokeColor && circleStrokeWidth > 0 ? new Stroke2({
+              stroke: circleStrokeColor && circleStrokeWidth > 0 ? new Stroke3({
                 width: circleStrokeWidth,
                 color: circleStrokeColor
               }) : void 0,
-              fill: circleColor ? new Fill2({
+              fill: circleColor ? new Fill3({
                 color: circleColor
               }) : void 0,
               declutterMode: "none"
@@ -10293,7 +10625,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
             ++stylesLength;
             style = styles[stylesLength];
             if (!style || !style.getText() || style.getFill() || style.getStroke()) {
-              style = new Style2();
+              style = new Style3();
               styles[stylesLength] = style;
             }
             style.setImage(void 0);
@@ -10475,7 +10807,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
           text.setOffsetY(
             textOffset[1] * textSize + vOffset + textTranslate[1]
           );
-          const textFill = text.getFill() || new Fill2();
+          const textFill = text.getFill() || new Fill3();
           textFill.setColor(
             colorWithOpacity(
               getValue(
@@ -10502,7 +10834,7 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
             opacity
           );
           if (haloColor && textHaloWidth > 0) {
-            const textStroke = text.getStroke() || new Stroke2();
+            const textStroke = text.getStroke() || new Stroke3();
             textStroke.setColor(haloColor);
             textHaloWidth *= 2;
             const halfTextSize = 0.5 * textSize;
@@ -10799,7 +11131,7 @@ function applyStyle(layer, glStyle, sourceOrLayersOrOptions = "", optionsOrPath 
       if (glStyle2.version != 8) {
         return reject(new Error("glStyle version 8 required."));
       }
-      if (!(layer instanceof VectorLayer || layer instanceof VectorTileLayer)) {
+      if (!(layer instanceof VectorLayer3 || layer instanceof VectorTileLayer)) {
         return reject(
           new Error("Can only apply to VectorLayer or VectorTileLayer")
         );
@@ -11203,7 +11535,7 @@ function setupGeoJSONSource(glSource, styleUrl, options) {
         const bboxTemplate = getBboxTemplate(projection);
         return geoJsonUrl.replace(bboxTemplate, `${extent.join(",")}`);
       };
-      const source3 = new VectorSource({
+      const source3 = new VectorSource4({
         attributions: glSource.attribution,
         format: geoJsonFormat,
         loader: (extent, resolution, projection, success2, failure) => {
@@ -11225,7 +11557,7 @@ function setupGeoJSONSource(glSource, styleUrl, options) {
       source3.set("mapbox-source", glSource);
       return source3;
     }
-    const source2 = new VectorSource({
+    const source2 = new VectorSource4({
       attributions: glSource.attribution,
       format: geoJsonFormat,
       url: geoJsonUrl,
@@ -11248,7 +11580,7 @@ function setupGeoJSONSource(glSource, styleUrl, options) {
   sourceOptions.features = geoJsonFormat.readFeatures(data, {
     featureProjection: getUserProjection() || "EPSG:3857"
   });
-  const source = new VectorSource(
+  const source = new VectorSource4(
     Object.assign(
       {
         attributions: glSource.attribution,
@@ -11264,7 +11596,7 @@ function setupGeoJSONSource(glSource, styleUrl, options) {
   );
 }
 function setupGeoJSONLayer(glSource, styleUrl, options) {
-  return new VectorLayer({
+  return new VectorLayer3({
     declutter: true,
     source: setupGeoJSONSource(glSource, styleUrl, options),
     visible: false
@@ -11407,7 +11739,7 @@ function processStyle(glStyle, mapOrGroup, styleUrl, options) {
           layerIds = [];
         }
         layer = setupLayer(glStyle, styleUrl, glLayer, options);
-        if (!(layer instanceof VectorLayer || layer instanceof VectorTileLayer)) {
+        if (!(layer instanceof VectorLayer3 || layer instanceof VectorTileLayer)) {
           layerIds = [];
         }
         glSourceId = layer.get("mapbox-source");
@@ -11524,7 +11856,7 @@ function finalizeLayer(layer, layerIds, glStyle, styleUrl, mapOrGroup, options =
           );
         }
       }
-      if (source instanceof VectorSource || source instanceof VectorTileSource) {
+      if (source instanceof VectorSource4 || source instanceof VectorTileSource) {
         applyStyle(
           /** @type {import("ol/layer/Vector.js").default|import("ol/layer/VectorTile.js").default} */
           layer,
@@ -11559,332 +11891,85 @@ import MVT2 from "ol/format/MVT.js";
 import VectorTileLayer2 from "ol/layer/VectorTile.js";
 import VectorTileSource2 from "ol/source/VectorTile.js";
 
-// js/rover_map.js
-import Attribution from "ol/control/Attribution.js";
-import FullScreen from "ol/control/FullScreen.js";
-import Rotate from "ol/control/Rotate.js";
-import ScaleLine from "ol/control/ScaleLine.js";
-import Zoom from "ol/control/Zoom.js";
-import Kinetic from "ol/Kinetic.js";
-import { never } from "ol/events/condition.js";
-import DoubleClickZoom from "ol/interaction/DoubleClickZoom.js";
-import DragPan from "ol/interaction/DragPan.js";
-import DragRotate from "ol/interaction/DragRotate.js";
-import DragZoom from "ol/interaction/DragZoom.js";
-import Draw from "ol/interaction/Draw.js";
-import KeyboardPan from "ol/interaction/KeyboardPan.js";
-import KeyboardZoom from "ol/interaction/KeyboardZoom.js";
-import Modify from "ol/interaction/Modify.js";
-import MouseWheelZoom from "ol/interaction/MouseWheelZoom.js";
-import PinchRotate from "ol/interaction/PinchRotate.js";
-import PinchZoom from "ol/interaction/PinchZoom.js";
-import Snap from "ol/interaction/Snap.js";
-import Translate from "ol/interaction/Translate.js";
-import { createEmpty, extend } from "ol/extent.js";
-
-// js/draw.js
-import VectorLayer2 from "ol/layer/Vector.js";
-import VectorSource2 from "ol/source/Vector.js";
-import Circle3 from "ol/style/Circle.js";
-import Fill3 from "ol/style/Fill.js";
-import Stroke3 from "ol/style/Stroke.js";
-import Style3 from "ol/style/Style.js";
-var PENDING_COLOR = "#2563eb";
-var TYPES = /* @__PURE__ */ new Set(["Point", "LineString", "Polygon"]);
-function drawTypeFor(type) {
-  return TYPES.has(type) ? type : null;
+// js/tiles.js
+function resolveRetina(url) {
+  const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "");
 }
-var DrawLayer = class {
-  constructor() {
-    this.source = new VectorSource2({ wrapX: false });
-    this.layer = new VectorLayer2({
-      source: this.source,
-      // Above the shapes it is about to become one of, below the markers.
-      zIndex: 6,
-      style: pendingStyle()
-    });
-  }
-  clear() {
-    this.source.clear();
-  }
-  dispose() {
-    this.source.clear();
-  }
-};
-function pendingStyle() {
-  return new Style3({
-    stroke: new Stroke3({ color: PENDING_COLOR, width: 2, lineDash: [6, 5] }),
-    fill: new Fill3({ color: [37, 99, 235, 0.08] }),
-    // A drawn Point has no stroke or fill to show.
-    image: new Circle3({
-      radius: 5,
-      fill: new Fill3({ color: PENDING_COLOR }),
-      stroke: new Stroke3({ color: "rgba(255, 255, 255, 0.9)", width: 2 })
+function buildBasemapLayer(tiles) {
+  if (!tiles) return new TileLayer2({ visible: false });
+  if (tiles.type === "vector") return new LayerGroup2();
+  return new TileLayer2({
+    source: new XYZ({
+      url: resolveRetina(tiles.url),
+      attributions: tiles.attributions || void 0,
+      maxZoom: tiles.maxZoom ?? 19,
+      crossOrigin: "anonymous"
     })
   });
 }
+function buildTileLayer(tiles) {
+  const layer = buildBasemapLayer(tiles);
+  if (tiles && tiles.type === "vector") {
+    apply(layer, tiles.styleUrl).then((group) => setVectorAttributions(group, tiles.attributions)).catch((error2) => console.error("[rover] could not load vector basemap style:", error2));
+  }
+  return layer;
+}
+function setVectorAttributions(group, attributions) {
+  group.getLayers().forEach((layer) => {
+    const source = layer.getSource && layer.getSource();
+    if (source && source.setAttributions) source.setAttributions(attributions || void 0);
+  });
+}
 
-// js/heatmap.js
-import Feature from "ol/Feature.js";
-import Point from "ol/geom/Point.js";
-import HeatmapLayerOl from "ol/layer/Heatmap.js";
-import VectorSource3 from "ol/source/Vector.js";
-var HeatmapLayer = class {
+// js/overlays.js
+var OverlayLayers = class {
   constructor() {
-    this.source = new VectorSource3({ wrapX: false });
-    this.layer = new HeatmapLayerOl({
-      source: this.source,
-      // Under the shapes and the markers: a heat field is background, and covering
-      // a parcel outline with it would defeat both.
-      zIndex: 2,
-      weight: (feature) => feature.get("weight")
+    this.layer = new LayerGroup3({ zIndex: 1 });
+    this.entries = [];
+  }
+  /**
+   * Apply a list of overlay configs, touching only what changed.
+   *
+   * A null or empty list is a map with no overlays, which is the common case —
+   * the attribute is absent rather than an empty array, so nothing to do.
+   */
+  reconcile(layers) {
+    const wanted = layers || [];
+    const previous = this.entries;
+    const collection = this.layer.getLayers();
+    this.entries = wanted.map((config, index) => {
+      const key = keyOf(config, index);
+      const existing = previous.find((entry) => entry.key === key);
+      if (existing && sameTiles(existing.tiles, config.tiles)) {
+        applyOptions(existing.layer, config);
+        return { ...existing, tiles: config.tiles };
+      }
+      const layer = buildTileLayer(config.tiles);
+      applyOptions(layer, config);
+      return { key, tiles: config.tiles, layer };
     });
-    this.rev = null;
-    this.count = 0;
-  }
-  // A null payload means the map has no heat field at all — the attribute is absent
-  // rather than an empty object, so that every map without one carries nothing.
-  reconcile(payload) {
-    const { points = [], rev = null, style } = payload || {};
-    this.applyStyle(style);
-    const next = String(rev);
-    if (next === this.rev) return;
-    this.rev = next;
-    this.source.clear();
-    this.count = points.length;
-    if (points.length > 0) {
-      this.source.addFeatures(
-        points.map((point) => {
-          const feature = new Feature({ geometry: new Point(project(point.lat, point.lon)) });
-          feature.set("weight", point.weight ?? 1, true);
-          return feature;
-        })
-      );
-    }
-  }
-  applyStyle(style) {
-    if (!style) return;
-    if (typeof style.radius === "number") this.layer.setRadius(style.radius);
-    if (typeof style.blur === "number") this.layer.setBlur(style.blur);
-    if (typeof style.opacity === "number") this.layer.setOpacity(style.opacity);
-    if (Array.isArray(style.gradient) && style.gradient.length > 1) {
-      this.layer.setGradient(style.gradient);
-    }
-  }
-  get extent() {
-    return this.count > 0 ? this.source.getExtent() : null;
+    previous.filter((entry) => !this.entries.some((kept) => kept.layer === entry.layer)).forEach((entry) => entry.layer.dispose());
+    collection.clear();
+    this.entries.forEach((entry) => collection.push(entry.layer));
   }
   dispose() {
-    this.source.clear();
-    this.count = 0;
-    this.rev = null;
+    this.entries.forEach((entry) => entry.layer.dispose());
+    this.entries = [];
+    this.layer.getLayers().clear();
   }
 };
-
-// js/markers.js
-import Feature2 from "ol/Feature.js";
-import Point2 from "ol/geom/Point.js";
-import VectorLayer3 from "ol/layer/Vector.js";
-import Cluster from "ol/source/Cluster.js";
-import VectorSource4 from "ol/source/Vector.js";
-var ROVER_KEY = "rover";
-var MarkerLayer = class {
-  constructor() {
-    this.source = new VectorSource4({ wrapX: false });
-    this.layer = new VectorLayer3({
-      source: this.source,
-      // Markers are the thing the user came for: keep them above every other
-      // layer regardless of the order layers happen to be added in.
-      zIndex: 10,
-      updateWhileAnimating: true,
-      updateWhileInteracting: true
-    });
-    this.entries = /* @__PURE__ */ new Map();
-    this.clusterSource = null;
-  }
-  /**
-   * Turn grouping on or off.
-   *
-   * Only the layer's source changes. The markers, their styles and the entry map
-   * are untouched, so toggling this mid-session costs nothing and loses nothing.
-   */
-  setClustering(options) {
-    this.releaseClusterSource();
-    if (!options) {
-      this.layer.setSource(this.source);
-      this.layer.setStyle(void 0);
-      return;
-    }
-    this.clusterSource = new Cluster({
-      source: this.source,
-      distance: options.distance ?? 40,
-      minDistance: options.minDistance ?? 20,
-      // Every other source here is built with wrapX: false; Cluster does not
-      // inherit it from the source it wraps, and VectorSource defaults to true —
-      // which would repeat the circles across world copies.
-      wrapX: false
-    });
-    this.layer.setSource(this.clusterSource);
-    this.layer.setStyle((feature) => this.styleForRendered(feature));
-  }
-  get clustering() {
-    return Boolean(this.clusterSource);
-  }
-  /**
-   * Detach a clusterer we are done with.
-   *
-   * `ol/source/Cluster` subscribes to the source it wraps in its constructor, and
-   * dropping the reference does not unsubscribe. Without this, every toggle of
-   * `cluster` leaves another live clusterer re-clustering the whole marker set on
-   * every reconcile, in a source nothing draws — five toggles cost five extra full
-   * passes per update, for the life of the LiveView.
-   */
-  releaseClusterSource() {
-    if (!this.clusterSource) return;
-    this.clusterSource.setSource(null);
-    this.clusterSource = null;
-  }
-  styleForRendered(feature) {
-    const members = feature.get("features");
-    if (!members) return void 0;
-    if (members.length === 1) {
-      const marker = members[0].get(ROVER_KEY);
-      return marker ? styleFor(marker) : void 0;
-    }
-    return clusterStyle(members.length);
-  }
-  /**
-   * The markers behind a rendered feature: one when it is a pin or a lone cluster,
-   * several when it is a group.
-   */
-  membersOf(feature) {
-    if (!feature) return [];
-    const members = feature.get("features");
-    if (!members) {
-      const marker = feature.get(ROVER_KEY);
-      return marker ? [marker] : [];
-    }
-    return members.map((member) => member.get(ROVER_KEY)).filter(Boolean);
-  }
-  reconcile(markers) {
-    const seen = /* @__PURE__ */ new Set();
-    const added = [];
-    const clusterSource = this.clusterSource;
-    if (clusterSource) clusterSource.setSource(null);
-    for (const marker of markers) {
-      const key = String(marker.id);
-      seen.add(key);
-      const geometryHash = `${marker.lat},${marker.lon}`;
-      const appearanceHash = appearanceOf(marker);
-      const entry = this.entries.get(key);
-      if (!entry) {
-        added.push(this.build(key, marker, geometryHash, appearanceHash));
-        continue;
-      }
-      if (entry.geometryHash !== geometryHash) {
-        entry.feature.getGeometry().setCoordinates(project(marker.lat, marker.lon));
-        entry.geometryHash = geometryHash;
-      }
-      if (entry.appearanceHash !== appearanceHash) {
-        entry.feature.setStyle(styleFor(marker));
-        entry.appearanceHash = appearanceHash;
-      }
-      entry.marker = marker;
-      entry.feature.setProperties({ [ROVER_KEY]: marker }, true);
-    }
-    for (const [key, entry] of this.entries) {
-      if (!seen.has(key)) {
-        this.source.removeFeature(entry.feature);
-        this.entries.delete(key);
-      }
-    }
-    if (added.length > 0) this.source.addFeatures(added);
-    if (clusterSource) clusterSource.setSource(this.source);
-  }
-  build(key, marker, geometryHash, appearanceHash) {
-    const feature = new Feature2({ geometry: new Point2(project(marker.lat, marker.lon)) });
-    feature.setId(key);
-    feature.setStyle(styleFor(marker));
-    feature.setProperties({ [ROVER_KEY]: marker }, true);
-    this.entries.set(key, { feature, marker, geometryHash, appearanceHash });
-    return feature;
-  }
-  /**
-   * The single marker a rendered feature stands for, or null.
-   *
-   * A group of twelve is not a marker: it has no id to report and no popup to open,
-   * so callers must handle it as a cluster instead of being handed one arbitrary
-   * member.
-   */
-  markerFor(feature) {
-    const members = this.membersOf(feature);
-    return members.length === 1 ? members[0] : null;
-  }
-  /** The markers of a rendered feature when it is a group of more than one. */
-  clusterFor(feature) {
-    const members = this.membersOf(feature);
-    return members.length > 1 ? members : null;
-  }
-  markerById(id) {
-    const entry = this.entries.get(String(id));
-    return entry && entry.marker;
-  }
-  /**
-   * The feature currently *on screen* for a marker — which is not always the
-   * feature the reconciler built.
-   *
-   * When clustering, a marker is drawn as part of a group whose geometry sits at the
-   * members' centroid. Anchoring a popup to the marker's own coordinate would point
-   * it away from the pin the user clicked. So a marker that has been grouped with
-   * others has no rendered feature of its own, and callers treat that as "nothing to
-   * point at" — which closes the popup.
-   */
-  featureById(id) {
-    const entry = this.entries.get(String(id));
-    if (!entry) return null;
-    if (!this.clusterSource) return entry.feature;
-    return this.clusterSource.getFeatures().find((cluster) => {
-      const members = cluster.get("features");
-      return members && members.length === 1 && members[0] === entry.feature;
-    }) || null;
-  }
-  /**
-   * Drop the cached geometry hash for a feature the client moved on its own.
-   *
-   * After a drag, the geometry no longer matches the coordinates the server
-   * sent. Without this, the next payload carrying those same coordinates hashes
-   * identically and is skipped as "unchanged" — so a rejected drag would stick,
-   * and the marker would stay wherever the user dropped it forever.
-   */
-  forgetGeometry(feature) {
-    const entry = feature && this.entries.get(String(feature.getId()));
-    if (entry) entry.geometryHash = null;
-  }
-  isDraggable(feature) {
-    if (this.clusterSource) return false;
-    const marker = this.markerFor(feature);
-    return Boolean(marker && marker.draggable);
-  }
-  get extent() {
-    return this.entries.size > 0 ? this.source.getExtent() : null;
-  }
-  dispose() {
-    this.releaseClusterSource();
-    this.source.clear();
-    this.entries.clear();
-  }
-};
-function appearanceOf(marker) {
-  return [
-    marker.label || "",
-    marker.color || "",
-    marker.emoji || "",
-    marker.icon || "",
-    marker.scale || "",
-    (marker.anchor || []).join(","),
-    marker.rotation || "",
-    marker.opacity ?? ""
-  ].join("|");
+function keyOf(config, index) {
+  return config.id != null ? `id:${config.id}` : `at:${index}`;
+}
+function sameTiles(previous, next) {
+  return JSON.stringify(previous) === JSON.stringify(next);
+}
+function applyOptions(layer, config) {
+  layer.setOpacity(config.opacity ?? 1);
+  layer.setVisible(config.visible !== false);
+  layer.setMinZoom(config.minZoom ?? -Infinity);
+  layer.setMaxZoom(config.maxZoom ?? Infinity);
 }
 
 // js/shapes.js
@@ -12113,9 +12198,10 @@ var RoverMap = class {
     this.drawing = null;
     this.markerLayer = new MarkerLayer();
     this.shapeLayer = new ShapeLayer();
+    this.overlayLayers = new OverlayLayers();
     this.drawLayer = new DrawLayer();
     this.heatmapLayer = new HeatmapLayer();
-    this.basemapLayer = new TileLayer2({ zIndex: 0, visible: false });
+    this.basemapLayer = new TileLayer3({ zIndex: 0, visible: false });
     this.map = new Map4({
       target: element,
       // OpenLayers listens for keys on this element, and by default that is the
@@ -12126,6 +12212,7 @@ var RoverMap = class {
       keyboardEventTarget: element,
       layers: [
         this.basemapLayer,
+        this.overlayLayers.layer,
         this.heatmapLayer.layer,
         this.shapeLayer.layer,
         this.drawLayer.layer,
@@ -12142,6 +12229,7 @@ var RoverMap = class {
       })
     });
     this.applyTiles(this.config.tiles);
+    this.overlayLayers.reconcile(this.config.layers);
     this.markerLayer.setClustering(this.config.cluster);
     this.applyAccessibility(this.config);
     this.setupTooltip();
@@ -12203,6 +12291,7 @@ var RoverMap = class {
     this.config = next;
     if (shouldRecenter(previous, next)) this.animateTo(next.center, next.zoom);
     if (changed(previous.tiles, next.tiles)) this.applyTiles(next.tiles);
+    if (changed(previous.layers, next.layers)) this.overlayLayers.reconcile(next.layers);
     if (changed(previous.controls, next.controls) || previous.interactive !== next.interactive) {
       this.applyControls(next);
     }
@@ -12296,16 +12385,13 @@ var RoverMap = class {
    * tile by tile as they arrive.
    */
   applyTiles(tiles) {
-    const next = buildBasemapLayer(tiles);
+    const next = buildTileLayer(tiles);
     next.setZIndex(0);
     const layers = this.map.getLayers();
     layers.remove(this.basemapLayer);
     this.basemapLayer.dispose();
     layers.insertAt(0, next);
     this.basemapLayer = next;
-    if (tiles && tiles.type === "vector") {
-      apply(next, tiles.styleUrl).then((group) => setVectorAttributions(group, tiles.attributions)).catch((error2) => console.error("[rover] could not load vector basemap style:", error2));
-    }
   }
   applyControls(config) {
     const controls = this.map.getControls();
@@ -12674,6 +12760,7 @@ var RoverMap = class {
     if (this.resizeObserver) this.resizeObserver.disconnect();
     this.stopDrawing();
     this.markerLayer.dispose();
+    this.overlayLayers.dispose();
     this.drawLayer.dispose();
     this.shapeLayer.dispose();
     this.heatmapLayer.dispose();
@@ -12724,28 +12811,6 @@ function gesturesFor(config) {
 }
 function buildInteractions(config) {
   return gesturesFor(config).map((name) => GESTURE_BUILDERS[name]());
-}
-function resolveRetina(url) {
-  const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-  return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "");
-}
-function buildBasemapLayer(tiles) {
-  if (!tiles) return new TileLayer2({ visible: false });
-  if (tiles.type === "vector") return new LayerGroup2();
-  return new TileLayer2({
-    source: new XYZ({
-      url: resolveRetina(tiles.url),
-      attributions: tiles.attributions || void 0,
-      maxZoom: tiles.maxZoom ?? 19,
-      crossOrigin: "anonymous"
-    })
-  });
-}
-function setVectorAttributions(group, attributions) {
-  group.getLayers().forEach((layer) => {
-    const source = layer.getSource && layer.getSource();
-    if (source && source.setAttributions) source.setAttributions(attributions || void 0);
-  });
 }
 function wantsEvent(config, listeners, name) {
   const subscribers = (listeners || {})[name];

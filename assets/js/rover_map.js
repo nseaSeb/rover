@@ -1,10 +1,7 @@
 import Map from "ol/Map.js"
 import View from "ol/View.js"
 import Overlay from "ol/Overlay.js"
-import LayerGroup from "ol/layer/Group.js"
 import TileLayer from "ol/layer/Tile.js"
-import XYZ from "ol/source/XYZ.js"
-import { apply as applyVectorStyle } from "ol-mapbox-style"
 import Attribution from "ol/control/Attribution.js"
 import FullScreen from "ol/control/FullScreen.js"
 import Rotate from "ol/control/Rotate.js"
@@ -31,7 +28,13 @@ import { extentToBbox, project, unproject } from "./coords.js"
 import { DrawLayer, drawTypeFor } from "./draw.js"
 import { HeatmapLayer } from "./heatmap.js"
 import { MarkerLayer } from "./markers.js"
+import { OverlayLayers } from "./overlays.js"
 import { ShapeLayer, format as geoJsonFormat } from "./shapes.js"
+import { buildBasemapLayer, buildTileLayer } from "./tiles.js"
+
+// Re-exported where it has always lived, so a caller reaching for it — and the
+// unit suite that does — is not moved by an internal reshuffle.
+export { buildBasemapLayer }
 
 const HIT_TOLERANCE = 6
 const ANIMATION_MS = 350
@@ -70,6 +73,7 @@ export class RoverMap {
 
     this.markerLayer = new MarkerLayer()
     this.shapeLayer = new ShapeLayer()
+    this.overlayLayers = new OverlayLayers()
     this.drawLayer = new DrawLayer()
     this.heatmapLayer = new HeatmapLayer()
     // A placeholder occupying slot 0 until the first applyTiles() call below
@@ -89,6 +93,7 @@ export class RoverMap {
       keyboardEventTarget: element,
       layers: [
         this.basemapLayer,
+        this.overlayLayers.layer,
         this.heatmapLayer.layer,
         this.shapeLayer.layer,
         this.drawLayer.layer,
@@ -106,6 +111,7 @@ export class RoverMap {
     })
 
     this.applyTiles(this.config.tiles)
+    this.overlayLayers.reconcile(this.config.layers)
     this.markerLayer.setClustering(this.config.cluster)
     this.applyAccessibility(this.config)
 
@@ -181,6 +187,8 @@ export class RoverMap {
     if (shouldRecenter(previous, next)) this.animateTo(next.center, next.zoom)
 
     if (changed(previous.tiles, next.tiles)) this.applyTiles(next.tiles)
+
+    if (changed(previous.layers, next.layers)) this.overlayLayers.reconcile(next.layers)
 
     // Controls and interactions were built once at mount. A map that locks
     // itself while a form is saving, or that turns on the scale line, needs them
@@ -303,7 +311,7 @@ export class RoverMap {
    * tile by tile as they arrive.
    */
   applyTiles(tiles) {
-    const next = buildBasemapLayer(tiles)
+    const next = buildTileLayer(tiles)
     next.setZIndex(0)
 
     const layers = this.map.getLayers()
@@ -311,12 +319,6 @@ export class RoverMap {
     this.basemapLayer.dispose()
     layers.insertAt(0, next)
     this.basemapLayer = next
-
-    if (tiles && tiles.type === "vector") {
-      applyVectorStyle(next, tiles.styleUrl)
-        .then((group) => setVectorAttributions(group, tiles.attributions))
-        .catch((error) => console.error("[rover] could not load vector basemap style:", error))
-    }
   }
 
   applyControls(config) {
@@ -856,6 +858,7 @@ export class RoverMap {
     if (this.resizeObserver) this.resizeObserver.disconnect()
     this.stopDrawing()
     this.markerLayer.dispose()
+    this.overlayLayers.dispose()
     this.drawLayer.dispose()
     this.shapeLayer.dispose()
     this.heatmapLayer.dispose()
@@ -948,46 +951,6 @@ export function gesturesFor(config) {
 
 export function buildInteractions(config) {
   return gesturesFor(config).map((name) => GESTURE_BUILDERS[name]())
-}
-
-// Carto and friends use Leaflet's `{r}` placeholder for retina tiles, which
-// OpenLayers does not know about. Resolve it once, here, rather than making
-// every caller strip it out of their URL.
-function resolveRetina(url) {
-  const ratio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1
-  return url.replace(/\{r\}/g, ratio > 1.5 ? "@2x" : "")
-}
-
-/**
- * What `applyTiles` builds for a given resolved tiles config — an `ol/layer/Tile`
- * for raster, an empty `ol/layer/Group` for `ol-mapbox-style` to populate, or an
- * invisible placeholder for no basemap at all. Exported so the construction
- * logic is testable without a browser: which layer class gets built, and how, is
- * plain data in, OL instance out — no canvas involved.
- */
-export function buildBasemapLayer(tiles) {
-  if (!tiles) return new TileLayer({ visible: false })
-
-  if (tiles.type === "vector") return new LayerGroup()
-
-  return new TileLayer({
-    source: new XYZ({
-      url: resolveRetina(tiles.url),
-      attributions: tiles.attributions || undefined,
-      maxZoom: tiles.maxZoom ?? 19,
-      crossOrigin: "anonymous",
-    }),
-  })
-}
-
-// Attribution stays Rover's to own, not the style document's — the same
-// licence-compliance posture the raster path already takes, where Rover sets
-// the attribution string rather than trusting whatever a tile server declares.
-function setVectorAttributions(group, attributions) {
-  group.getLayers().forEach((layer) => {
-    const source = layer.getSource && layer.getSource()
-    if (source && source.setAttributions) source.setAttributions(attributions || undefined)
-  })
 }
 
 /**

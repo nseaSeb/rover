@@ -540,6 +540,41 @@ Carto also says the raster (PNG) service is being retired in favour of vector
 tiles, and that they are considering freezing its data updates. No date is
 published — prefer a `carto_*_vector` preset for anything new.
 
+### Layers over the basemap
+
+One basemap is often not the picture: a cadastral overlay wants the plan under
+it, orthophotography wants roads and labels over it. `layers` stacks tile
+layers between the basemap and everything else:
+
+```heex
+<.map
+  id="parcels"
+  tiles={:ign_plan}
+  layers={[
+    {:tiles, {:xyz, @cadastre_url, attributions: "© DGFiP"}, opacity: 0.6, min_zoom: 12},
+    {:tiles, :ign_ortho, visible: @ortho?, id: "ortho"}
+  ]}
+/>
+```
+
+Each entry is `{:tiles, spec}` or `{:tiles, spec, opts}`, where `spec` is
+anything the `tiles` attribute itself accepts — a preset, `{:xyz, url}`, or a
+vector style. Options: `:opacity`, `:visible`, `:min_zoom`, `:max_zoom`, `:id`.
+
+They are drawn in list order, all of them beneath the heatmap, the shapes and
+the markers. That is the point rather than a limitation: a layer here is part
+of the backdrop you are assembling, and putting tiles over your own data would
+hide it.
+
+Layers are reconciled like everything else. Changing an opacity or hiding a
+layer keeps the tiles the browser already fetched; only a layer whose `spec`
+actually changed is rebuilt. Give a layer an `:id` and it survives a change of
+position in the list — without one, its position *is* its identity, because two
+entries of the same tiles are otherwise indistinguishable.
+
+Every layer's attribution is collected alongside the basemap's, which is why
+the attribution control is rendered whenever a map has any layer at all.
+
 ## What "only update what changed" actually means
 
 The map is rendered as three attributes: `data-rover` (the view),

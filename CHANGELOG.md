@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`layers`**: tile layers drawn over the basemap and under everything else —
+  a cadastral overlay on a plan, orthophotography under the roads and labels of
+  a map. Each entry is `{:tiles, spec}` or `{:tiles, spec, opts}`, where `spec`
+  is anything `tiles` itself accepts, presets and vector styles included, with
+  `:opacity`, `:visible`, `:min_zoom`, `:max_zoom` and `:id`.
+
+  Reconciled the way markers and shapes are: changing an opacity or hiding a
+  layer keeps every tile the browser has already fetched, and only a layer
+  whose spec changed is rebuilt. `:id` is what carries a layer across a change
+  of position in the list; without one, position is the identity, since two
+  entries of the same tiles are otherwise indistinguishable.
+
+  Deliberately beneath the heatmap, the shapes and the markers, and in list
+  order. A layer here is part of the backdrop being assembled — tiles drawn
+  over the caller's own data would hide it — and that keeps one z-index for the
+  whole stack rather than a per-layer ordering to reason about.
+
+  They live in a single `ol/layer/Group` rather than N layers in the map's own
+  collection, so adding one is ordinary work on that group instead of more
+  surgery on the array the basemap swap already reaches into. The construction
+  a basemap and an overlay share — including the vector path, which is a group
+  `ol-mapbox-style` populates rather than a source that can be set — moved into
+  `assets/js/tiles.js`, so there is one place for the licence handling to live.
+
+### Changed
+
+- **The attribution control is rendered for a map with layers but no basemap.**
+  `tiles={:none}` was the one case that dropped it; a map that draws no basemap
+  and two overlays still renders somebody's tiles.
+
 ## [0.7.0] - 2026-09-07
 
 ### Added
