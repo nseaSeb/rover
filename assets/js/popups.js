@@ -196,10 +196,29 @@ export class Popups {
 
     // getAnchor() is in image pixels and does not apply the scale.
     const scale = image.getScaleArray()[1]
+    // How far each corner of the image falls above and below the coordinate,
+    // once OpenLayers has rotated it about the anchor. Rotation cannot be
+    // ignored here: a `:rotation` of 180 on an icon anchored at its top draws
+    // the whole image *below* the coordinate, and an offset read off the
+    // upright image would float the popup an icon-height above empty map.
+    const [x, y] = anchor
+    const [width, height] = size
+    const rotation = image.getRotation()
+    const sin = Math.sin(rotation)
+    const cos = Math.cos(rotation)
+
+    // Screen y grows downwards and OpenLayers turns the image clockwise, which
+    // is what makes this the plain rotation of each corner about the anchor.
+    const offsets = [
+      [-x, -y],
+      [width - x, -y],
+      [width - x, height - y],
+      [-x, height - y],
+    ].map(([cornerX, cornerY]) => cornerX * sin + cornerY * cos)
 
     return {
-      above: anchor[1] * scale + GAP_PX,
-      below: (size[1] - anchor[1]) * scale + GAP_PX,
+      above: -Math.min(...offsets) * scale + GAP_PX,
+      below: Math.max(...offsets) * scale + GAP_PX,
     }
   }
 

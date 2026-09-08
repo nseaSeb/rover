@@ -1381,6 +1381,32 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("a popup follows an icon its rotation has moved", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    // The same 80px icon anchored at its top, turned by half a turn: OpenLayers
+    // rotates about the anchor, so the whole image now hangs *above* the
+    // coordinate rather than below it, and the popup has to clear all 80px of
+    // it. An offset read off the upright image sees an anchor at the top, keeps
+    // the 8px gap it would need for an icon hanging downwards, and lands the
+    // popup on top of the image.
+    await page.goto("/?icon=tall_flipped")
+    await mapReady(page)
+
+    const pixel = await markerPixel(page, 1)
+    await page.locator(CANVAS).click({ position: pixel })
+
+    const popup = page.locator(`${MAP} [data-rover-popup-for="marker:1"]`)
+    await expect(popup).toBeVisible()
+
+    await expect
+      .poll(() => popup.evaluate((node) => parseFloat(node.style.top)))
+      .toBeCloseTo(pixel.y - 88, 0)
+
+    expect(problems).toEqual([])
+  })
+
   test("without :mouse_wheel_zoom the wheel leaves the zoom alone", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)
@@ -1469,6 +1495,26 @@ test.describe("the playground", () => {
       }, MAP)
 
     await expect.poll(paintsItsPalette, { message: "the zoom buttons ignore --rover-control-bg" }).toBe(true)
+
+    // And an application's own override beats every one of the four states. The
+    // README promises exactly this, and it turns on the theme rules weighing one
+    // class: `:not()` takes its argument's specificity, so the dark media block
+    // used to weigh two and silently won on a dark OS.
+    await page.addStyleTag({ content: ".rover-map { --rover-control-bg: #ff00ff; }" })
+
+    for (const [scheme, theme] of [
+      ["light", null],
+      ["light", "dark"],
+      ["dark", null],
+      ["dark", "light"],
+    ]) {
+      await page.emulateMedia({ colorScheme: scheme })
+      await setTheme(theme)
+
+      await expect
+        .poll(palette, { message: `the override lost on a ${scheme} OS with data-theme=${theme}` })
+        .toBe("#ff00ff")
+    }
 
     expect(problems).toEqual([])
   })

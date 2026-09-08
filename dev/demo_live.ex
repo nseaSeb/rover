@@ -87,7 +87,9 @@ defmodule RoverDev.DemoLive do
   # `?icon=tall` gives the first client an 80px icon anchored at its *top*, so the
   # coordinate is where the image starts rather than where it ends. The browser
   # suite needs it: a popup offset that assumed the built-in 36px pin lands 36px
-  # too high on this one.
+  # too high on this one. `?icon=tall_flipped` turns that icon by half a turn,
+  # which puts the whole image on the other side of the coordinate — an offset
+  # that ignores `:rotation` then points at empty map.
   #
   # `?interactions=no_wheel` renders the main map without `:mouse_wheel_zoom`,
   # which is what a map in the flow of a page wants and what the browser suite
@@ -101,7 +103,11 @@ defmodule RoverDev.DemoLive do
        interactions: interactions(params["interactions"])
      )
      |> then(fn socket ->
-       if params["icon"] == "tall", do: assign(socket, clients: tall_icon(socket)), else: socket
+       case params["icon"] do
+         "tall" -> assign(socket, clients: tall_icon(socket, 0))
+         "tall_flipped" -> assign(socket, clients: tall_icon(socket, 180))
+         _ -> socket
+       end
      end)}
   end
 
@@ -113,10 +119,12 @@ defmodule RoverDev.DemoLive do
                  &URI.char_unreserved?/1
                )
 
-  defp tall_icon(socket) do
+  defp tall_icon(socket, rotation) do
     [first | rest] = socket.assigns.clients
 
-    [first |> Map.delete(:emoji) |> Map.merge(%{icon: @tall_icon, anchor: [0.5, 0]}) | rest]
+    icon = %{icon: @tall_icon, anchor: [0.5, 0], rotation: rotation}
+
+    [first |> Map.delete(:emoji) |> Map.merge(icon) | rest]
   end
 
   @all_interactions [

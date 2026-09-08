@@ -241,9 +241,20 @@ var Popups = class {
     const size = image && image.getSize();
     if (!anchor2 || !size) return PIN_FALLBACK;
     const scale = image.getScaleArray()[1];
+    const [x, y] = anchor2;
+    const [width, height] = size;
+    const rotation = image.getRotation();
+    const sin = Math.sin(rotation);
+    const cos = Math.cos(rotation);
+    const offsets = [
+      [-x, -y],
+      [width - x, -y],
+      [width - x, height - y],
+      [-x, height - y]
+    ].map(([cornerX, cornerY]) => cornerX * sin + cornerY * cos);
     return {
-      above: anchor2[1] * scale + GAP_PX,
-      below: (size[1] - anchor2[1]) * scale + GAP_PX
+      above: -Math.min(...offsets) * scale + GAP_PX,
+      below: Math.max(...offsets) * scale + GAP_PX
     };
   }
   /**

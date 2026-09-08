@@ -327,7 +327,7 @@
   --rover-tail-shadow: rgb(0 0 0 / 0.08);
 }
 @media (prefers-color-scheme: dark) {
-  .rover-map:not(:where([data-theme=light], .light) .rover-map) {
+  .rover-map:where(:not(:where([data-theme=light], .light) .rover-map)) {
     --rover-bg: #1f2430;
     --rover-control-bg: #262b36;
     --rover-control-fg: #e5e7eb;
