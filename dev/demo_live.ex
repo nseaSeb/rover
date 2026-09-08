@@ -92,6 +92,10 @@ defmodule RoverDev.DemoLive do
   # which puts the whole image on the other side of the coordinate — an offset
   # that ignores `:rotation` then points at empty map.
   #
+  # `?declutter=1` turns label decluttering on, which the browser suite needs to
+  # check what it costs: every pin, group and point must still be drawn, and
+  # still be clickable, when only their labels are being hidden.
+  #
   # `?tiles=wmts` swaps the basemap for a real `{:wmts, ...}` source, read out of
   # the Géoportail's own capabilities document rather than assumed. The browser
   # suite stubs that document with a faithful miniature of it.
@@ -105,6 +109,7 @@ defmodule RoverDev.DemoLive do
      assign(socket,
        shapes: shapes(shape_mode(params)),
        wmts: params["tiles"] == "wmts",
+       declutter: params["declutter"] == "1",
        scenery: params["scenery"] == "1",
        interactions: interactions(params["interactions"])
      )
@@ -199,6 +204,7 @@ defmodule RoverDev.DemoLive do
       heatmap={if @heat, do: heat_points(), else: []}
       heatmap_style={[radius: @heat_radius, blur: 22, opacity: 0.85]}
       tiles={basemap(@wmts, @tiles)}
+      declutter={@declutter}
       layers={overlay_layers(@overlay)}
       height="28rem"
       controls={[:zoom, :attribution, :scale_line]}

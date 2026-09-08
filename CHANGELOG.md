@@ -32,6 +32,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `ol-mapbox-style` populates rather than a source that can be set — moved into
   `assets/js/tiles.js`, so there is one place for the licence handling to live.
 
+- **`declutter`**: hides labels that would overlap instead of drawing them over
+  one another. Markers and shapes share one declutter group, because two layers
+  decluttering separately resolve only their own collisions and a shape's label
+  would still be drawn across a marker's.
+
+  Every marker image is an obstacle rather than a candidate — pins, icons,
+  emoji, and a cluster circle with its count. OpenLayers declutters images as
+  readily as text, so without that a dense map loses whole markers to make room
+  for labels, which is backwards: measured on the playground's crowd, 842 of
+  240 markers' hit areas vanished before the images were marked. Hit-testing,
+  popups and the keyboard index are unaffected either way.
+
+  Off by default: a label that loses a collision is not drawn at all, so on a
+  dense map labels appear and disappear as the view moves. Clustering remains
+  the better answer to the same problem.
+
 - **`{:wmts, capabilities_url, layer: "..."}`**: a real `ol/source/WMTS`, for a
   service whose tile grid is its own rather than the Web Mercator one every
   other basemap here shares. Rover fetches the capabilities document, reads the

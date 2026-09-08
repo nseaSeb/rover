@@ -1429,6 +1429,82 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("decluttering hides labels without hiding what they label", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    // What decluttering costs is the question. OpenLayers declutters images as
+    // readily as text, so the pins, the cluster circles and a point shape's dot
+    // are all marked as obstacles rather than candidates — and this checks that
+    // every one of them is still drawn, still hit-testable, and still reachable
+    // by id, which is what the popups and the keyboard index need.
+    const survey = () =>
+      page.evaluate((sel) => {
+        const rover = document.querySelector(sel)._rover
+        const [width, height] = rover.map.getSize()
+        const hits = { marker: 0, cluster: 0, shape: 0 }
+
+        for (let x = 4; x < width - 4; x += 4) {
+          for (let y = 4; y < height - 4; y += 4) {
+            const at = rover.featureAt([x, y])
+            if (at.marker) hits.marker++
+            if (at.cluster) hits.cluster++
+            if (at.shape) hits.shape++
+          }
+        }
+
+        return {
+          hits,
+          reachable: [1, 2, 3].every((id) => Boolean(rover.markerLayer.featureById(id))),
+          // One group for both, or each layer declutters against itself and two
+          // labels that collide across layers are both drawn anyway.
+          group: rover.markerLayer.layer.getDeclutter(),
+          sharedGroup: rover.markerLayer.layer.getDeclutter() === rover.shapeLayer.layer.getDeclutter(),
+        }
+      }, MAP)
+
+    // The crowd, because three well-spaced markers collide with nothing and a
+    // declutter pass over them hides nothing either way. Two hundred and forty
+    // in the same frame is where an image treated as a label disappears.
+    const crowded = async (url) => {
+      await page.goto(url)
+      await mapReady(page)
+      await page.getByRole("button", { name: "Crowd: off" }).click()
+      await expect(page.locator(".log")).toContainText("crowd on")
+
+      return survey()
+    }
+
+    const plain = await crowded("/?shapes=parcel")
+    const decluttered = await crowded("/?shapes=parcel&declutter=1")
+
+    expect(decluttered.group).toBe("rover")
+    expect(decluttered.sharedGroup).toBe(true)
+    expect(decluttered.reachable).toBe(true)
+    expect(decluttered.hits).toEqual(plain.hits)
+
+    // The pin is still painted where the marker is, not merely hit-testable.
+    const pixel = await markerPixel(page, 1)
+    expect(await canvasHasPaintedPixelAt(page, MAP, pixel)).toBe(true)
+
+    // And a group of markers still drills in: the circle and its count are
+    // obstacles, so decluttering never takes a dozen markers off the map at once.
+    await page.getByRole("button", { name: /^Cluster:/ }).click()
+
+    const group = await clusterPixel(page, MAP)
+    const before = await page.evaluate(
+      (sel) => document.querySelector(sel)._rover.map.getView().getZoom(),
+      MAP
+    )
+
+    await page.locator(CANVAS).click({ position: group })
+    await expect
+      .poll(() => page.evaluate((sel) => document.querySelector(sel)._rover.map.getView().getZoom(), MAP))
+      .toBeGreaterThan(before)
+
+    expect(problems).toEqual([])
+  })
+
   test("reads a WMTS grid out of the capabilities document", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)

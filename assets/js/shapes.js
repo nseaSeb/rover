@@ -230,6 +230,9 @@ function buildStyle(shape) {
       radius: POINT_RADIUS,
       fill: new Fill({ color }),
       stroke: new Stroke({ color: "rgba(255, 255, 255, 0.9)", width: Math.min(width, 3) }),
+      // The geometry itself, not a label about it — never hidden to make room
+      // for text. Only read when the layer declutters.
+      declutterMode: "obstacle",
     }),
   })
 
