@@ -40,9 +40,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Every marker image is an obstacle rather than a candidate — pins, icons,
   emoji, and a cluster circle with its count. OpenLayers declutters images as
   readily as text, so without that a dense map loses whole markers to make room
-  for labels, which is backwards: measured on the playground's crowd, 842 of
-  240 markers' hit areas vanished before the images were marked. Hit-testing,
-  popups and the keyboard index are unaffected either way.
+  for labels, which is backwards: sampling the playground's 240-marker crowd on
+  a four-pixel grid, 16 500 of those sample points land on a marker with the
+  images marked and 15 658 without — five percent of the map's markers simply
+  gone. Hit-testing, popups and the keyboard index are unaffected either way.
 
   Off by default: a label that loses a collision is not drawn at all, so on a
   dense map labels appear and disappear as the view moves. Clustering remains

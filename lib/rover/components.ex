@@ -676,7 +676,28 @@ defmodule Rover.Components do
   defp encode_layers([]), do: nil
 
   defp encode_layers(layers) when is_list(layers) do
-    Enum.map(layers, &encode_layer/1)
+    encoded = Enum.map(layers, &encode_layer/1)
+
+    # Two layers answering to one name have no reconcilable identity: whichever
+    # the client matched first would take both configs, and the other layer
+    # would be drawn twice or not at all.
+    encoded
+    |> Enum.map(& &1[:id])
+    |> Enum.reject(&is_nil/1)
+    |> Enum.frequencies()
+    |> Enum.find(fn {_id, count} -> count > 1 end)
+    |> case do
+      nil ->
+        encoded
+
+      {id, _count} ->
+        raise ArgumentError, """
+        two layers share the id #{inspect(id)}.
+
+        An id is what carries a layer across a change of position in the list, so
+        it has to name one layer. Leave it out to identify layers by position.
+        """
+    end
   end
 
   defp encode_layers(other) do

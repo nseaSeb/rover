@@ -106,6 +106,38 @@ describe("OverlayLayers.reconcile", () => {
     assert.equal(overlays.layer.getLayers().getLength(), 0)
   })
 
+  it("drops the zoom floor half a level, so the level named is drawn", () => {
+    // OpenLayers draws a layer where `zoom > minZoom`, excluding the level it
+    // names, while the map's own `min_zoom` includes it. One attribute name
+    // meaning two things on one component is not worth shipping.
+    const overlays = new OverlayLayers()
+    overlays.reconcile([{ tiles: raster("https://a/{z}/{x}/{y}.png"), minZoom: 12, maxZoom: 18 }])
+
+    const layer = layerAt(overlays, 0)
+
+    assert.equal(layer.getMinZoom(), 11.5)
+    // The ceiling is inclusive in OpenLayers already, so it passes through.
+    assert.equal(layer.getMaxZoom(), 18)
+  })
+
+  it("never hands one layer to two configs sharing an id", () => {
+    // Rejected server-side, but this class is reachable from JavaScript too, and
+    // one layer pushed into the collection twice is rendered twice per frame.
+    // The same tiles as well as the same id, which is the case that bites: with
+    // different tiles the second config rebuilds anyway and never claims the
+    // layer the first is already keeping.
+    const overlays = new OverlayLayers()
+    const config = { id: "same", tiles: raster("https://a/{z}/{x}/{y}.png") }
+
+    overlays.reconcile([config, config])
+    overlays.reconcile([config, config])
+
+    const layers = overlays.layer.getLayers().getArray()
+
+    assert.equal(layers.length, 2)
+    assert.notEqual(layers[0], layers[1], "the same layer was added twice")
+  })
+
   // A vector overlay is not asserted here. It goes through the same
   // `buildTileLayer` as a vector basemap — whose construction `tiles.test.js`
   // covers — and the half that is not construction is `ol-mapbox-style`'s

@@ -76,9 +76,6 @@ function pinImage(marker, scale) {
     // text would be backwards. It still takes part as an obstacle, so labels
     // move out of its way. Ignored entirely unless the layer declutters.
     declutterMode: "obstacle",
-    // A marker is the thing being labelled: hiding the pin to make room for
-    // text would be backwards. It still takes part as an obstacle, so labels
-    // move out of its way. Ignored entirely unless the layer declutters.
     scale,
     // Degrees on the server, where a heading is a human number; radians here.
     rotation: (marker.rotation || 0) * Math.PI / 180,
@@ -92,8 +89,6 @@ function emojiText(emoji, scale) {
     // Text, but a marker: an emoji is the pin, not a label about one, so it is
     // an obstacle like every other marker image rather than something to hide.
     declutterMode: "obstacle",
-    // Text, but a marker: an emoji is the pin, not a label about one, so it is
-    // an obstacle like every other marker image rather than something to hide.
     // Sit the glyph on the coordinate the way a pin's tip does.
     textBaseline: "bottom",
     offsetY: 4
@@ -11944,19 +11939,25 @@ function applyWmtsSource(layer, tiles) {
   }).then((text) => {
     if (layer.disposed) return;
     const capabilities = new WMTSCapabilities().read(text);
-    const options = optionsFromCapabilities(capabilities, {
-      layer: tiles.layer,
-      matrixSet: tiles.matrixSet,
-      format: tiles.format,
-      crossOrigin: "anonymous"
-    });
+    const options = optionsFromCapabilities(capabilities, wmtsConfigFor(tiles));
     if (!options) {
+      throw new Error(`no layer ${JSON.stringify(tiles.layer)} in the capabilities document`);
+    }
+    if (tiles.matrixSet && options.matrixSet !== tiles.matrixSet) {
       throw new Error(
-        `no layer ${JSON.stringify(tiles.layer)} in the capabilities document` + (tiles.matrixSet ? ` for matrix set ${JSON.stringify(tiles.matrixSet)}` : "")
+        `layer ${JSON.stringify(tiles.layer)} is not offered in matrix set ${JSON.stringify(tiles.matrixSet)} \u2014 the document has ${JSON.stringify(options.matrixSet)}`
       );
     }
     layer.setSource(new WMTS({ ...options, attributions: tiles.attributions || void 0 }));
   }).catch((error2) => console.error("[rover] could not load the WMTS capabilities document:", error2));
+}
+function wmtsConfigFor(tiles) {
+  return {
+    layer: tiles.layer,
+    crossOrigin: "anonymous",
+    ...tiles.matrixSet ? { matrixSet: tiles.matrixSet } : {},
+    ...tiles.format ? { format: tiles.format } : {}
+  };
 }
 function setVectorAttributions(group, attributions) {
   group.getLayers().forEach((layer) => {
@@ -11981,9 +11982,11 @@ var OverlayLayers = class {
     const wanted = layers || [];
     const previous = this.entries;
     const collection = this.layer.getLayers();
+    const available = [...previous];
     this.entries = wanted.map((config, index) => {
       const key = keyOf(config, index);
-      const existing = previous.find((entry) => entry.key === key);
+      const found = available.findIndex((entry) => entry.key === key);
+      const existing = found === -1 ? null : available.splice(found, 1)[0];
       if (existing && sameTiles(existing.tiles, config.tiles)) {
         applyOptions(existing.layer, config);
         return { ...existing, tiles: config.tiles };
@@ -12011,7 +12014,7 @@ function sameTiles(previous, next) {
 function applyOptions(layer, config) {
   layer.setOpacity(config.opacity ?? 1);
   layer.setVisible(config.visible !== false);
-  layer.setMinZoom(config.minZoom ?? -Infinity);
+  layer.setMinZoom(config.minZoom == null ? -Infinity : config.minZoom - 0.5);
   layer.setMaxZoom(config.maxZoom ?? Infinity);
 }
 

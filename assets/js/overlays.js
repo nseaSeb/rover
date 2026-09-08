@@ -37,9 +37,16 @@ export class OverlayLayers {
     const previous = this.entries
     const collection = this.layer.getLayers()
 
+    // Taken from as entries are matched, so two configs cannot both claim the
+    // same layer: duplicate ids are rejected server-side, but this class is
+    // reachable from JavaScript too, and one layer pushed into the collection
+    // twice is rendered twice per frame.
+    const available = [...previous]
+
     this.entries = wanted.map((config, index) => {
       const key = keyOf(config, index)
-      const existing = previous.find((entry) => entry.key === key)
+      const found = available.findIndex((entry) => entry.key === key)
+      const existing = found === -1 ? null : available.splice(found, 1)[0]
 
       // Same tiles under the same name: keep the layer, and with it every tile
       // the browser has already fetched into it.
@@ -90,6 +97,11 @@ function sameTiles(previous, next) {
 function applyOptions(layer, config) {
   layer.setOpacity(config.opacity ?? 1)
   layer.setVisible(config.visible !== false)
-  layer.setMinZoom(config.minZoom ?? -Infinity)
+  // OpenLayers draws a layer where `zoom > minZoom && zoom <= maxZoom`, so its
+  // floor excludes the level it names while its ceiling includes it. The map's
+  // own `min_zoom` includes it, and one attribute name meaning two things on
+  // one component is not a distinction worth shipping — so the floor is dropped
+  // half a level, which the view's whole-numbered zooms never land inside.
+  layer.setMinZoom(config.minZoom == null ? -Infinity : config.minZoom - 0.5)
   layer.setMaxZoom(config.maxZoom ?? Infinity)
 }

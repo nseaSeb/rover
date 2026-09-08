@@ -89,26 +89,48 @@ function applyWmtsSource(layer, tiles) {
       if (layer.disposed) return
 
       const capabilities = new WMTSCapabilities().read(text)
-      const options = optionsFromCapabilities(capabilities, {
-        layer: tiles.layer,
-        matrixSet: tiles.matrixSet,
-        format: tiles.format,
-        crossOrigin: "anonymous",
-      })
+      const options = optionsFromCapabilities(capabilities, wmtsConfigFor(tiles))
 
-      // The document parsed and simply does not describe this layer, or does
-      // not offer it in the matrix set asked for. Naming both is the difference
-      // between a fixable typo and a blank map.
+      // The document parsed and simply does not describe this layer. That is
+      // the only thing OpenLayers reports by returning nothing.
       if (!options) {
+        throw new Error(`no layer ${JSON.stringify(tiles.layer)} in the capabilities document`)
+      }
+
+      // A matrix set it does not offer is not reported at all: OpenLayers falls
+      // back to the layer's first one, which builds a source on a grid the
+      // caller did not ask for — misaligned tiles, or none, and no error. So
+      // the answer is checked rather than trusted.
+      if (tiles.matrixSet && options.matrixSet !== tiles.matrixSet) {
         throw new Error(
-          `no layer ${JSON.stringify(tiles.layer)} in the capabilities document` +
-            (tiles.matrixSet ? ` for matrix set ${JSON.stringify(tiles.matrixSet)}` : "")
+          `layer ${JSON.stringify(tiles.layer)} is not offered in matrix set ` +
+            `${JSON.stringify(tiles.matrixSet)} — the document has ` +
+            `${JSON.stringify(options.matrixSet)}`
         )
       }
 
       layer.setSource(new WMTS({ ...options, attributions: tiles.attributions || undefined }))
     })
     .catch((error) => console.error("[rover] could not load the WMTS capabilities document:", error))
+}
+
+/**
+ * What `optionsFromCapabilities` is asked for — carrying only the keys the
+ * caller actually gave.
+ *
+ * Exported because the omission is the whole point and it is invisible from
+ * outside: OpenLayers tests `'format' in config`, which an explicit
+ * `format: undefined` satisfies, and then falls back to `image/jpeg` rather
+ * than the format the document declares. A PNG-only layer asked for as JPEG
+ * renders blank, with nothing in the console.
+ */
+export function wmtsConfigFor(tiles) {
+  return {
+    layer: tiles.layer,
+    crossOrigin: "anonymous",
+    ...(tiles.matrixSet ? { matrixSet: tiles.matrixSet } : {}),
+    ...(tiles.format ? { format: tiles.format } : {}),
+  }
 }
 
 // Attribution stays Rover's to own, not the style document's — the same
