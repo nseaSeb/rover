@@ -1381,6 +1381,65 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("an overlay layer draws over the basemap without replacing it", async ({ page }) => {
+    const urls = await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    await page.goto("/")
+    await mapReady(page)
+
+    // Both presets are served by the Géoportail, so the layer each request
+    // belongs to is the LAYER= parameter, not the host.
+    const ortho = () => urls.filter((url) => url.includes("ORTHOIMAGERY"))
+    const plan = () => urls.filter((url) => url.includes("PLANIGNV2"))
+
+    // Polled: mapReady only says the hook has mounted, not that a tile has been
+    // asked for yet.
+    await expect.poll(() => plan().length).toBeGreaterThan(0)
+    expect(ortho()).toEqual([])
+
+    // Hold on to the basemap layer itself: an overlay must be a layer added over
+    // the map, not a basemap swapped for one. Its identity says so exactly,
+    // where counting its tile requests would only say so until OpenLayers
+    // decided to fetch another.
+    await page.evaluate((sel) => {
+      window.__basemap = document.querySelector(sel)._rover.basemapLayer
+    }, MAP)
+
+    await page.getByRole("button", { name: "Overlay: off" }).click()
+    await expect(page.locator(".log")).toContainText("ortho overlay on at 55%")
+    await expect.poll(() => ortho().length).toBeGreaterThan(0)
+
+    const state = await page.evaluate((sel) => {
+      const rover = document.querySelector(sel)._rover
+      const [entry] = rover.overlayLayers.entries
+
+      return {
+        entries: rover.overlayLayers.entries.length,
+        opacity: entry.layer.getOpacity(),
+        sameBasemap: rover.basemapLayer === window.__basemap,
+        // Over the basemap, under everything the caller put on the map.
+        overlayZ: rover.overlayLayers.layer.getZIndex(),
+        basemapZ: rover.basemapLayer.getZIndex(),
+        heatmapZ: rover.heatmapLayer.layer.getZIndex(),
+      }
+    }, MAP)
+
+    expect(state.entries).toBe(1)
+    expect(state.opacity).toBeCloseTo(0.55, 2)
+    expect(state.sameBasemap, "the overlay replaced the basemap").toBe(true)
+    expect(state.basemapZ).toBeLessThan(state.overlayZ)
+    expect(state.overlayZ).toBeLessThan(state.heatmapZ)
+
+    // And it goes away again, taking its layer with it.
+    await page.getByRole("button", { name: "Overlay: ortho 55%" }).click()
+    await expect
+      .poll(() => page.evaluate((sel) => document.querySelector(sel)._rover.overlayLayers.entries.length, MAP))
+      .toBe(0)
+
+    expect(problems).toEqual([])
+  })
+
   test("a popup follows an icon its rotation has moved", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)
