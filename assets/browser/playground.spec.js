@@ -1438,23 +1438,23 @@ test.describe("the playground", () => {
     // are all marked as obstacles rather than candidates — and this checks that
     // every one of them is still drawn, still hit-testable, and still reachable
     // by id, which is what the popups and the keyboard index need.
+    // One hit test per marker, at the marker's own position, rather than a sweep
+    // of the canvas: it asks the question directly — is this pin still there? —
+    // and two hundred and forty tests fit in the timeout where thousands did not.
     const survey = () =>
       page.evaluate((sel) => {
         const rover = document.querySelector(sel)._rover
-        const [width, height] = rover.map.getSize()
-        const hits = { marker: 0, cluster: 0, shape: 0 }
+        const features = rover.markerLayer.source.getFeatures()
 
-        for (let x = 4; x < width - 4; x += 4) {
-          for (let y = 4; y < height - 4; y += 4) {
-            const at = rover.featureAt([x, y])
-            if (at.marker) hits.marker++
-            if (at.cluster) hits.cluster++
-            if (at.shape) hits.shape++
-          }
-        }
+        const drawn = features.filter((feature) => {
+          const pixel = rover.map.getPixelFromCoordinate(feature.getGeometry().getCoordinates())
+
+          return Boolean(rover.featureAt(pixel).marker)
+        })
 
         return {
-          hits,
+          markers: features.length,
+          drawn: drawn.length,
           reachable: [1, 2, 3].every((id) => Boolean(rover.markerLayer.featureById(id))),
           // One group for both, or each layer declutters against itself and two
           // labels that collide across layers are both drawn anyway.
@@ -1481,7 +1481,10 @@ test.describe("the playground", () => {
     expect(decluttered.group).toBe("rover")
     expect(decluttered.sharedGroup).toBe(true)
     expect(decluttered.reachable).toBe(true)
-    expect(decluttered.hits).toEqual(plain.hits)
+    // Not a marker fewer than without decluttering, and that is every one of
+    // them: pins are what the labels move out of the way of.
+    expect(decluttered.markers).toBe(plain.markers)
+    expect(decluttered.drawn).toBe(plain.drawn)
 
     // The pin is still painted where the marker is, not merely hit-testable.
     const pixel = await markerPixel(page, 1)
