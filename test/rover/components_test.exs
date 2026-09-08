@@ -405,6 +405,16 @@ defmodule Rover.ComponentsTest do
       assert layer["tiles"]["type"] == "vector"
     end
 
+    test "reject two layers sharing an id" do
+      # Whichever the client matched first would take both configs, and the
+      # other layer would be drawn twice or not at all.
+      layers = [{:tiles, :osm, id: "base"}, {:tiles, :ign_ortho, id: "base"}]
+
+      assert_raise ArgumentError, ~r/two layers share the id "base"/, fn ->
+        render_map(layers: layers)
+      end
+    end
+
     test "reject a layer with nothing to draw" do
       # `:none` is how a map says it wants no basemap; a layer that draws nothing
       # is one to leave out of the list.

@@ -6,6 +6,7 @@ import TileLayer from "ol/layer/Tile.js"
 import XYZ from "ol/source/XYZ.js"
 
 import { buildBasemapLayer } from "../js/rover_map.js"
+import { wmtsConfigFor } from "../js/tiles.js"
 
 // The rest of applyTiles — inserting the built layer into slot 0, calling
 // ol-mapbox-style's apply() for a vector group — needs a real OL map and, for
@@ -75,5 +76,29 @@ describe("buildBasemapLayer", () => {
 
     assert.ok(layer instanceof LayerGroup)
     assert.equal(layer.getLayers().getLength(), 0)
+  })
+})
+
+describe("wmtsConfigFor", () => {
+  const tiles = { type: "wmts", capabilitiesUrl: "https://example.com/wmts", layer: "ORTHO" }
+
+  it("omits a format the caller did not give, rather than passing undefined", () => {
+    // The regression this exists for: OpenLayers tests `'format' in config`,
+    // which an explicit `format: undefined` satisfies — so it stops reading the
+    // format out of the document and falls back to image/jpeg. A PNG-only layer
+    // then renders blank, with nothing in the console.
+    const config = wmtsConfigFor(tiles)
+
+    assert.equal("format" in config, false)
+    assert.equal("matrixSet" in config, false)
+    assert.equal(config.layer, "ORTHO")
+    assert.equal(config.crossOrigin, "anonymous")
+  })
+
+  it("passes the ones it was given", () => {
+    const config = wmtsConfigFor({ ...tiles, matrixSet: "PM", format: "image/png" })
+
+    assert.equal(config.matrixSet, "PM")
+    assert.equal(config.format, "image/png")
   })
 })

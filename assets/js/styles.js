@@ -81,9 +81,6 @@ function pinImage(marker, scale) {
     // text would be backwards. It still takes part as an obstacle, so labels
     // move out of its way. Ignored entirely unless the layer declutters.
     declutterMode: "obstacle",
-    // A marker is the thing being labelled: hiding the pin to make room for
-    // text would be backwards. It still takes part as an obstacle, so labels
-    // move out of its way. Ignored entirely unless the layer declutters.
     scale,
     // Degrees on the server, where a heading is a human number; radians here.
     rotation: ((marker.rotation || 0) * Math.PI) / 180,
@@ -101,8 +98,6 @@ function emojiText(emoji, scale) {
     // Text, but a marker: an emoji is the pin, not a label about one, so it is
     // an obstacle like every other marker image rather than something to hide.
     declutterMode: "obstacle",
-    // Text, but a marker: an emoji is the pin, not a label about one, so it is
-    // an obstacle like every other marker image rather than something to hide.
     // Sit the glyph on the coordinate the way a pin's tip does.
     textBaseline: "bottom",
     offsetY: 4,
