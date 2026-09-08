@@ -92,6 +92,10 @@ defmodule RoverDev.DemoLive do
   # which puts the whole image on the other side of the coordinate — an offset
   # that ignores `:rotation` then points at empty map.
   #
+  # `?tiles=wmts` swaps the basemap for a real `{:wmts, ...}` source, read out of
+  # the Géoportail's own capabilities document rather than assumed. The browser
+  # suite stubs that document with a faithful miniature of it.
+  #
   # `?interactions=no_wheel` renders the main map without `:mouse_wheel_zoom`,
   # which is what a map in the flow of a page wants and what the browser suite
   # needs to see a wheel event leave the zoom alone.
@@ -100,6 +104,7 @@ defmodule RoverDev.DemoLive do
     {:noreply,
      assign(socket,
        shapes: shapes(shape_mode(params)),
+       wmts: params["tiles"] == "wmts",
        scenery: params["scenery"] == "1",
        interactions: interactions(params["interactions"])
      )
@@ -193,7 +198,7 @@ defmodule RoverDev.DemoLive do
       shapes={@shapes}
       heatmap={if @heat, do: heat_points(), else: []}
       heatmap_style={[radius: @heat_radius, blur: 22, opacity: 0.85]}
-      tiles={@tiles}
+      tiles={basemap(@wmts, @tiles)}
       layers={overlay_layers(@overlay)}
       height="28rem"
       controls={[:zoom, :attribution, :scale_line]}
@@ -407,13 +412,6 @@ defmodule RoverDev.DemoLive do
      |> Rover.fly_to("clients", {45.76405, 4.8357}, zoom: 18, duration: 0)
      |> log("two vans in a yard at zoom 18, clustered")}
   end
-
-  # Orthophotography washed over the plan, which is what an overlay is for: the
-  # roads and labels of one basemap with the imagery of another under them, at an
-  # opacity the caller picks. Identified, so toggling the opacity keeps the tiles
-  # already fetched rather than asking for them again.
-  defp overlay_layers(false), do: []
-  defp overlay_layers(true), do: [{:tiles, :ign_ortho, opacity: 0.55, id: "ortho"}]
 
   def handle_event("toggle_overlay", _params, socket) do
     {:noreply,
@@ -697,6 +695,26 @@ defmodule RoverDev.DemoLive do
 
     if drawn == [], do: base, else: "#{base} + #{length(drawn)} drawn"
   end
+
+  # Orthophotography washed over the plan, which is what an overlay is for: the
+  # roads and labels of one basemap with the imagery of another under them, at an
+  # opacity the caller picks. Identified, so toggling the opacity keeps the tiles
+  # already fetched rather than asking for them again.
+  defp overlay_layers(false), do: []
+  defp overlay_layers(true), do: [{:tiles, :ign_ortho, opacity: 0.55, id: "ortho"}]
+
+  # The same orthophotography `:ign_ortho` serves through the XYZ shortcut,
+  # arrived at the long way: the grid read out of the Géoportail's capabilities
+  # document rather than assumed. Behind `?tiles=wmts`.
+  @ign_wmts_source {:wmts,
+                    "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetCapabilities&VERSION=1.0.0",
+                    layer: "ORTHOIMAGERY.ORTHOPHOTOS",
+                    matrix_set: "PM",
+                    format: "image/jpeg",
+                    attributions: ~s(© <a href="https://www.ign.fr">IGN-F/Géoportail</a>)}
+
+  defp basemap(true, _tiles), do: @ign_wmts_source
+  defp basemap(false, tiles), do: tiles
 
   defp log(socket, message), do: assign(socket, log: message)
 

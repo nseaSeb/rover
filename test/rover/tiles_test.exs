@@ -121,6 +121,51 @@ defmodule Rover.TilesTest do
     assert Tiles.resolve!(:osm).type == :raster
   end
 
+  describe "WMTS" do
+    @capabilities "https://example.com/wmts?SERVICE=WMTS&REQUEST=GetCapabilities"
+
+    test "resolves to the capabilities document and the layer to read from it" do
+      resolved = Tiles.resolve!({:wmts, @capabilities, layer: "ORTHO"})
+
+      assert resolved == %{
+               type: :wmts,
+               capabilities_url: @capabilities,
+               layer: "ORTHO",
+               matrix_set: nil,
+               format: nil,
+               attributions: nil,
+               # A number before the document has been fetched: the framing needs
+               # a ceiling at render time.
+               max_zoom: 19
+             }
+    end
+
+    test "takes the matrix set, the format, an attribution and a max zoom" do
+      resolved =
+        Tiles.resolve!(
+          {:wmts, @capabilities,
+           layer: "ORTHO", matrix_set: "PM", format: "image/jpeg", attributions: "©", max_zoom: 21}
+        )
+
+      assert resolved.matrix_set == "PM"
+      assert resolved.format == "image/jpeg"
+      assert resolved.attributions == "©"
+      assert resolved.max_zoom == 21
+    end
+
+    test "requires the layer, because a capabilities document describes several" do
+      assert_raise ArgumentError, ~r/a WMTS source needs the layer to read/, fn ->
+        Tiles.resolve!({:wmts, @capabilities, []})
+      end
+    end
+
+    test "rejects an option it does not read" do
+      assert_raise ArgumentError, ~r/unknown tiles option \{:style, "normal"\}/, fn ->
+        Tiles.resolve!({:wmts, @capabilities, layer: "ORTHO", style: "normal"})
+      end
+    end
+  end
+
   test "rejects anything else" do
     assert_raise ArgumentError, ~r/invalid tiles/, fn -> Tiles.resolve!("https://x") end
   end

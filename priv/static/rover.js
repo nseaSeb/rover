@@ -42718,6 +42718,609 @@ function appearanceOf(marker) {
   ].join("|");
 }
 
+// node_modules/ol/xml.js
+function createElementNS(namespaceURI, qualifiedName) {
+  return getDocument().createElementNS(namespaceURI, qualifiedName);
+}
+function getAllTextContent(node, normalizeWhitespace) {
+  return getAllTextContent_(node, normalizeWhitespace, []).join("");
+}
+function getAllTextContent_(node, normalizeWhitespace, accumulator) {
+  if (node.nodeType == Node.CDATA_SECTION_NODE || node.nodeType == Node.TEXT_NODE) {
+    if (normalizeWhitespace) {
+      accumulator.push(String(node.nodeValue).replace(/(\r\n|\r|\n)/g, ""));
+    } else {
+      accumulator.push(node.nodeValue);
+    }
+  } else {
+    let n;
+    for (n = node.firstChild; n; n = n.nextSibling) {
+      getAllTextContent_(n, normalizeWhitespace, accumulator);
+    }
+  }
+  return accumulator;
+}
+function isDocument(object) {
+  return "documentElement" in object;
+}
+function parse2(xml) {
+  return new DOMParser().parseFromString(xml, "application/xml");
+}
+function makeArrayPusher(valueReader, thisArg) {
+  return (
+    /**
+     * @param {Element} node Node.
+     * @param {Array<*>} objectStack Object stack.
+     * @this {*}
+     */
+    (function(node, objectStack) {
+      const value = valueReader.call(thisArg ?? this, node, objectStack);
+      if (value !== void 0) {
+        const array2 = (
+          /** @type {Array<*>} */
+          objectStack[objectStack.length - 1]
+        );
+        array2.push(value);
+      }
+    })
+  );
+}
+function makeObjectPropertyPusher(valueReader, property, thisArg) {
+  return (
+    /**
+     * @param {Element} node Node.
+     * @param {Array<*>} objectStack Object stack.
+     * @this {*}
+     */
+    (function(node, objectStack) {
+      const value = valueReader.call(thisArg ?? this, node, objectStack);
+      if (value !== void 0) {
+        const object = (
+          /** @type {!Object} */
+          objectStack[objectStack.length - 1]
+        );
+        const name = property !== void 0 ? property : node.localName;
+        let array2;
+        if (name in object) {
+          array2 = object[name];
+        } else {
+          array2 = [];
+          object[name] = array2;
+        }
+        array2.push(value);
+      }
+    })
+  );
+}
+function makeObjectPropertySetter(valueReader, property, thisArg) {
+  return (
+    /**
+     * @param {Element} node Node.
+     * @param {Array<*>} objectStack Object stack.
+     * @this {*}
+     */
+    (function(node, objectStack) {
+      const value = valueReader.call(thisArg ?? this, node, objectStack);
+      if (value !== void 0) {
+        const object = (
+          /** @type {!Object} */
+          objectStack[objectStack.length - 1]
+        );
+        const name = property !== void 0 ? property : node.localName;
+        object[name] = value;
+      }
+    })
+  );
+}
+function makeSimpleNodeFactory(fixedNodeName, fixedNamespaceURI) {
+  return (
+    /**
+     * @param {*} value Value.
+     * @param {Array<*>} objectStack Object stack.
+     * @param {string} [newNodeName] Node name.
+     * @return {Node} Node.
+     */
+    (function(value, objectStack, newNodeName) {
+      const context = (
+        /** @type {NodeStackItem} */
+        objectStack[objectStack.length - 1]
+      );
+      const node = context.node;
+      let nodeName = fixedNodeName;
+      if (nodeName === void 0) {
+        nodeName = newNodeName;
+      }
+      const namespaceURI = fixedNamespaceURI !== void 0 ? fixedNamespaceURI : node.namespaceURI;
+      return createElementNS(
+        namespaceURI,
+        /** @type {string} */
+        nodeName
+      );
+    })
+  );
+}
+var OBJECT_PROPERTY_NODE_FACTORY = makeSimpleNodeFactory();
+function makeStructureNS(namespaceURIs, structure, structureNS) {
+  structureNS = structureNS !== void 0 ? structureNS : {};
+  let i, ii;
+  for (i = 0, ii = namespaceURIs.length; i < ii; ++i) {
+    structureNS[namespaceURIs[i]] = structure;
+  }
+  return structureNS;
+}
+function parseNode(parsersNS, node, objectStack, thisArg) {
+  let n;
+  for (n = node.firstElementChild; n; n = n.nextElementSibling) {
+    const parsers2 = parsersNS[n.namespaceURI];
+    if (parsers2 !== void 0) {
+      const parser = parsers2[n.localName];
+      if (parser !== void 0) {
+        parser.call(thisArg, n, objectStack);
+      }
+    }
+  }
+}
+function pushParseAndPop(object, parsersNS, node, objectStack, thisArg) {
+  objectStack.push(object);
+  parseNode(parsersNS, node, objectStack, thisArg);
+  return (
+    /** @type {T} */
+    objectStack.pop()
+  );
+}
+var document_ = void 0;
+function getDocument() {
+  if (document_ === void 0 && typeof document !== "undefined") {
+    document_ = document.implementation.createDocument("", "", null);
+  }
+  return document_;
+}
+
+// node_modules/ol/format/XML.js
+var XML = class {
+  /**
+   * Read the source document.
+   *
+   * @param {Document|Element|string} source The XML source.
+   * @return {Object|null} An object representing the source.
+   * @api
+   */
+  read(source) {
+    if (!source) {
+      return null;
+    }
+    if (typeof source === "string") {
+      const doc = parse2(source);
+      return this.readFromDocument(doc);
+    }
+    if (isDocument(source)) {
+      return this.readFromDocument(
+        /** @type {Document} */
+        source
+      );
+    }
+    return this.readFromNode(
+      /** @type {Element} */
+      source
+    );
+  }
+  /**
+   * @param {Document} doc Document.
+   * @return {Object|null} Object
+   */
+  readFromDocument(doc) {
+    for (let n = doc.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType == Node.ELEMENT_NODE) {
+        return this.readFromNode(
+          /** @type {Element} */
+          n
+        );
+      }
+    }
+    return null;
+  }
+  /**
+   * @abstract
+   * @param {Element} node Node.
+   * @return {Object|null} Object
+   */
+  readFromNode(node) {
+    abstract();
+  }
+};
+var XML_default = XML;
+
+// node_modules/ol/format/xlink.js
+var NAMESPACE_URI = "http://www.w3.org/1999/xlink";
+function readHref(node) {
+  return node.getAttributeNS(NAMESPACE_URI, "href");
+}
+
+// node_modules/ol/format/xsd.js
+function readDecimal(node) {
+  const s = getAllTextContent(node, false);
+  return readDecimalString(s);
+}
+function readDecimalString(string) {
+  const m = /^\s*([+\-]?\d*\.?\d+(?:e[+\-]?\d+)?)\s*$/i.exec(string);
+  if (m) {
+    return parseFloat(m[1]);
+  }
+  return void 0;
+}
+function readPositiveInteger(node) {
+  const s = getAllTextContent(node, false);
+  return readNonNegativeIntegerString(s);
+}
+function readNonNegativeIntegerString(string) {
+  const m = /^\s*(\d+)\s*$/.exec(string);
+  if (m) {
+    return parseInt(m[1], 10);
+  }
+  return void 0;
+}
+function readString(node) {
+  return getAllTextContent(node, false).trim();
+}
+
+// node_modules/ol/format/OWS.js
+var NAMESPACE_URIS = [null, "http://www.opengis.net/ows/1.1"];
+var PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "ServiceIdentification": makeObjectPropertySetter(readServiceIdentification),
+  "ServiceProvider": makeObjectPropertySetter(readServiceProvider),
+  "OperationsMetadata": makeObjectPropertySetter(readOperationsMetadata)
+});
+var OWS = class extends XML_default {
+  constructor() {
+    super();
+  }
+  /**
+   * @param {Element} node Node.
+   * @return {Object|null} Object
+   * @override
+   */
+  readFromNode(node) {
+    const owsObject = pushParseAndPop({}, PARSERS, node, []);
+    return owsObject ? owsObject : null;
+  }
+};
+var ADDRESS_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "DeliveryPoint": makeObjectPropertySetter(readString),
+  "City": makeObjectPropertySetter(readString),
+  "AdministrativeArea": makeObjectPropertySetter(readString),
+  "PostalCode": makeObjectPropertySetter(readString),
+  "Country": makeObjectPropertySetter(readString),
+  "ElectronicMailAddress": makeObjectPropertySetter(readString)
+});
+var ALLOWED_VALUES_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "Value": makeObjectPropertyPusher(readValue)
+});
+var CONSTRAINT_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "AllowedValues": makeObjectPropertySetter(readAllowedValues)
+});
+var CONTACT_INFO_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "Phone": makeObjectPropertySetter(readPhone),
+  "Address": makeObjectPropertySetter(readAddress)
+});
+var DCP_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "HTTP": makeObjectPropertySetter(readHttp)
+});
+var HTTP_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "Get": makeObjectPropertyPusher(readGet),
+  "Post": void 0
+  // TODO
+});
+var OPERATION_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "DCP": makeObjectPropertySetter(readDcp)
+});
+var OPERATIONS_METADATA_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "Operation": readOperation
+});
+var PHONE_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "Voice": makeObjectPropertySetter(readString),
+  "Facsimile": makeObjectPropertySetter(readString)
+});
+var REQUEST_METHOD_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "Constraint": makeObjectPropertyPusher(readConstraint)
+});
+var SERVICE_CONTACT_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "IndividualName": makeObjectPropertySetter(readString),
+  "PositionName": makeObjectPropertySetter(readString),
+  "ContactInfo": makeObjectPropertySetter(readContactInfo)
+});
+var SERVICE_IDENTIFICATION_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "Abstract": makeObjectPropertySetter(readString),
+  "AccessConstraints": makeObjectPropertySetter(readString),
+  "Fees": makeObjectPropertySetter(readString),
+  "Title": makeObjectPropertySetter(readString),
+  "ServiceTypeVersion": makeObjectPropertySetter(readString),
+  "ServiceType": makeObjectPropertySetter(readString)
+});
+var SERVICE_PROVIDER_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  "ProviderName": makeObjectPropertySetter(readString),
+  "ProviderSite": makeObjectPropertySetter(readHref),
+  "ServiceContact": makeObjectPropertySetter(readServiceContact)
+});
+function readAddress(node, objectStack) {
+  return pushParseAndPop({}, ADDRESS_PARSERS, node, objectStack);
+}
+function readAllowedValues(node, objectStack) {
+  return pushParseAndPop({}, ALLOWED_VALUES_PARSERS, node, objectStack);
+}
+function readConstraint(node, objectStack) {
+  const name = node.getAttribute("name");
+  if (!name) {
+    return void 0;
+  }
+  return pushParseAndPop({ "name": name }, CONSTRAINT_PARSERS, node, objectStack);
+}
+function readContactInfo(node, objectStack) {
+  return pushParseAndPop({}, CONTACT_INFO_PARSERS, node, objectStack);
+}
+function readDcp(node, objectStack) {
+  return pushParseAndPop({}, DCP_PARSERS, node, objectStack);
+}
+function readGet(node, objectStack) {
+  const href = readHref(node);
+  if (!href) {
+    return void 0;
+  }
+  return pushParseAndPop(
+    { "href": href },
+    REQUEST_METHOD_PARSERS,
+    node,
+    objectStack
+  );
+}
+function readHttp(node, objectStack) {
+  return pushParseAndPop({}, HTTP_PARSERS, node, objectStack);
+}
+function readOperation(node, objectStack) {
+  const name = node.getAttribute("name");
+  const value = pushParseAndPop({}, OPERATION_PARSERS, node, objectStack);
+  if (!value) {
+    return void 0;
+  }
+  const object = (
+    /** @type {Object} */
+    objectStack[objectStack.length - 1]
+  );
+  object[name] = value;
+}
+function readOperationsMetadata(node, objectStack) {
+  return pushParseAndPop({}, OPERATIONS_METADATA_PARSERS, node, objectStack);
+}
+function readPhone(node, objectStack) {
+  return pushParseAndPop({}, PHONE_PARSERS, node, objectStack);
+}
+function readServiceIdentification(node, objectStack) {
+  return pushParseAndPop({}, SERVICE_IDENTIFICATION_PARSERS, node, objectStack);
+}
+function readServiceContact(node, objectStack) {
+  return pushParseAndPop({}, SERVICE_CONTACT_PARSERS, node, objectStack);
+}
+function readServiceProvider(node, objectStack) {
+  return pushParseAndPop({}, SERVICE_PROVIDER_PARSERS, node, objectStack);
+}
+function readValue(node, objectStack) {
+  return readString(node);
+}
+var OWS_default = OWS;
+
+// node_modules/ol/format/WMTSCapabilities.js
+var NAMESPACE_URIS2 = [null, "http://www.opengis.net/wmts/1.0"];
+var OWS_NAMESPACE_URIS = [null, "http://www.opengis.net/ows/1.1"];
+var PARSERS2 = makeStructureNS(NAMESPACE_URIS2, {
+  "Contents": makeObjectPropertySetter(readContents)
+});
+var WMTSCapabilities = class extends XML_default {
+  constructor() {
+    super();
+    this.owsParser_ = new OWS_default();
+  }
+  /**
+   * @param {Element} node Node.
+   * @return {Object|null} Object
+   * @override
+   */
+  readFromNode(node) {
+    let version = node.getAttribute("version");
+    if (version) {
+      version = version.trim();
+    }
+    let WMTSCapabilityObject = this.owsParser_.readFromNode(node);
+    if (!WMTSCapabilityObject) {
+      return null;
+    }
+    WMTSCapabilityObject["version"] = version;
+    WMTSCapabilityObject = pushParseAndPop(
+      WMTSCapabilityObject,
+      PARSERS2,
+      node,
+      []
+    );
+    return WMTSCapabilityObject ? WMTSCapabilityObject : null;
+  }
+};
+var CONTENTS_PARSERS = makeStructureNS(NAMESPACE_URIS2, {
+  "Layer": makeObjectPropertyPusher(readLayer),
+  "TileMatrixSet": makeObjectPropertyPusher(readTileMatrixSet)
+});
+var LAYER_PARSERS = makeStructureNS(
+  NAMESPACE_URIS2,
+  {
+    "Style": makeObjectPropertyPusher(readStyle),
+    "Format": makeObjectPropertyPusher(readString),
+    "TileMatrixSetLink": makeObjectPropertyPusher(readTileMatrixSetLink),
+    "Dimension": makeObjectPropertyPusher(readDimensions),
+    "ResourceURL": makeObjectPropertyPusher(readResourceUrl)
+  },
+  makeStructureNS(OWS_NAMESPACE_URIS, {
+    "Title": makeObjectPropertySetter(readString),
+    "Abstract": makeObjectPropertySetter(readString),
+    "WGS84BoundingBox": makeObjectPropertySetter(readBoundingBox),
+    "BoundingBox": makeObjectPropertyPusher(readBoundingBoxWithCrs),
+    "Identifier": makeObjectPropertySetter(readString)
+  })
+);
+var STYLE_PARSERS = makeStructureNS(
+  NAMESPACE_URIS2,
+  {
+    "LegendURL": makeObjectPropertyPusher(readLegendUrl)
+  },
+  makeStructureNS(OWS_NAMESPACE_URIS, {
+    "Title": makeObjectPropertySetter(readString),
+    "Identifier": makeObjectPropertySetter(readString)
+  })
+);
+var TMS_LINKS_PARSERS = makeStructureNS(NAMESPACE_URIS2, {
+  "TileMatrixSet": makeObjectPropertySetter(readString),
+  "TileMatrixSetLimits": makeObjectPropertySetter(readTileMatrixLimitsList)
+});
+var TMS_LIMITS_LIST_PARSERS = makeStructureNS(NAMESPACE_URIS2, {
+  "TileMatrixLimits": makeArrayPusher(readTileMatrixLimits)
+});
+var TMS_LIMITS_PARSERS = makeStructureNS(NAMESPACE_URIS2, {
+  "TileMatrix": makeObjectPropertySetter(readString),
+  "MinTileRow": makeObjectPropertySetter(readPositiveInteger),
+  "MaxTileRow": makeObjectPropertySetter(readPositiveInteger),
+  "MinTileCol": makeObjectPropertySetter(readPositiveInteger),
+  "MaxTileCol": makeObjectPropertySetter(readPositiveInteger)
+});
+var DIMENSION_PARSERS = makeStructureNS(
+  NAMESPACE_URIS2,
+  {
+    "Default": makeObjectPropertySetter(readString),
+    "Value": makeObjectPropertyPusher(readString)
+  },
+  makeStructureNS(OWS_NAMESPACE_URIS, {
+    "Identifier": makeObjectPropertySetter(readString)
+  })
+);
+var WGS84_BBOX_READERS = makeStructureNS(OWS_NAMESPACE_URIS, {
+  "LowerCorner": makeArrayPusher(readCoordinates),
+  "UpperCorner": makeArrayPusher(readCoordinates)
+});
+var TMS_PARSERS = makeStructureNS(
+  NAMESPACE_URIS2,
+  {
+    "WellKnownScaleSet": makeObjectPropertySetter(readString),
+    "TileMatrix": makeObjectPropertyPusher(readTileMatrix)
+  },
+  makeStructureNS(OWS_NAMESPACE_URIS, {
+    "SupportedCRS": makeObjectPropertySetter(readString),
+    "Identifier": makeObjectPropertySetter(readString),
+    "BoundingBox": makeObjectPropertySetter(readBoundingBox)
+  })
+);
+var TM_PARSERS = makeStructureNS(
+  NAMESPACE_URIS2,
+  {
+    "TopLeftCorner": makeObjectPropertySetter(readCoordinates),
+    "ScaleDenominator": makeObjectPropertySetter(readDecimal),
+    "TileWidth": makeObjectPropertySetter(readPositiveInteger),
+    "TileHeight": makeObjectPropertySetter(readPositiveInteger),
+    "MatrixWidth": makeObjectPropertySetter(readPositiveInteger),
+    "MatrixHeight": makeObjectPropertySetter(readPositiveInteger)
+  },
+  makeStructureNS(OWS_NAMESPACE_URIS, {
+    "Identifier": makeObjectPropertySetter(readString)
+  })
+);
+function readContents(node, objectStack) {
+  return pushParseAndPop({}, CONTENTS_PARSERS, node, objectStack);
+}
+function readLayer(node, objectStack) {
+  return pushParseAndPop({}, LAYER_PARSERS, node, objectStack);
+}
+function readTileMatrixSet(node, objectStack) {
+  return pushParseAndPop({}, TMS_PARSERS, node, objectStack);
+}
+function readStyle(node, objectStack) {
+  const style = pushParseAndPop({}, STYLE_PARSERS, node, objectStack);
+  if (!style) {
+    return void 0;
+  }
+  const isDefault = node.getAttribute("isDefault") === "true";
+  style["isDefault"] = isDefault;
+  return style;
+}
+function readTileMatrixSetLink(node, objectStack) {
+  return pushParseAndPop({}, TMS_LINKS_PARSERS, node, objectStack);
+}
+function readDimensions(node, objectStack) {
+  return pushParseAndPop({}, DIMENSION_PARSERS, node, objectStack);
+}
+function readResourceUrl(node, objectStack) {
+  const format2 = node.getAttribute("format");
+  const template = node.getAttribute("template");
+  const resourceType = node.getAttribute("resourceType");
+  const resource = {};
+  if (format2) {
+    resource["format"] = format2;
+  }
+  if (template) {
+    resource["template"] = template;
+  }
+  if (resourceType) {
+    resource["resourceType"] = resourceType;
+  }
+  return resource;
+}
+function readBoundingBox(node, objectStack) {
+  const coordinates2 = pushParseAndPop(
+    [],
+    WGS84_BBOX_READERS,
+    node,
+    objectStack
+  );
+  if (coordinates2.length != 2) {
+    return void 0;
+  }
+  return boundingExtent(coordinates2);
+}
+function readBoundingBoxWithCrs(node, objectStack) {
+  const crs = node.getAttribute("crs");
+  const coordinates2 = pushParseAndPop(
+    [],
+    WGS84_BBOX_READERS,
+    node,
+    objectStack
+  );
+  if (coordinates2.length != 2) {
+    return void 0;
+  }
+  return { extent: boundingExtent(coordinates2), crs };
+}
+function readLegendUrl(node, objectStack) {
+  const legend = {};
+  legend["format"] = node.getAttribute("format");
+  legend["href"] = readHref(node);
+  return legend;
+}
+function readCoordinates(node, objectStack) {
+  const coordinates2 = readString(node).split(/\s+/);
+  if (!coordinates2 || coordinates2.length != 2) {
+    return void 0;
+  }
+  const x = +coordinates2[0];
+  const y = +coordinates2[1];
+  if (isNaN(x) || isNaN(y)) {
+    return void 0;
+  }
+  return [x, y];
+}
+function readTileMatrix(node, objectStack) {
+  return pushParseAndPop({}, TM_PARSERS, node, objectStack);
+}
+function readTileMatrixLimitsList(node, objectStack) {
+  return pushParseAndPop([], TMS_LIMITS_LIST_PARSERS, node, objectStack);
+}
+function readTileMatrixLimits(node, objectStack) {
+  return pushParseAndPop({}, TMS_LIMITS_PARSERS, node, objectStack);
+}
+var WMTSCapabilities_default = WMTSCapabilities;
+
 // node_modules/ol/tilegrid/TileGrid.js
 var tmpTileCoord = [0, 0, 0];
 var DECIMALS = 5;
@@ -43226,83 +43829,132 @@ var TileGrid = class {
 };
 var TileGrid_default = TileGrid;
 
-// node_modules/ol/tilegrid.js
-function getForProjection(projection) {
-  let tileGrid = projection.getDefaultTileGrid();
-  if (!tileGrid) {
-    tileGrid = createForProjection(projection);
-    projection.setDefaultTileGrid(tileGrid);
+// node_modules/ol/tilegrid/WMTS.js
+var WMTSTileGrid = class extends TileGrid_default {
+  /**
+   * @param {Options} options WMTS options.
+   */
+  constructor(options) {
+    super({
+      extent: options.extent,
+      origin: options.origin,
+      origins: options.origins,
+      resolutions: options.resolutions,
+      tileSize: options.tileSize,
+      tileSizes: options.tileSizes,
+      sizes: options.sizes,
+      tileRanges: options.tileRanges,
+      minZoom: options.minZoom
+    });
+    this.matrixIds_ = options.matrixIds;
   }
-  return tileGrid;
-}
-function wrapX3(tileGrid, tileCoord, projection) {
-  const z = tileCoord[0];
-  const center = tileGrid.getTileCoordCenter(tileCoord);
-  const projectionExtent = extentFromProjection(projection);
-  if (!containsCoordinate(projectionExtent, center)) {
-    const worldWidth = getWidth(projectionExtent);
-    const worldsAway = Math.ceil(
-      (projectionExtent[0] - center[0]) / worldWidth
-    );
-    center[0] += worldWidth * worldsAway;
-    return tileGrid.getTileCoordForCoordAndZ(center, z);
+  /**
+   * @param {number} z Z.
+   * @return {string} MatrixId..
+   */
+  getMatrixId(z) {
+    return this.matrixIds_[z];
   }
-  return tileCoord;
-}
-function createForExtent(extent, maxZoom, tileSize, corner) {
-  corner = corner !== void 0 ? corner : "top-left";
-  const resolutions = resolutionsFromExtent(extent, maxZoom, tileSize);
-  return new TileGrid_default({
-    extent,
-    origin: getCorner(extent, corner),
-    resolutions,
-    tileSize
+  /**
+   * Get the list of matrix identifiers.
+   * @return {Array<string>} MatrixIds.
+   * @api
+   */
+  getMatrixIds() {
+    return this.matrixIds_;
+  }
+};
+function createFromCapabilitiesMatrixSet(matrixSet, extent, matrixLimits) {
+  const resolutions = [];
+  const matrixIds = [];
+  const origins = [];
+  const tileSizes = [];
+  const sizes = [];
+  const tileRanges = [];
+  matrixLimits = matrixLimits !== void 0 ? matrixLimits : [];
+  const supportedCRSPropName = "SupportedCRS";
+  const matrixIdsPropName = "TileMatrix";
+  const identifierPropName = "Identifier";
+  const scaleDenominatorPropName = "ScaleDenominator";
+  const topLeftCornerPropName = "TopLeftCorner";
+  const tileWidthPropName = "TileWidth";
+  const tileHeightPropName = "TileHeight";
+  const code = matrixSet[supportedCRSPropName];
+  const projection = get3(code);
+  const metersPerUnit = projection.getMetersPerUnit();
+  const switchOriginXY = projection.getAxisOrientation().startsWith("ne");
+  matrixSet[matrixIdsPropName].sort(function(a, b) {
+    return b[scaleDenominatorPropName] - a[scaleDenominatorPropName];
   });
-}
-function createXYZ(options) {
-  const xyzOptions = options || {};
-  const extent = xyzOptions.extent || get3("EPSG:3857").getExtent();
-  const gridOptions = {
+  matrixSet[matrixIdsPropName].forEach(function(elt) {
+    let matrixAvailable;
+    if (matrixLimits.length > 0) {
+      matrixAvailable = matrixLimits.find(function(elt_ml) {
+        if (elt[identifierPropName] == elt_ml[matrixIdsPropName]) {
+          return true;
+        }
+        if (!elt[identifierPropName].includes(":")) {
+          return matrixSet[identifierPropName] + ":" + elt[identifierPropName] === elt_ml[matrixIdsPropName];
+        }
+        return false;
+      });
+    } else {
+      matrixAvailable = true;
+    }
+    if (matrixAvailable) {
+      matrixIds.push(elt[identifierPropName]);
+      const resolution = elt[scaleDenominatorPropName] * 28e-5 / metersPerUnit;
+      const tileWidth = elt[tileWidthPropName];
+      const tileHeight = elt[tileHeightPropName];
+      if (switchOriginXY) {
+        origins.push([
+          elt[topLeftCornerPropName][1],
+          elt[topLeftCornerPropName][0]
+        ]);
+      } else {
+        origins.push(elt[topLeftCornerPropName]);
+      }
+      resolutions.push(resolution);
+      tileSizes.push(
+        tileWidth == tileHeight ? tileWidth : [tileWidth, tileHeight]
+      );
+      sizes.push([elt["MatrixWidth"], elt["MatrixHeight"]]);
+      if (matrixLimits.length > 0) {
+        tileRanges.push(
+          new TileRange_default(
+            matrixAvailable["MinTileCol"],
+            matrixAvailable["MaxTileCol"],
+            matrixAvailable["MinTileRow"],
+            matrixAvailable["MaxTileRow"]
+          )
+        );
+      }
+    }
+  });
+  return new WMTSTileGrid({
     extent,
-    minZoom: xyzOptions.minZoom,
-    tileSize: xyzOptions.tileSize,
-    resolutions: resolutionsFromExtent(
-      extent,
-      xyzOptions.maxZoom,
-      xyzOptions.tileSize,
-      xyzOptions.maxResolution
-    )
-  };
-  return new TileGrid_default(gridOptions);
-}
-function resolutionsFromExtent(extent, maxZoom, tileSize, maxResolution) {
-  maxZoom = maxZoom !== void 0 ? maxZoom : DEFAULT_MAX_ZOOM;
-  tileSize = toSize(tileSize !== void 0 ? tileSize : DEFAULT_TILE_SIZE);
-  const height = getHeight(extent);
-  const width = getWidth(extent);
-  maxResolution = maxResolution > 0 ? maxResolution : Math.max(width / tileSize[0], height / tileSize[1]);
-  const length = maxZoom + 1;
-  const resolutions = new Array(length);
-  for (let z = 0; z < length; ++z) {
-    resolutions[z] = maxResolution / Math.pow(2, z);
-  }
-  return resolutions;
-}
-function createForProjection(projection, maxZoom, tileSize, corner) {
-  const extent = extentFromProjection(projection);
-  return createForExtent(extent, maxZoom, tileSize, corner);
-}
-function extentFromProjection(projection) {
-  projection = get3(projection);
-  let extent = projection.getExtent();
-  if (!extent) {
-    const half = 180 * METERS_PER_UNIT.degrees / projection.getMetersPerUnit();
-    extent = createOrUpdate(-half, -half, half, half);
-  }
-  return extent;
+    origins,
+    resolutions,
+    matrixIds,
+    tileSizes,
+    sizes: tileRanges.length === 0 ? sizes : void 0,
+    tileRanges: tileRanges.length > 0 ? tileRanges : void 0
+  });
 }
 
 // node_modules/ol/uri.js
+function appendParams(uri, params) {
+  const keyParams = [];
+  Object.keys(params).forEach(function(k) {
+    if (params[k] !== null && params[k] !== void 0) {
+      keyParams.push(k + "=" + encodeURIComponent(params[k]));
+    }
+  });
+  const qs = keyParams.join("&");
+  uri = uri.replace(/[?&]$/, "");
+  uri += uri.includes("?") ? "&" : "?";
+  return uri + qs;
+}
 var zRegEx = /\{z\}/g;
 var xRegEx = /\{x\}/g;
 var yRegEx = /\{y\}/g;
@@ -43394,6 +44046,82 @@ function createFromTileUrlFunctions(tileUrlFunctions) {
       return tileUrlFunctions[index](tileCoord, pixelRatio, projection);
     })
   );
+}
+
+// node_modules/ol/tilegrid.js
+function getForProjection(projection) {
+  let tileGrid = projection.getDefaultTileGrid();
+  if (!tileGrid) {
+    tileGrid = createForProjection(projection);
+    projection.setDefaultTileGrid(tileGrid);
+  }
+  return tileGrid;
+}
+function wrapX3(tileGrid, tileCoord, projection) {
+  const z = tileCoord[0];
+  const center = tileGrid.getTileCoordCenter(tileCoord);
+  const projectionExtent = extentFromProjection(projection);
+  if (!containsCoordinate(projectionExtent, center)) {
+    const worldWidth = getWidth(projectionExtent);
+    const worldsAway = Math.ceil(
+      (projectionExtent[0] - center[0]) / worldWidth
+    );
+    center[0] += worldWidth * worldsAway;
+    return tileGrid.getTileCoordForCoordAndZ(center, z);
+  }
+  return tileCoord;
+}
+function createForExtent(extent, maxZoom, tileSize, corner) {
+  corner = corner !== void 0 ? corner : "top-left";
+  const resolutions = resolutionsFromExtent(extent, maxZoom, tileSize);
+  return new TileGrid_default({
+    extent,
+    origin: getCorner(extent, corner),
+    resolutions,
+    tileSize
+  });
+}
+function createXYZ(options) {
+  const xyzOptions = options || {};
+  const extent = xyzOptions.extent || get3("EPSG:3857").getExtent();
+  const gridOptions = {
+    extent,
+    minZoom: xyzOptions.minZoom,
+    tileSize: xyzOptions.tileSize,
+    resolutions: resolutionsFromExtent(
+      extent,
+      xyzOptions.maxZoom,
+      xyzOptions.tileSize,
+      xyzOptions.maxResolution
+    )
+  };
+  return new TileGrid_default(gridOptions);
+}
+function resolutionsFromExtent(extent, maxZoom, tileSize, maxResolution) {
+  maxZoom = maxZoom !== void 0 ? maxZoom : DEFAULT_MAX_ZOOM;
+  tileSize = toSize(tileSize !== void 0 ? tileSize : DEFAULT_TILE_SIZE);
+  const height = getHeight(extent);
+  const width = getWidth(extent);
+  maxResolution = maxResolution > 0 ? maxResolution : Math.max(width / tileSize[0], height / tileSize[1]);
+  const length = maxZoom + 1;
+  const resolutions = new Array(length);
+  for (let z = 0; z < length; ++z) {
+    resolutions[z] = maxResolution / Math.pow(2, z);
+  }
+  return resolutions;
+}
+function createForProjection(projection, maxZoom, tileSize, corner) {
+  const extent = extentFromProjection(projection);
+  return createForExtent(extent, maxZoom, tileSize, corner);
+}
+function extentFromProjection(projection) {
+  projection = get3(projection);
+  let extent = projection.getExtent();
+  if (!extent) {
+    const half = 180 * METERS_PER_UNIT.degrees / projection.getMetersPerUnit();
+    extent = createOrUpdate(-half, -half, half, half);
+  }
+  return extent;
 }
 
 // node_modules/ol/source/Tile.js
@@ -43992,6 +44720,415 @@ function defaultTileLoadFunction(imageTile, src) {
   imageTile.getImage().src = src;
 }
 var TileImage_default = TileImage;
+
+// node_modules/ol/source/WMTS.js
+var WMTS = class extends TileImage_default {
+  /**
+   * @param {Options} options WMTS options.
+   */
+  constructor(options) {
+    const requestEncoding = options.requestEncoding !== void 0 ? options.requestEncoding : "KVP";
+    const tileGrid = options.tileGrid;
+    let urls = options.urls;
+    if (urls === void 0 && options.url !== void 0) {
+      urls = expandUrl(options.url);
+    }
+    super({
+      attributions: options.attributions,
+      attributionsCollapsible: options.attributionsCollapsible,
+      cacheSize: options.cacheSize,
+      crossOrigin: options.crossOrigin,
+      referrerPolicy: options.referrerPolicy,
+      interpolate: options.interpolate,
+      projection: options.projection,
+      reprojectionErrorThreshold: options.reprojectionErrorThreshold,
+      tileClass: options.tileClass,
+      tileGrid,
+      tileLoadFunction: options.tileLoadFunction,
+      tilePixelRatio: options.tilePixelRatio,
+      urls,
+      wrapX: options.wrapX !== void 0 ? options.wrapX : false,
+      transition: options.transition,
+      zDirection: options.zDirection
+    });
+    this.version_ = options.version !== void 0 ? options.version : "1.0.0";
+    this.format_ = options.format !== void 0 ? options.format : "image/jpeg";
+    this.dimensions_ = options.dimensions !== void 0 ? options.dimensions : {};
+    this.layer_ = options.layer;
+    this.matrixSet_ = options.matrixSet;
+    this.style_ = options.style;
+    this.requestEncoding_ = requestEncoding;
+    this.setKey(this.getKeyForDimensions_());
+    if (urls && urls.length > 0) {
+      this.tileUrlFunction = createFromTileUrlFunctions(
+        urls.map(this.createFromWMTSTemplate.bind(this))
+      );
+    }
+  }
+  /**
+   * Set the URLs to use for requests.
+   * URLs may contain OGC conform URL Template Variables: {TileMatrix}, {TileRow}, {TileCol}.
+   * @param {Array<string>} urls URLs.
+   * @override
+   */
+  setUrls(urls) {
+    this.urls = urls;
+    const key = urls.join("\n");
+    this.setTileUrlFunction(
+      createFromTileUrlFunctions(
+        urls.map(this.createFromWMTSTemplate.bind(this))
+      ),
+      key
+    );
+  }
+  /**
+   * Get the dimensions, i.e. those passed to the constructor through the
+   * "dimensions" option, and possibly updated using the updateDimensions
+   * method.
+   * @return {!Object} Dimensions.
+   * @api
+   */
+  getDimensions() {
+    return this.dimensions_;
+  }
+  /**
+   * Return the image format of the WMTS source.
+   * @return {string} Format.
+   * @api
+   */
+  getFormat() {
+    return this.format_;
+  }
+  /**
+   * Return the layer of the WMTS source.
+   * @return {string} Layer.
+   * @api
+   */
+  getLayer() {
+    return this.layer_;
+  }
+  /**
+   * Return the matrix set of the WMTS source.
+   * @return {string} MatrixSet.
+   * @api
+   */
+  getMatrixSet() {
+    return this.matrixSet_;
+  }
+  /**
+   * Return the request encoding, either "KVP" or "REST".
+   * @return {RequestEncoding} Request encoding.
+   * @api
+   */
+  getRequestEncoding() {
+    return this.requestEncoding_;
+  }
+  /**
+   * Return the style of the WMTS source.
+   * @return {string} Style.
+   * @api
+   */
+  getStyle() {
+    return this.style_;
+  }
+  /**
+   * Return the version of the WMTS source.
+   * @return {string} Version.
+   * @api
+   */
+  getVersion() {
+    return this.version_;
+  }
+  /**
+   * @private
+   * @return {string} The key for the current dimensions.
+   */
+  getKeyForDimensions_() {
+    const res = this.urls ? this.urls.slice(0) : [];
+    for (const key in this.dimensions_) {
+      res.push(key + "-" + this.dimensions_[key]);
+    }
+    return res.join("/");
+  }
+  /**
+   * Update the dimensions.
+   * @param {Object} dimensions Dimensions.
+   * @api
+   */
+  updateDimensions(dimensions) {
+    Object.assign(this.dimensions_, dimensions);
+    this.setKey(this.getKeyForDimensions_());
+  }
+  /**
+   * @param {string} template Template.
+   * @return {import("../Tile.js").UrlFunction} Tile URL function.
+   */
+  createFromWMTSTemplate(template) {
+    const requestEncoding = this.requestEncoding_;
+    const context = {
+      "layer": this.layer_,
+      "style": this.style_,
+      "tilematrixset": this.matrixSet_
+    };
+    if (requestEncoding == "KVP") {
+      Object.assign(context, {
+        "Service": "WMTS",
+        "Request": "GetTile",
+        "Version": this.version_,
+        "Format": this.format_
+      });
+    }
+    template = requestEncoding == "KVP" ? appendParams(template, context) : template.replace(/\{(\w+?)\}/g, function(m, p) {
+      return p.toLowerCase() in context ? context[p.toLowerCase()] : m;
+    });
+    const tileGrid = (
+      /** @type {import("../tilegrid/WMTS.js").default} */
+      this.tileGrid
+    );
+    const dimensions = this.dimensions_;
+    return (
+      /**
+       * @param {import("../tilecoord.js").TileCoord} tileCoord Tile coordinate.
+       * @param {number} pixelRatio Pixel ratio.
+       * @param {import("../proj/Projection.js").default} projection Projection.
+       * @return {string|undefined} Tile URL.
+       */
+      (function(tileCoord, pixelRatio, projection) {
+        if (!tileCoord) {
+          return void 0;
+        }
+        const localContext = {
+          "TileMatrix": tileGrid.getMatrixId(tileCoord[0]),
+          "TileCol": tileCoord[1],
+          "TileRow": tileCoord[2]
+        };
+        Object.assign(localContext, dimensions);
+        let url = template;
+        if (requestEncoding == "KVP") {
+          url = appendParams(url, localContext);
+        } else {
+          url = url.replace(/\{(\w+?)\}/g, function(m, p) {
+            return encodeURIComponent(localContext[p]);
+          });
+        }
+        return url;
+      })
+    );
+  }
+};
+var WMTS_default = WMTS;
+function optionsFromCapabilities(wmtsCap, config) {
+  const layers = wmtsCap["Contents"]["Layer"];
+  const l = layers?.find(function(elt) {
+    return elt["Identifier"] == config["layer"];
+  });
+  if (!l) {
+    return null;
+  }
+  const tileMatrixSets = wmtsCap["Contents"]["TileMatrixSet"];
+  let idx;
+  if (l["TileMatrixSetLink"].length > 1) {
+    if ("projection" in config) {
+      idx = l["TileMatrixSetLink"].findIndex(function(elt) {
+        const tileMatrixSet = tileMatrixSets.find(function(el) {
+          return el["Identifier"] == elt["TileMatrixSet"];
+        });
+        const supportedCRS = tileMatrixSet["SupportedCRS"];
+        const proj1 = get3(supportedCRS);
+        const proj2 = get3(config["projection"]);
+        if (proj1 && proj2) {
+          return equivalent(proj1, proj2);
+        }
+        return supportedCRS == config["projection"];
+      });
+    } else {
+      idx = l["TileMatrixSetLink"].findIndex(function(elt) {
+        return elt["TileMatrixSet"] == config["matrixSet"];
+      });
+    }
+  } else {
+    idx = 0;
+  }
+  if (idx < 0) {
+    idx = 0;
+  }
+  const matrixSet = (
+    /** @type {string} */
+    l["TileMatrixSetLink"][idx]["TileMatrixSet"]
+  );
+  const matrixLimits = (
+    /** @type {Array<Object>} */
+    l["TileMatrixSetLink"][idx]["TileMatrixSetLimits"]
+  );
+  let format2 = (
+    /** @type {string} */
+    l["Format"][0]
+  );
+  if ("format" in config) {
+    format2 = config["format"];
+  }
+  idx = l["Style"].findIndex(function(elt) {
+    if ("style" in config) {
+      return elt["Title"] == config["style"];
+    }
+    return elt["isDefault"];
+  });
+  if (idx < 0) {
+    idx = 0;
+  }
+  const style = (
+    /** @type {string} */
+    l["Style"][idx]["Identifier"]
+  );
+  const dimensions = {};
+  if ("Dimension" in l) {
+    l["Dimension"].forEach(function(elt, index, array2) {
+      const key = elt["Identifier"];
+      let value = elt["Default"];
+      if (value === void 0) {
+        value = elt["Value"][0];
+      }
+      dimensions[key] = value;
+    });
+  }
+  const matrixSets = wmtsCap["Contents"]["TileMatrixSet"];
+  const matrixSetObj = matrixSets.find(function(elt) {
+    return elt["Identifier"] == matrixSet;
+  });
+  let projection;
+  const code = matrixSetObj["SupportedCRS"];
+  if (code) {
+    projection = get3(code);
+  }
+  if ("projection" in config) {
+    const projConfig = get3(config["projection"]);
+    if (projConfig) {
+      if (!projection || equivalent(projConfig, projection)) {
+        projection = projConfig;
+      }
+    }
+  }
+  let wrapX4 = false;
+  const switchXY = projection.getAxisOrientation().startsWith("ne");
+  let matrix = matrixSetObj.TileMatrix[0];
+  let selectedMatrixLimit = {
+    MinTileCol: 0,
+    MinTileRow: 0,
+    // subtract one to end up at tile top left
+    MaxTileCol: matrix.MatrixWidth - 1,
+    MaxTileRow: matrix.MatrixHeight - 1
+  };
+  if (matrixLimits) {
+    selectedMatrixLimit = matrixLimits[matrixLimits.length - 1];
+    const m = matrixSetObj.TileMatrix.find(
+      (tileMatrixValue) => tileMatrixValue.Identifier === selectedMatrixLimit.TileMatrix || matrixSetObj.Identifier + ":" + tileMatrixValue.Identifier === selectedMatrixLimit.TileMatrix
+    );
+    if (m) {
+      matrix = m;
+    }
+  }
+  const layerExtent = l["BoundingBox"]?.find(
+    (bbox2) => get3(bbox2.crs) && equivalent(get3(bbox2.crs), projection)
+  );
+  const resolution = matrix.ScaleDenominator * 28e-5 / projection.getMetersPerUnit();
+  const origin = switchXY ? [matrix.TopLeftCorner[1], matrix.TopLeftCorner[0]] : matrix.TopLeftCorner;
+  const tileSpanX = matrix.TileWidth * resolution;
+  const tileSpanY = matrix.TileHeight * resolution;
+  let matrixSetExtent = layerExtent?.extent ?? matrixSetObj["BoundingBox"];
+  if (matrixSetExtent && switchXY) {
+    matrixSetExtent = [
+      matrixSetExtent[1],
+      matrixSetExtent[0],
+      matrixSetExtent[3],
+      matrixSetExtent[2]
+    ];
+  }
+  let extent = [
+    origin[0] + tileSpanX * selectedMatrixLimit.MinTileCol,
+    // add one to get proper bottom/right coordinate
+    origin[1] - tileSpanY * (1 + selectedMatrixLimit.MaxTileRow),
+    origin[0] + tileSpanX * (1 + selectedMatrixLimit.MaxTileCol),
+    origin[1] - tileSpanY * selectedMatrixLimit.MinTileRow
+  ];
+  if (matrixSetExtent !== void 0 && !containsExtent(matrixSetExtent, extent)) {
+    const wgs84BoundingBox = l["WGS84BoundingBox"];
+    const wgs84ProjectionExtent = get3("EPSG:4326").getExtent();
+    extent = matrixSetExtent;
+    if (wgs84BoundingBox) {
+      wrapX4 = wgs84BoundingBox[0] === wgs84ProjectionExtent[0] && wgs84BoundingBox[2] === wgs84ProjectionExtent[2];
+    } else {
+      const wgs84MatrixSetExtent = transformExtent(
+        matrixSetExtent,
+        matrixSetObj["SupportedCRS"],
+        "EPSG:4326"
+      );
+      wrapX4 = wgs84MatrixSetExtent[0] - 1e-10 <= wgs84ProjectionExtent[0] && wgs84MatrixSetExtent[2] + 1e-10 >= wgs84ProjectionExtent[2];
+    }
+  }
+  const tileGrid = createFromCapabilitiesMatrixSet(
+    matrixSetObj,
+    extent,
+    matrixLimits
+  );
+  const urls = [];
+  let requestEncoding = config["requestEncoding"];
+  requestEncoding = requestEncoding !== void 0 ? requestEncoding : "";
+  if ("OperationsMetadata" in wmtsCap && "GetTile" in wmtsCap["OperationsMetadata"]) {
+    const gets = wmtsCap["OperationsMetadata"]["GetTile"]["DCP"]["HTTP"]["Get"];
+    for (let i = 0, ii = gets.length; i < ii; ++i) {
+      if (gets[i]["Constraint"]) {
+        const constraint = gets[i]["Constraint"].find(function(element) {
+          return element["name"] == "GetEncoding";
+        });
+        const encodings = constraint["AllowedValues"]["Value"];
+        if (requestEncoding === "") {
+          requestEncoding = encodings[0];
+        }
+        if (requestEncoding === "KVP") {
+          if (encodings.includes("KVP")) {
+            urls.push(
+              /** @type {string} */
+              gets[i]["href"]
+            );
+          }
+        } else {
+          break;
+        }
+      } else if (gets[i]["href"]) {
+        requestEncoding = "KVP";
+        urls.push(
+          /** @type {string} */
+          gets[i]["href"]
+        );
+      }
+    }
+  }
+  if (urls.length === 0) {
+    requestEncoding = "REST";
+    l["ResourceURL"].forEach(function(element) {
+      if (element["resourceType"] === "tile") {
+        format2 = element["format"];
+        urls.push(
+          /** @type {string} */
+          element["template"]
+        );
+      }
+    });
+  }
+  return {
+    urls,
+    layer: config["layer"],
+    matrixSet,
+    format: format2,
+    projection,
+    requestEncoding,
+    tileGrid,
+    style,
+    dimensions,
+    wrapX: wrapX4,
+    crossOrigin: config["crossOrigin"]
+  };
+}
 
 // node_modules/ol/source/XYZ.js
 var XYZ = class extends TileImage_default {
@@ -59651,6 +60788,7 @@ function resolveRetina(url) {
 function buildBasemapLayer(tiles) {
   if (!tiles) return new Tile_default3({ visible: false });
   if (tiles.type === "vector") return new Group_default();
+  if (tiles.type === "wmts") return new Tile_default3();
   return new Tile_default3({
     source: new XYZ_default({
       url: resolveRetina(tiles.url),
@@ -59663,9 +60801,31 @@ function buildBasemapLayer(tiles) {
 function buildTileLayer(tiles) {
   const layer = buildBasemapLayer(tiles);
   if (tiles && tiles.type === "vector") {
-    apply2(layer, tiles.styleUrl).then((group) => setVectorAttributions(group, tiles.attributions)).catch((error2) => console.error("[rover] could not load vector basemap style:", error2));
+    apply2(layer, tiles.styleUrl).then((group) => !layer.disposed && setVectorAttributions(group, tiles.attributions)).catch((error2) => console.error("[rover] could not load vector basemap style:", error2));
   }
+  if (tiles && tiles.type === "wmts") applyWmtsSource(layer, tiles);
   return layer;
+}
+function applyWmtsSource(layer, tiles) {
+  fetch(tiles.capabilitiesUrl).then((response) => {
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return response.text();
+  }).then((text) => {
+    if (layer.disposed) return;
+    const capabilities = new WMTSCapabilities_default().read(text);
+    const options = optionsFromCapabilities(capabilities, {
+      layer: tiles.layer,
+      matrixSet: tiles.matrixSet,
+      format: tiles.format,
+      crossOrigin: "anonymous"
+    });
+    if (!options) {
+      throw new Error(
+        `no layer ${JSON.stringify(tiles.layer)} in the capabilities document` + (tiles.matrixSet ? ` for matrix set ${JSON.stringify(tiles.matrixSet)}` : "")
+      );
+    }
+    layer.setSource(new WMTS_default({ ...options, attributions: tiles.attributions || void 0 }));
+  }).catch((error2) => console.error("[rover] could not load the WMTS capabilities document:", error2));
 }
 function setVectorAttributions(group, attributions) {
   group.getLayers().forEach((layer) => {
@@ -60606,16 +61766,16 @@ var Rover = {
     this.markersJson = this.el.dataset.roverMarkers;
     this.shapesJson = this.el.dataset.roverShapes;
     this.heatmapJson = this.el.dataset.roverHeatmap;
-    this.config = parse2(this.configJson, {}, "data-rover");
+    this.config = parse3(this.configJson, {}, "data-rover");
     this.map = new RoverMap(
       this.canvasEl,
       this.config,
       (event, payload) => this.emit(event, payload)
     );
     this.map.setContent({
-      heatmap: parse2(this.heatmapJson, null, "data-rover-heatmap"),
-      shapes: parse2(this.shapesJson, [], "data-rover-shapes"),
-      markers: parse2(this.markersJson, [], "data-rover-markers")
+      heatmap: parse3(this.heatmapJson, null, "data-rover-heatmap"),
+      shapes: parse3(this.shapesJson, [], "data-rover-shapes"),
+      markers: parse3(this.markersJson, [], "data-rover-markers")
     });
     this.popups = new Popups(this.el, this.map);
     this.onIndexClick = (event) => {
@@ -60645,24 +61805,24 @@ var Rover = {
     const configJson = this.el.dataset.rover;
     if (configJson !== this.configJson) {
       this.configJson = configJson;
-      this.config = parse2(configJson, this.config, "data-rover");
+      this.config = parse3(configJson, this.config, "data-rover");
       this.map.setConfig(this.config);
     }
     const content = {};
     const heatmapJson = this.el.dataset.roverHeatmap;
     if (heatmapJson !== this.heatmapJson) {
       this.heatmapJson = heatmapJson;
-      content.heatmap = parse2(heatmapJson, null, "data-rover-heatmap");
+      content.heatmap = parse3(heatmapJson, null, "data-rover-heatmap");
     }
     const shapesJson = this.el.dataset.roverShapes;
     if (shapesJson !== this.shapesJson) {
       this.shapesJson = shapesJson;
-      content.shapes = parse2(shapesJson, [], "data-rover-shapes");
+      content.shapes = parse3(shapesJson, [], "data-rover-shapes");
     }
     const markersJson = this.el.dataset.roverMarkers;
     if (markersJson !== this.markersJson) {
       this.markersJson = markersJson;
-      content.markers = parse2(markersJson, [], "data-rover-markers");
+      content.markers = parse3(markersJson, [], "data-rover-markers");
     }
     if (content.heatmap !== void 0 || content.shapes !== void 0 || content.markers !== void 0) {
       this.map.setContent(content);
@@ -60687,7 +61847,7 @@ var Rover = {
   }
 };
 var RoverHooks = { Rover };
-function parse2(json, fallback, attribute) {
+function parse3(json, fallback, attribute) {
   if (!json) return fallback;
   try {
     return JSON.parse(json);

@@ -331,6 +331,33 @@ defmodule Rover.ComponentsTest do
     end
   end
 
+  describe "WMTS tiles" do
+    test "reach the client as the document to read and the layer to read from it" do
+      tiles =
+        config(
+          render_map(
+            tiles:
+              {:wmts, "https://example.com/wmts", layer: "ORTHO", matrix_set: "PM", max_zoom: 21}
+          )
+        )["tiles"]
+
+      assert tiles == %{
+               "type" => "wmts",
+               "capabilitiesUrl" => "https://example.com/wmts",
+               "layer" => "ORTHO",
+               "matrixSet" => "PM",
+               "maxZoom" => 21
+             }
+    end
+
+    test "work as an overlay layer too, being just another tiles form" do
+      layers = [{:tiles, {:wmts, "https://example.com/wmts", layer: "ORTHO"}}]
+      [layer] = config(render_map(layers: layers))["layers"]
+
+      assert layer["tiles"]["type"] == "wmts"
+    end
+  end
+
   describe "layers" do
     test "are absent unless asked for, so a map without them carries nothing" do
       refute Map.has_key?(config(render_map([])), "layers")
