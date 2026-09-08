@@ -630,8 +630,10 @@ function appearanceOf(marker) {
 import LayerGroup3 from "ol/layer/Group.js";
 
 // js/tiles.js
+import WMTSCapabilities from "ol/format/WMTSCapabilities.js";
 import LayerGroup2 from "ol/layer/Group.js";
 import TileLayer2 from "ol/layer/Tile.js";
+import WMTS, { optionsFromCapabilities } from "ol/source/WMTS.js";
 import XYZ from "ol/source/XYZ.js";
 
 // node_modules/@maplibre/maplibre-gl-style-spec/dist/reference/v8.mjs
@@ -11899,6 +11901,7 @@ function resolveRetina(url) {
 function buildBasemapLayer(tiles) {
   if (!tiles) return new TileLayer2({ visible: false });
   if (tiles.type === "vector") return new LayerGroup2();
+  if (tiles.type === "wmts") return new TileLayer2();
   return new TileLayer2({
     source: new XYZ({
       url: resolveRetina(tiles.url),
@@ -11911,9 +11914,31 @@ function buildBasemapLayer(tiles) {
 function buildTileLayer(tiles) {
   const layer = buildBasemapLayer(tiles);
   if (tiles && tiles.type === "vector") {
-    apply(layer, tiles.styleUrl).then((group) => setVectorAttributions(group, tiles.attributions)).catch((error2) => console.error("[rover] could not load vector basemap style:", error2));
+    apply(layer, tiles.styleUrl).then((group) => !layer.disposed && setVectorAttributions(group, tiles.attributions)).catch((error2) => console.error("[rover] could not load vector basemap style:", error2));
   }
+  if (tiles && tiles.type === "wmts") applyWmtsSource(layer, tiles);
   return layer;
+}
+function applyWmtsSource(layer, tiles) {
+  fetch(tiles.capabilitiesUrl).then((response) => {
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return response.text();
+  }).then((text) => {
+    if (layer.disposed) return;
+    const capabilities = new WMTSCapabilities().read(text);
+    const options = optionsFromCapabilities(capabilities, {
+      layer: tiles.layer,
+      matrixSet: tiles.matrixSet,
+      format: tiles.format,
+      crossOrigin: "anonymous"
+    });
+    if (!options) {
+      throw new Error(
+        `no layer ${JSON.stringify(tiles.layer)} in the capabilities document` + (tiles.matrixSet ? ` for matrix set ${JSON.stringify(tiles.matrixSet)}` : "")
+      );
+    }
+    layer.setSource(new WMTS({ ...options, attributions: tiles.attributions || void 0 }));
+  }).catch((error2) => console.error("[rover] could not load the WMTS capabilities document:", error2));
 }
 function setVectorAttributions(group, attributions) {
   group.getLayers().forEach((layer) => {

@@ -200,7 +200,10 @@ defmodule Rover.Components do
 
   attr :tiles, :any,
     default: :osm,
-    doc: "A `Rover.Tiles` preset, `{:xyz, url}`, `{:vector, style_url}`, or `:none`."
+    doc: """
+    A `Rover.Tiles` preset, `{:xyz, url}`, `{:vector, style_url}`,
+    `{:wmts, capabilities_url, layer: "..."}`, or `:none`.
+    """
 
   attr :layers, :list,
     default: [],
@@ -611,6 +614,18 @@ defmodule Rover.Components do
     case Tiles.resolve!(tiles) do
       nil ->
         nil
+
+      %{type: :wmts} = resolved ->
+        %{
+          type: "wmts",
+          capabilitiesUrl: resolved.capabilities_url,
+          layer: resolved.layer,
+          matrixSet: resolved.matrix_set,
+          format: resolved.format,
+          attributions: resolved.attributions,
+          maxZoom: resolved.max_zoom
+        }
+        |> drop_nils()
 
       %{type: :vector} = resolved ->
         %{

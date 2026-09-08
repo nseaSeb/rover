@@ -37,6 +37,23 @@ describe("buildBasemapLayer", () => {
     assert.deepEqual(source.getAttributions()(), ["© Example"])
   })
 
+  it("builds a sourceless tile layer for WMTS, to be filled once its grid is known", () => {
+    // The tile grid lives in a capabilities document that has to be fetched, so
+    // the layer is real from the start and gains its source when that lands —
+    // the same shape the vector path takes.
+    const layer = buildBasemapLayer({
+      type: "wmts",
+      capabilitiesUrl: "https://example.com/wmts",
+      layer: "ORTHO",
+      maxZoom: 19,
+    })
+
+    assert.ok(layer instanceof TileLayer)
+    assert.ok(!(layer instanceof LayerGroup))
+    assert.equal(layer.getSource(), null)
+    assert.equal(layer.getVisible(), true, "a WMTS basemap must not start hidden")
+  })
+
   it("resolves the {r} retina placeholder on the raster path only", () => {
     const layer = buildBasemapLayer({
       type: "raster",

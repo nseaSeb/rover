@@ -33,6 +33,54 @@ const TILE = Buffer.from(
 const MAP = "#clients"
 const CANVAS = "#clients-canvas"
 
+/**
+ * A WMTS capabilities document for one layer, in the shape the Géoportail's own
+ * takes — the real one is megabytes, and none of the rest of it is read.
+ *
+ * The grid is what the test is about: OpenLayers has to take the matrix
+ * identifiers, the top-left corner and the row/column order from *here* rather
+ * than assume them, which is the whole difference between this and the XYZ
+ * shortcut the `:ign_*` presets take.
+ */
+function wmtsCapabilities({ layer, matrixSet, template }) {
+  const matrices = Array.from({ length: 15 }, (_, z) => {
+    const size = 2 ** z
+
+    return `<TileMatrix>
+      <ows:Identifier>${z}</ows:Identifier>
+      <ScaleDenominator>${559082264.0287178 / size}</ScaleDenominator>
+      <TopLeftCorner>-20037508.3427892 20037508.3427892</TopLeftCorner>
+      <TileWidth>256</TileWidth>
+      <TileHeight>256</TileHeight>
+      <MatrixWidth>${size}</MatrixWidth>
+      <MatrixHeight>${size}</MatrixHeight>
+    </TileMatrix>`
+  }).join("")
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Capabilities xmlns="http://www.opengis.net/wmts/1.0" xmlns:ows="http://www.opengis.net/ows/1.1" version="1.0.0">
+  <Contents>
+    <Layer>
+      <ows:Title>Miniature</ows:Title>
+      <ows:WGS84BoundingBox>
+        <ows:LowerCorner>-180 -85.0511287798066</ows:LowerCorner>
+        <ows:UpperCorner>180 85.0511287798066</ows:UpperCorner>
+      </ows:WGS84BoundingBox>
+      <ows:Identifier>${layer}</ows:Identifier>
+      <Style isDefault="true"><ows:Identifier>normal</ows:Identifier></Style>
+      <Format>image/jpeg</Format>
+      <TileMatrixSetLink><TileMatrixSet>${matrixSet}</TileMatrixSet></TileMatrixSetLink>
+      <ResourceURL format="image/jpeg" resourceType="tile" template="${template}"/>
+    </Layer>
+    <TileMatrixSet>
+      <ows:Identifier>${matrixSet}</ows:Identifier>
+      <ows:SupportedCRS>urn:ogc:def:crs:EPSG::3857</ows:SupportedCRS>
+      ${matrices}
+    </TileMatrixSet>
+  </Contents>
+</Capabilities>`
+}
+
 /** Stub the tile server and record every URL that was requested. */
 async function stubTiles(page) {
   const urls = []
@@ -1378,6 +1426,72 @@ test.describe("the playground", () => {
       .poll(() => popup.evaluate((node) => parseFloat(node.style.top)))
       .toBeCloseTo(pixel.y - 8, 0)
 
+    expect(problems).toEqual([])
+  })
+
+  test("reads a WMTS grid out of the capabilities document", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    // Registered after stubTiles, so it wins for this one URL: the capabilities
+    // document is XML, and the tile stub would answer it with a PNG.
+    await page.route("**://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetCapabilities**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/xml",
+        headers: { "access-control-allow-origin": "*" },
+        body: wmtsCapabilities({
+          layer: "ORTHOIMAGERY.ORTHOPHOTOS",
+          matrixSet: "PM",
+          template: "https://wmts.test/tiles/{TileMatrix}/{TileCol}/{TileRow}.jpg",
+        }),
+      })
+    )
+
+    const tiles = []
+    await page.route("**://wmts.test/**", (route) => {
+      tiles.push(route.request().url())
+
+      return route.fulfill({
+        status: 200,
+        contentType: "image/jpeg",
+        headers: { "access-control-allow-origin": "*" },
+        body: TILE,
+      })
+    })
+
+    await page.goto("/?tiles=wmts")
+    await mapReady(page)
+
+    // The source exists only once the document has been fetched and parsed.
+    await expect.poll(() => tiles.length).toBeGreaterThan(0)
+
+    // The playground opens at zoom 13, and the document calls that level "13".
+    expect(tiles[0]).toMatch(/^https:\/\/wmts\.test\/tiles\/13\/\d+\/\d+\.jpg$/)
+
+    // The tile under the centre of the view, asked of the grid OpenLayers built
+    // from the document, must be one of the tiles actually requested — which it
+    // is not if TileCol and TileRow were filled the other way round. Over Lyon
+    // the two differ by more than a thousand, so a swap cannot pass by accident.
+    const centre = await page.evaluate((sel) => {
+      const rover = document.querySelector(sel)._rover
+      const grid = rover.basemapLayer.getSource().getTileGrid()
+      const view = rover.map.getView()
+      const [z, column, row] = grid.getTileCoordForCoordAndZ(view.getCenter(), 13)
+
+      return { path: `/tiles/${z}/${column}/${row}.jpg`, column, row }
+    }, MAP)
+
+    expect(centre.column).not.toBe(centre.row)
+    expect(tiles.some((url) => url.endsWith(centre.path)), `no ${centre.path} in ${tiles}`).toBe(true)
+
+    // And Rover's attribution is on the source, not the document's own.
+    const attributions = await page.evaluate((sel) => {
+      const source = document.querySelector(sel)._rover.basemapLayer.getSource()
+      return source.getAttributions()({})
+    }, MAP)
+
+    expect(String(attributions)).toContain("IGN-F/Géoportail")
     expect(problems).toEqual([])
   })
 

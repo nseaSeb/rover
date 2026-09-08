@@ -32,6 +32,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `ol-mapbox-style` populates rather than a source that can be set — moved into
   `assets/js/tiles.js`, so there is one place for the licence handling to live.
 
+- **`{:wmts, capabilities_url, layer: "..."}`**: a real `ol/source/WMTS`, for a
+  service whose tile grid is its own rather than the Web Mercator one every
+  other basemap here shares. Rover fetches the capabilities document, reads the
+  grid out of it and builds the source from what it says; `:matrix_set`,
+  `:format`, `:attributions` and `:max_zoom` are optional, `:layer` is not,
+  since a capabilities document describes several.
+
+  The map renders before the document has been read and gains its tiles when it
+  lands, the shape the vector basemap already had — which is also why
+  `:max_zoom` has a value from the start: the initial framing needs a ceiling
+  before anything has been fetched. Both asynchronous paths now check that the
+  layer they were handed has not been disposed in the meantime, so a basemap
+  swapped mid-flight cannot come back to life and go on fetching tiles.
+
+  The `:ign_*` presets deliberately keep their XYZ shortcut: the Géoportail's
+  KVP endpoint carries the tile coordinates in the query string and its layers
+  are on the grid the map already uses, so nothing is bought by the round-trip
+  there.
+
 ### Changed
 
 - **The attribution control is rendered for a map with layers but no basemap.**

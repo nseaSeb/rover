@@ -77,6 +77,11 @@ defmodule Rover.Tiles do
   # anywhere in the URL, query string included, so a plain XYZ source reads it
   # without a WMTS capabilities round-trip. Note TILEROW is {y} and TILECOL is
   # {x}: getting that pair backwards yields a map that loads and is wrong.
+  #
+  # That shortcut works because these two layers are Web Mercator on the same
+  # grid the rest of the map already uses. `{:wmts, capabilities_url, opts}` is
+  # for the services that are not: it reads the grid out of the capabilities document
+  # instead of assuming it.
   @ign_wmts "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0" <>
               "&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}"
 
@@ -167,6 +172,7 @@ defmodule Rover.Tiles do
           | {:xyz, String.t(), keyword()}
           | {:vector, String.t()}
           | {:vector, String.t(), keyword()}
+          | {:wmts, String.t(), keyword()}
 
   @raster_presets [
     :osm,
@@ -217,6 +223,7 @@ defmodule Rover.Tiles do
   # `:osm`, with no word about the option it lost.
   @source_options [:max_zoom, :attributions]
   @preset_options [:key | @source_options]
+  @wmts_options [:layer, :matrix_set, :format | @source_options]
 
   @doc """
   Resolves a tile specification into the map handed to the JavaScript runtime.
@@ -237,6 +244,9 @@ defmodule Rover.Tiles do
 
       iex> Rover.Tiles.resolve!({:vector, "https://example.com/style.json"})
       %{type: :vector, attributions: nil, max_zoom: 24, style_url: "https://example.com/style.json"}
+
+      iex> Rover.Tiles.resolve!({:wmts, "https://example.com/wmts", layer: "ORTHO"}).layer
+      "ORTHO"
 
       iex> Rover.Tiles.resolve!(:none)
       nil
@@ -296,13 +306,43 @@ defmodule Rover.Tiles do
     }
   end
 
+  def resolve!({:wmts, capabilities_url, opts})
+      when is_binary(capabilities_url) and is_list(opts) do
+    validate_opts!(opts, @wmts_options, {:wmts, capabilities_url, opts})
+
+    layer =
+      Keyword.get(opts, :layer) ||
+        raise ArgumentError, """
+        a WMTS source needs the layer to read, got: #{inspect({:wmts, capabilities_url, opts})}.
+
+        A capabilities document describes several; name the one you want:
+
+            tiles={{:wmts, "https://example.com/wmts?SERVICE=WMTS&REQUEST=GetCapabilities",
+                    layer: "ORTHOIMAGERY.ORTHOPHOTOS"}}
+        """
+
+    %{
+      type: :wmts,
+      capabilities_url: capabilities_url,
+      layer: layer,
+      matrix_set: Keyword.get(opts, :matrix_set),
+      format: Keyword.get(opts, :format),
+      attributions: Keyword.get(opts, :attributions),
+      # A number the moment the map is rendered, because the framing needs a
+      # zoom ceiling before the capabilities document has been fetched — the
+      # grid it describes is what actually limits the tiles.
+      max_zoom: Keyword.get(opts, :max_zoom, 19)
+    }
+  end
+
   def resolve!(other) do
     raise ArgumentError, """
     invalid tiles: #{inspect(other)}.
 
     Expected a preset name (#{Enum.map_join(presets(), ", ", &inspect/1)}), `:none`,
-    `{preset, opts}`, `{:xyz, url}` / `{:xyz, url, opts}`, or
-    `{:vector, style_url}` / `{:vector, style_url, opts}`.
+    `{preset, opts}`, `{:xyz, url}` / `{:xyz, url, opts}`,
+    `{:vector, style_url}` / `{:vector, style_url, opts}`, or
+    `{:wmts, capabilities_url, opts}`.
     """
   end
 

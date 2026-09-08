@@ -507,6 +507,30 @@ data cadence than their raster counterparts — see
 comparison. New code should reach for a vector preset; the raster ones keep
 working exactly as they do today for anything already built on them.
 
+For a WMTS service whose grid is its own — not the Web Mercator one every
+basemap here shares — name the capabilities document and the layer to read from
+it:
+
+```heex
+<.map
+  id="ortho"
+  tiles={{:wmts, "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetCapabilities&VERSION=1.0.0",
+          layer: "ORTHOIMAGERY.ORTHOPHOTOS", matrix_set: "PM", format: "image/jpeg"}}
+/>
+```
+
+Rover fetches that document, reads the tile grid out of it, and builds an
+`ol/source/WMTS` from what it says. `:layer` is required — a capabilities
+document describes several — and `:matrix_set`, `:format`, `:attributions` and
+`:max_zoom` are optional. The map renders immediately and the tiles appear once
+the document has been read, the same way a vector basemap does.
+
+The `:ign_*` presets below do *not* take this path: the Géoportail's KVP
+endpoint puts the tile coordinates in the query string, and its two layers are
+on the grid the map already uses, so a plain XYZ source reads them without the
+round-trip. `{:wmts, ...}` is for the services where that shortcut does not
+apply.
+
 The two IGN presets serve the French [Géoportail](https://www.geoportail.gouv.fr/)
 — the reference plan and the aerial orthophotography. Unlike the demo endpoints
 below they are meant for production use.
