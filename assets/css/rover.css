@@ -37,10 +37,16 @@
    The system's preference applies unless the page has said `light` itself — an
    application with its own theme toggle sets `data-theme` or a class on the
    root, and a user who chose light on a dark OS must get light. A page that
-   says `dark` gets dark whatever the OS thinks. `:where()` keeps both at the
-   container's own specificity, so an application's override still wins. */
+   says `dark` gets dark whatever the OS thinks.
+
+   Both blocks weigh exactly one class, so an application's own
+   `.rover-map { --rover-popup-bg: ... }` still wins. That is what the outer
+   `:where()` below is for, and it is not decoration: `:not()` takes the
+   specificity of its argument, and the argument here ends in `.rover-map`, so
+   without it this selector would weigh two classes and quietly beat the
+   override on a dark OS. */
 @media (prefers-color-scheme: dark) {
-  .rover-map:not(:where([data-theme="light"], .light) .rover-map) {
+  .rover-map:where(:not(:where([data-theme="light"], .light) .rover-map)) {
     --rover-bg: #1f2430;
     --rover-control-bg: #262b36;
     --rover-control-fg: #e5e7eb;
