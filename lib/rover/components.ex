@@ -736,10 +736,10 @@ defmodule Rover.Components do
     drop_nils(%{
       id: opts |> Keyword.get(:id) |> encode_layer_id(),
       tiles: tiles,
-      opacity: Keyword.get(opts, :opacity),
-      visible: Keyword.get(opts, :visible),
-      minZoom: Keyword.get(opts, :min_zoom),
-      maxZoom: Keyword.get(opts, :max_zoom)
+      opacity: opts |> Keyword.get(:opacity) |> layer_opacity!(),
+      visible: opts |> Keyword.get(:visible) |> layer_boolean!(:visible),
+      minZoom: opts |> Keyword.get(:min_zoom) |> layer_number!(:min_zoom),
+      maxZoom: opts |> Keyword.get(:max_zoom) |> layer_number!(:max_zoom)
     })
   end
 
@@ -756,6 +756,34 @@ defmodule Rover.Components do
 
   defp encode_layer_id(nil), do: nil
   defp encode_layer_id(id), do: to_string(id)
+
+  # Checked here rather than left to the client. OpenLayers asserts on the type
+  # of every one of these, and `reconcile` runs both at mount and on each update
+  # — so a `"0.6"` arriving from a form field does not spoil one layer, it takes
+  # the whole map down with it.
+  defp layer_opacity!(nil), do: nil
+  defp layer_opacity!(value) when is_number(value) and value >= 0 and value <= 1, do: value / 1
+
+  defp layer_opacity!(value) do
+    raise ArgumentError,
+          "expected a number from 0 to 1 for a layer's :opacity, got: #{inspect(value)}"
+  end
+
+  defp layer_boolean!(nil, _option), do: nil
+  defp layer_boolean!(value, _option) when is_boolean(value), do: value
+
+  defp layer_boolean!(value, option) do
+    raise ArgumentError,
+          "expected true or false for a layer's #{inspect(option)}, got: #{inspect(value)}"
+  end
+
+  defp layer_number!(nil, _option), do: nil
+  defp layer_number!(value, _option) when is_number(value), do: value
+
+  defp layer_number!(value, option) do
+    raise ArgumentError,
+          "expected a number for a layer's #{inspect(option)}, got: #{inspect(value)}"
+  end
 
   @cluster_options [:distance, :min_distance, :zoom_on_click]
 

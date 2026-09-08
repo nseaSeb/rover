@@ -6,7 +6,7 @@ import TileLayer from "ol/layer/Tile.js"
 import XYZ from "ol/source/XYZ.js"
 
 import { buildBasemapLayer } from "../js/rover_map.js"
-import { wmtsConfigFor } from "../js/tiles.js"
+import { disposeLayer, wmtsConfigFor, wmtsFaultIn } from "../js/tiles.js"
 
 // The rest of applyTiles — inserting the built layer into slot 0, calling
 // ol-mapbox-style's apply() for a vector group — needs a real OL map and, for
@@ -100,5 +100,91 @@ describe("wmtsConfigFor", () => {
 
     assert.equal(config.matrixSet, "PM")
     assert.equal(config.format, "image/png")
+  })
+})
+
+describe("wmtsFaultIn", () => {
+  // The parsed shape of a capabilities document, which is what the WMTS source
+  // is built from. Reading it is where every one of these goes wrong.
+  const document = {
+    Contents: {
+      Layer: [
+        {
+          Identifier: "ORTHO",
+          Format: ["image/jpeg"],
+          TileMatrixSetLink: [{ TileMatrixSet: "PM" }, { TileMatrixSet: "LAMB93" }],
+        },
+      ],
+      TileMatrixSet: [
+        { Identifier: "PM", SupportedCRS: "urn:ogc:def:crs:EPSG::3857" },
+        { Identifier: "LAMB93", SupportedCRS: "urn:ogc:def:crs:EPSG::2154" },
+      ],
+    },
+  }
+
+  const tiles = { layer: "ORTHO", matrixSet: "PM" }
+
+  it("says nothing about a document that answers the question", () => {
+    assert.equal(wmtsFaultIn(document, tiles), null)
+    assert.equal(wmtsFaultIn(document, { layer: "ORTHO" }), null)
+    assert.equal(wmtsFaultIn(document, { ...tiles, format: "image/jpeg" }), null)
+  })
+
+  it("names a layer the document does not describe", () => {
+    assert.match(wmtsFaultIn(document, { layer: "PLAN" }), /no layer "PLAN"/)
+  })
+
+  it("names a format the layer does not serve", () => {
+    // OpenLayers takes the format at face value, so every tile request then
+    // fails with nothing in the console.
+    const fault = wmtsFaultIn(document, { ...tiles, format: "image/png" })
+
+    assert.match(fault, /not served as "image\/png"/)
+    assert.match(fault, /"image\/jpeg"/)
+  })
+
+  it("names a matrix set the layer does not offer", () => {
+    // OpenLayers silently swaps in the layer's first one, building a source on
+    // a grid nobody asked for.
+    const fault = wmtsFaultIn(document, { layer: "ORTHO", matrixSet: "WGS84G" })
+
+    assert.match(fault, /not offered in matrix set "WGS84G"/)
+    assert.match(fault, /"PM", "LAMB93"/)
+  })
+
+  it("names a CRS OpenLayers cannot build a grid in", () => {
+    // Without proj4 it carries Web Mercator and WGS 84 only, and dereferences a
+    // null projection for anything else — a TypeError that reads as if the
+    // document had failed to load.
+    const fault = wmtsFaultIn(document, { layer: "ORTHO", matrixSet: "LAMB93" })
+
+    assert.match(fault, /EPSG::2154/)
+    assert.match(fault, /proj4/)
+  })
+
+  it("checks the matrix set the layer would fall back to, not only a named one", () => {
+    const lambertFirst = {
+      Contents: {
+        ...document.Contents,
+        Layer: [{ ...document.Contents.Layer[0], TileMatrixSetLink: [{ TileMatrixSet: "LAMB93" }] }],
+      },
+    }
+
+    assert.match(wmtsFaultIn(lambertFirst, { layer: "ORTHO" }), /EPSG::2154/)
+  })
+})
+
+describe("disposeLayer", () => {
+  it("disposes what a group holds, which the group's own dispose does not", () => {
+    // ol/layer/Group does not override disposeInternal, so a vector basemap's
+    // children — every layer ol-mapbox-style put in it — outlive the page.
+    const child = buildBasemapLayer({ type: "raster", url: "https://a/{z}/{x}/{y}.png" })
+    const group = buildBasemapLayer({ type: "vector", styleUrl: "https://example.com/style.json" })
+    group.getLayers().push(child)
+
+    disposeLayer(group)
+
+    assert.equal(group.disposed, true)
+    assert.equal(child.disposed, true, "the group was released and its children left running")
   })
 })

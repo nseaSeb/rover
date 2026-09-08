@@ -545,6 +545,11 @@ document describes several — and `:matrix_set`, `:format`, `:attributions` and
 `:max_zoom` are optional. The map renders immediately and the tiles appear once
 the document has been read, the same way a vector basemap does.
 
+One limit worth knowing before you reach for it: OpenLayers carries Web
+Mercator and WGS 84 and nothing else, so a matrix set in Lambert-93 or the
+British National Grid needs its projection registered with `proj4` before the
+map is built. Rover says so by name rather than letting it fail as a blank map.
+
 The `:ign_*` presets below do *not* take this path: the Géoportail's KVP
 endpoint puts the tile coordinates in the query string, and its two layers are
 on the grid the map already uses, so a plain XYZ source reads them without the

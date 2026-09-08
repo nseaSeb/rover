@@ -30,7 +30,7 @@ import { HeatmapLayer } from "./heatmap.js"
 import { MarkerLayer } from "./markers.js"
 import { OverlayLayers } from "./overlays.js"
 import { ShapeLayer, format as geoJsonFormat } from "./shapes.js"
-import { buildBasemapLayer, buildTileLayer } from "./tiles.js"
+import { buildBasemapLayer, buildTileLayer, disposeLayer } from "./tiles.js"
 
 // Re-exported where it has always lived, so a caller reaching for it — and the
 // unit suite that does — is not moved by an internal reshuffle.
@@ -336,7 +336,9 @@ export class RoverMap {
 
     const layers = this.map.getLayers()
     layers.remove(this.basemapLayer)
-    this.basemapLayer.dispose()
+    // Not `dispose()`: a vector basemap is a group, and disposing one leaves
+    // every layer ol-mapbox-style put inside it running.
+    disposeLayer(this.basemapLayer)
     layers.insertAt(0, next)
     this.basemapLayer = next
   }

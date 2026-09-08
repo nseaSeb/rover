@@ -405,6 +405,27 @@ defmodule Rover.ComponentsTest do
       assert layer["tiles"]["type"] == "vector"
     end
 
+    test "reject an option of the wrong type, rather than letting it reach the map" do
+      # OpenLayers asserts on each of these, and the client applies them at mount
+      # and on every update — so a string from a form field would not spoil one
+      # layer, it would take the whole map down.
+      assert_raise ArgumentError, ~r/from 0 to 1 for a layer's :opacity/, fn ->
+        render_map(layers: [{:tiles, :osm, opacity: "0.6"}])
+      end
+
+      assert_raise ArgumentError, ~r/from 0 to 1 for a layer's :opacity/, fn ->
+        render_map(layers: [{:tiles, :osm, opacity: 1.5}])
+      end
+
+      assert_raise ArgumentError, ~r/true or false for a layer's :visible/, fn ->
+        render_map(layers: [{:tiles, :osm, visible: "yes"}])
+      end
+
+      assert_raise ArgumentError, ~r/a number for a layer's :min_zoom/, fn ->
+        render_map(layers: [{:tiles, :osm, min_zoom: "12"}])
+      end
+    end
+
     test "reject two layers sharing an id" do
       # Whichever the client matched first would take both configs, and the
       # other layer would be drawn twice or not at all.

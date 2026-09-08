@@ -1,6 +1,6 @@
 import LayerGroup from "ol/layer/Group.js"
 
-import { buildTileLayer } from "./tiles.js"
+import { buildTileLayer, disposeLayer } from "./tiles.js"
 
 /**
  * The tile layers drawn between the basemap and everything else.
@@ -61,18 +61,19 @@ export class OverlayLayers {
       return { key, tiles: config.tiles, layer }
     })
 
-    // Whatever survived keeps its object identity; the rest is disposed, which
-    // for a vector group is what stops its tile loading.
+    // Whatever survived keeps its object identity. Taking the rest out of the
+    // collection below is what stops them drawing; disposing them is what
+    // releases their sources and listeners.
     previous
       .filter((entry) => !this.entries.some((kept) => kept.layer === entry.layer))
-      .forEach((entry) => entry.layer.dispose())
+      .forEach((entry) => disposeLayer(entry.layer))
 
     collection.clear()
     this.entries.forEach((entry) => collection.push(entry.layer))
   }
 
   dispose() {
-    this.entries.forEach((entry) => entry.layer.dispose())
+    this.entries.forEach((entry) => disposeLayer(entry.layer))
     this.entries = []
     this.layer.getLayers().clear()
   }
