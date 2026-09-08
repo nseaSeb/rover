@@ -60826,17 +60826,35 @@ function applyWmtsSource(layer, tiles) {
   }).then((text) => {
     if (layer.disposed) return;
     const capabilities = new WMTSCapabilities_default().read(text);
+    const fault = wmtsFaultIn(capabilities, tiles);
+    if (fault) throw new Error(fault);
     const options = optionsFromCapabilities(capabilities, wmtsConfigFor(tiles));
     if (!options) {
       throw new Error(`no layer ${JSON.stringify(tiles.layer)} in the capabilities document`);
     }
-    if (tiles.matrixSet && options.matrixSet !== tiles.matrixSet) {
-      throw new Error(
-        `layer ${JSON.stringify(tiles.layer)} is not offered in matrix set ${JSON.stringify(tiles.matrixSet)} \u2014 the document has ${JSON.stringify(options.matrixSet)}`
-      );
-    }
     layer.setSource(new WMTS_default({ ...options, attributions: tiles.attributions || void 0 }));
   }).catch((error2) => console.error("[rover] could not load the WMTS capabilities document:", error2));
+}
+function wmtsFaultIn(capabilities, tiles) {
+  const contents = (capabilities || {}).Contents || {};
+  const layer = (contents.Layer || []).find((entry) => entry.Identifier === tiles.layer);
+  if (!layer) {
+    return `no layer ${JSON.stringify(tiles.layer)} in the capabilities document`;
+  }
+  const formats = layer.Format || [];
+  if (tiles.format && formats.length > 0 && !formats.includes(tiles.format)) {
+    return `layer ${JSON.stringify(tiles.layer)} is not served as ${JSON.stringify(tiles.format)} \u2014 the document offers ${formats.map((format2) => JSON.stringify(format2)).join(", ")}`;
+  }
+  const sets = (layer.TileMatrixSetLink || []).map((link) => link.TileMatrixSet);
+  if (tiles.matrixSet && !sets.includes(tiles.matrixSet)) {
+    return `layer ${JSON.stringify(tiles.layer)} is not offered in matrix set ${JSON.stringify(tiles.matrixSet)} \u2014 the document has ${sets.map((set2) => JSON.stringify(set2)).join(", ")}`;
+  }
+  const chosen = tiles.matrixSet || sets[0];
+  const crs = (contents.TileMatrixSet || []).find((set2) => set2.Identifier === chosen)?.SupportedCRS;
+  if (crs && !get3(crs)) {
+    return `matrix set ${JSON.stringify(chosen)} is in ${JSON.stringify(crs)}, which OpenLayers does not know \u2014 it carries Web Mercator and WGS 84 only, and anything else has to be registered with proj4 before the map is built`;
+  }
+  return null;
 }
 function wmtsConfigFor(tiles) {
   return {
@@ -60845,6 +60863,10 @@ function wmtsConfigFor(tiles) {
     ...tiles.matrixSet ? { matrixSet: tiles.matrixSet } : {},
     ...tiles.format ? { format: tiles.format } : {}
   };
+}
+function disposeLayer(layer) {
+  if (layer.getLayers) layer.getLayers().forEach(disposeLayer);
+  layer.dispose();
 }
 function setVectorAttributions(group, attributions) {
   group.getLayers().forEach((layer) => {
@@ -60882,12 +60904,12 @@ var OverlayLayers = class {
       applyOptions(layer, config);
       return { key, tiles: config.tiles, layer };
     });
-    previous.filter((entry) => !this.entries.some((kept) => kept.layer === entry.layer)).forEach((entry) => entry.layer.dispose());
+    previous.filter((entry) => !this.entries.some((kept) => kept.layer === entry.layer)).forEach((entry) => disposeLayer(entry.layer));
     collection.clear();
     this.entries.forEach((entry) => collection.push(entry.layer));
   }
   dispose() {
-    this.entries.forEach((entry) => entry.layer.dispose());
+    this.entries.forEach((entry) => disposeLayer(entry.layer));
     this.entries = [];
     this.layer.getLayers().clear();
   }
@@ -61334,7 +61356,7 @@ var RoverMap = class {
     next.setZIndex(0);
     const layers = this.map.getLayers();
     layers.remove(this.basemapLayer);
-    this.basemapLayer.dispose();
+    disposeLayer(this.basemapLayer);
     layers.insertAt(0, next);
     this.basemapLayer = next;
   }

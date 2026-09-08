@@ -1,6 +1,7 @@
 import WMTSCapabilities from "ol/format/WMTSCapabilities.js"
 import LayerGroup from "ol/layer/Group.js"
 import TileLayer from "ol/layer/Tile.js"
+import { get as getProjection } from "ol/proj.js"
 import WMTS, { optionsFromCapabilities } from "ol/source/WMTS.js"
 import XYZ from "ol/source/XYZ.js"
 import { apply as applyVectorStyle } from "ol-mapbox-style"
@@ -89,29 +90,78 @@ function applyWmtsSource(layer, tiles) {
       if (layer.disposed) return
 
       const capabilities = new WMTSCapabilities().read(text)
-      const options = optionsFromCapabilities(capabilities, wmtsConfigFor(tiles))
 
-      // The document parsed and simply does not describe this layer. That is
-      // the only thing OpenLayers reports by returning nothing.
+      // Checked before OpenLayers is handed the document, not after: of the
+      // four ways this can be wrong it reports one, silently substitutes two,
+      // and throws a TypeError on the fourth.
+      const fault = wmtsFaultIn(capabilities, tiles)
+      if (fault) throw new Error(fault)
+
+      const options = optionsFromCapabilities(capabilities, wmtsConfigFor(tiles))
       if (!options) {
         throw new Error(`no layer ${JSON.stringify(tiles.layer)} in the capabilities document`)
-      }
-
-      // A matrix set it does not offer is not reported at all: OpenLayers falls
-      // back to the layer's first one, which builds a source on a grid the
-      // caller did not ask for — misaligned tiles, or none, and no error. So
-      // the answer is checked rather than trusted.
-      if (tiles.matrixSet && options.matrixSet !== tiles.matrixSet) {
-        throw new Error(
-          `layer ${JSON.stringify(tiles.layer)} is not offered in matrix set ` +
-            `${JSON.stringify(tiles.matrixSet)} — the document has ` +
-            `${JSON.stringify(options.matrixSet)}`
-        )
       }
 
       layer.setSource(new WMTS({ ...options, attributions: tiles.attributions || undefined }))
     })
     .catch((error) => console.error("[rover] could not load the WMTS capabilities document:", error))
+}
+
+/**
+ * What is wrong with reading `tiles` out of this capabilities document, in a
+ * sentence, or null if nothing is.
+ *
+ * Pure, and exported, because none of it is reachable any other way: it runs
+ * inside a promise on a document fetched over the network, and three of the
+ * four faults below produce no error of their own to catch.
+ *
+ *   - An unknown layer is the one OpenLayers reports, by returning nothing.
+ *   - A matrix set the layer does not offer is silently swapped for its first
+ *     one, building a source on a grid nobody asked for.
+ *   - A format the layer does not serve is taken at face value, and every tile
+ *     request then fails with nothing in the console.
+ *   - A matrix set in a CRS OpenLayers does not know — anything but Web
+ *     Mercator and WGS 84 without proj4, so Lambert-93 or the British National
+ *     Grid — makes it dereference a null projection, and the TypeError that
+ *     follows reads as if the document had failed to load.
+ */
+export function wmtsFaultIn(capabilities, tiles) {
+  const contents = (capabilities || {}).Contents || {}
+  const layer = (contents.Layer || []).find((entry) => entry.Identifier === tiles.layer)
+
+  if (!layer) {
+    return `no layer ${JSON.stringify(tiles.layer)} in the capabilities document`
+  }
+
+  const formats = layer.Format || []
+  if (tiles.format && formats.length > 0 && !formats.includes(tiles.format)) {
+    return (
+      `layer ${JSON.stringify(tiles.layer)} is not served as ${JSON.stringify(tiles.format)} — ` +
+      `the document offers ${formats.map((format) => JSON.stringify(format)).join(", ")}`
+    )
+  }
+
+  const sets = (layer.TileMatrixSetLink || []).map((link) => link.TileMatrixSet)
+  if (tiles.matrixSet && !sets.includes(tiles.matrixSet)) {
+    return (
+      `layer ${JSON.stringify(tiles.layer)} is not offered in matrix set ` +
+      `${JSON.stringify(tiles.matrixSet)} — the document has ` +
+      `${sets.map((set) => JSON.stringify(set)).join(", ")}`
+    )
+  }
+
+  const chosen = tiles.matrixSet || sets[0]
+  const crs = (contents.TileMatrixSet || []).find((set) => set.Identifier === chosen)?.SupportedCRS
+
+  if (crs && !getProjection(crs)) {
+    return (
+      `matrix set ${JSON.stringify(chosen)} is in ${JSON.stringify(crs)}, which OpenLayers does ` +
+      `not know — it carries Web Mercator and WGS 84 only, and anything else has to be ` +
+      `registered with proj4 before the map is built`
+    )
+  }
+
+  return null
 }
 
 /**
@@ -131,6 +181,20 @@ export function wmtsConfigFor(tiles) {
     ...(tiles.matrixSet ? { matrixSet: tiles.matrixSet } : {}),
     ...(tiles.format ? { format: tiles.format } : {}),
   }
+}
+
+/**
+ * Dispose a layer and, when it is a group, everything in it.
+ *
+ * `ol/layer/Group` does not override `disposeInternal`, so disposing one
+ * releases the group and leaves its children — for a vector basemap or overlay,
+ * every `VectorTile` layer `ol-mapbox-style` put there, with its source and its
+ * listeners — alive for as long as the page is.
+ */
+export function disposeLayer(layer) {
+  if (layer.getLayers) layer.getLayers().forEach(disposeLayer)
+
+  layer.dispose()
 }
 
 // Attribution stays Rover's to own, not the style document's — the same

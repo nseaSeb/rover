@@ -63,6 +63,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   layer they were handed has not been disposed in the meantime, so a basemap
   swapped mid-flight cannot come back to life and go on fetching tiles.
 
+  Of the four ways reading a document can go wrong, OpenLayers reports one:
+  an unknown layer. A matrix set the layer does not offer is silently swapped
+  for its first one, a format it does not serve is taken at face value and
+  every tile request then fails quietly, and a matrix set in a CRS OpenLayers
+  does not know — anything but Web Mercator and WGS 84, absent proj4 — makes it
+  dereference a null projection and throw where a reader would blame the
+  network. All four are checked before the document is handed over, and each
+  says which of them it was.
+
   The `:ign_*` presets deliberately keep their XYZ shortcut: the Géoportail's
   KVP endpoint carries the tile coordinates in the query string and its layers
   are on the grid the map already uses, so nothing is bought by the round-trip
