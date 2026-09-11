@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`shape_source`**: geometry the browser fetches from a URL, rather than
+  carried in an attribute.
+
+  ```heex
+  <.map id="parcels" shape_source={{:url, ~p"/api/parcels.geojson", rev: @parcels_rev}} />
+  ```
+
+  The case `shapes` is wrong for, and the one the README has called the honest
+  limit of the transport since 0.1.0: an HTML attribute is a single dynamic
+  slot, so touching any shape re-serialises every one of them. Right for a
+  parcel outline, wrong for hundreds of kilobytes of cadastre that never
+  changes and is the same for everybody. `:rev` rides as a query parameter, so
+  changing it asks a question no cache has an answer to; `:style` restyles what
+  is loaded rather than fetching again.
+
+  A layer of its own, not a variant of the shape layer. That one knows every
+  feature it holds, keyed by the id it was told; features read out of a file are
+  in no such map, and letting them into that source would put untracked features
+  beside tracked ones — the problem the sketch layer already exists to avoid on
+  the drawing path.
+
+  What it costs is the server's knowledge of what it sent. These features are
+  drawn under the shapes it does send, they take part in the framing — a map
+  whose only content is a URL source waits for the first load and frames that —
+  and `on_shape_click` reports them with whatever `id` and properties the
+  GeoJSON declares. There are no popups, no keyboard entries and no `:editable`
+  for them, because all three need a shape the server can name.
+
+  `UrlShapeLayer` joins the escape hatch's exports.
+
 ## [0.8.0] - 2026-09-08
 
 ### Added

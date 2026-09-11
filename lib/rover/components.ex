@@ -146,6 +146,36 @@ defmodule Rover.Components do
     default: [],
     doc: "Anything `Rover.Shape.new!/2` accepts. GeoJSON geometries — see `Rover.Shape`."
 
+  attr :shape_source, :any,
+    default: nil,
+    doc: """
+    Geometry loaded by the browser from a URL, rather than carried in an
+    attribute:
+
+    ```heex
+    <.map id="parcels" shape_source={{:url, ~p"/api/parcels.geojson", rev: @parcels_rev}} />
+    ```
+
+    For the case `shapes` is wrong for: geometry that is large, static, and the
+    same for everybody. An attribute is a single dynamic slot, so touching any
+    shape re-serialises every one of them — right for a parcel outline or a
+    delivery route, wrong for hundreds of kilobytes of cadastre that never
+    changes. A URL is fetched once by the browser and cached by it.
+
+      * `:rev` — change it to make the browser fetch again. It is appended to
+        the URL as a query parameter, so the request is a different one and no
+        cache answers it. Without a `:rev`, only a change of URL reloads.
+      * `:style` — `:color`, `:width`, `:fill_color` and `:fill_opacity`,
+        applied to every feature in the file. Changing it restyles what is
+        already loaded rather than fetching again.
+
+    The server never sees these features, which is the trade. They are drawn
+    under the shapes it does send, they take part in the framing, and
+    `on_shape_click` reports them with whatever `id` and properties the GeoJSON
+    carries — but there are no popups, no keyboard entries and no `:editable`
+    for them, because all three need a shape the server can name.
+    """
+
   attr :shape_fields, :list,
     default: [],
     doc: "Field mapping passed to `Rover.Shape.new!/2`, e.g. `[geometry: :outline]`."
@@ -556,6 +586,7 @@ defmodule Rover.Components do
       maxZoom: assigns.max_zoom,
       tiles: encode_tiles(assigns.tiles),
       layers: encode_layers(assigns.layers),
+      shapeSource: encode_shape_source(assigns.shape_source),
       fit: encode_fit(assigns.fit, assigns.center),
       fitPadding: assigns.fit_padding,
       cluster: encode_cluster(assigns.cluster),
@@ -670,6 +701,89 @@ defmodule Rover.Components do
     raise ArgumentError,
           "invalid fit: #{inspect(other)}. Expected `:once`, `true`, `:always`, `false` or `nil`."
   end
+
+  @shape_source_options [:rev, :style]
+  @shape_style_options [:color, :width, :fill_color, :fill_opacity]
+
+  defp encode_shape_source(nil), do: nil
+  # `shape_source={@loaded && {:url, ...}}` is the natural way to write "only
+  # when there is one", and it yields `false` rather than `nil`. Treating that
+  # as "no source" costs nothing and saves a confusing error at render time.
+  defp encode_shape_source(false), do: nil
+
+  defp encode_shape_source({:url, url}), do: encode_shape_source({:url, url, []})
+
+  defp encode_shape_source({:url, url, opts}) when is_binary(url) and is_list(opts) do
+    Keyword.keyword?(opts) ||
+      raise ArgumentError, """
+      invalid shape_source options: #{inspect(opts)}.
+
+      Expected a keyword list — `{:url, "/parcels.geojson", rev: @rev}`.
+      """
+
+    Enum.each(opts, fn {key, _value} ->
+      key in @shape_source_options ||
+        raise ArgumentError, """
+        unknown shape_source option #{inspect(key)}.
+
+        Expected any of: #{Enum.map_join(@shape_source_options, ", ", &inspect/1)}.
+        """
+    end)
+
+    drop_nils(%{
+      url: url,
+      # Anything the caller can compute: a timestamp, a row count, a hash. It
+      # only has to differ when the file does.
+      rev: opts |> Keyword.get(:rev) |> encode_shape_rev(),
+      style: opts |> Keyword.get(:style, []) |> encode_shape_source_style()
+    })
+  end
+
+  defp encode_shape_source(other) do
+    raise ArgumentError, """
+    invalid shape_source: #{inspect(other)}.
+
+    Expected `{:url, url}` or `{:url, url, opts}`:
+
+        shape_source={{:url, ~p"/api/parcels.geojson", rev: @parcels_rev}}
+    """
+  end
+
+  defp encode_shape_rev(nil), do: nil
+  defp encode_shape_rev(rev), do: to_string(rev)
+
+  defp encode_shape_source_style([]), do: nil
+
+  defp encode_shape_source_style(style) when is_list(style) do
+    Keyword.keyword?(style) ||
+      raise ArgumentError,
+            "expected `shape_source` :style to be a keyword list, got: #{inspect(style)}"
+
+    Enum.each(style, fn {key, _value} ->
+      key in @shape_style_options ||
+        raise ArgumentError, """
+        unknown shape_source style #{inspect(key)}.
+
+        Expected any of: #{Enum.map_join(@shape_style_options, ", ", &inspect/1)}.
+        """
+    end)
+
+    # The same keys a shape carries, so one style function serves both.
+    drop_nils(%{
+      color: style |> Keyword.get(:color) |> to_string_or_nil(),
+      width: Keyword.get(style, :width),
+      fill_color: style |> Keyword.get(:fill_color) |> to_string_or_nil(),
+      fill_opacity: Keyword.get(style, :fill_opacity)
+    })
+  end
+
+  defp encode_shape_source_style(other) do
+    raise ArgumentError,
+          "expected `shape_source` :style to be a keyword list, got: #{inspect(other)}"
+  end
+
+  defp to_string_or_nil(nil), do: nil
+  defp to_string_or_nil(value), do: to_string(value)
 
   @layer_options [:id, :opacity, :visible, :min_zoom, :max_zoom]
 

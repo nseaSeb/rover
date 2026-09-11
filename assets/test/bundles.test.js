@@ -22,6 +22,7 @@ const CONTRACT = [
   "RoverHooks",
   "RoverMap",
   "ShapeLayer",
+  "UrlShapeLayer",
   "default",
   "extentToBbox",
   "project",

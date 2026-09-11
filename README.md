@@ -273,6 +273,46 @@ Four things worth knowing:
 A map rendered with `interactive={false}` refuses to arm, and locking one that
 is already drawing cancels the mode outright rather than remembering it.
 
+### Geometry the browser fetches for itself
+
+`shapes` puts geometry in an HTML attribute, which is a single dynamic slot:
+touching any shape re-serialises all of them. That is right for a parcel
+outline or a delivery route. It is wrong for hundreds of kilobytes of cadastre
+that never changes and is the same for everybody.
+
+```heex
+<.map id="parcels" shape_source={{:url, ~p"/api/parcels.geojson", rev: @parcels_rev}} />
+```
+
+The browser fetches that once and caches it. `:rev` is appended as a query
+parameter, so changing it asks a question no cache has an answer to — a
+timestamp, a row count, a hash, anything that differs when the file does.
+`:style` takes `:color`, `:width`, `:fill_color` and `:fill_opacity` and applies
+them to every feature; changing it restyles what is loaded rather than fetching
+again.
+
+The endpoint is an ordinary controller. It answers a GET, which
+`protect_from_forgery` does not cover, so it must be read-only and must decide
+what to return from the session rather than from anything in the URL:
+
+```elixir
+def parcels(conn, _params) do
+  geojson = MyApp.Parcels.feature_collection_for(conn.assigns.current_user)
+
+  conn
+  |> put_resp_content_type("application/geo+json")
+  |> put_resp_header("cache-control", "private, max-age=0")
+  |> send_resp(200, Jason.encode!(geojson))
+end
+```
+
+What this costs is the server's knowledge of what it sent. These features are
+drawn under the shapes it does send and they take part in the framing, and
+`on_shape_click` reports them with whatever `id` and properties the GeoJSON
+declares — but there are no popups, no keyboard entries and no `:editable` for
+them, because all three need a shape the server can name. Use `shapes` for the
+geometry you interact with and `shape_source` for the backdrop.
+
 ### Geometry is diffed by revision, not by hashing
 
 Markers hash their coordinate — two numbers. A route is thousands of points, so
@@ -755,15 +795,15 @@ and a log of the events coming back. There is no OpenLayers in that file.
 ## Status
 
 Markers, GeoJSON shapes, emoji, popups, clustering, heatmaps, drawing and
-editing geometry, keyboard access, imperative view control and the French
-Géoportail are complete and tested. Still open: arbitrary HTML markers, real
-`ol/source/WMTS` sources, and loading geometry by URL rather than by attribute.
+editing geometry, decluttering, keyboard access, imperative view control, tile
+layers over the basemap, WMTS sources, geometry loaded by URL and the French
+Géoportail are complete and tested.
 
-That last one is the honest limit of the current transport. An HTML attribute is a
-single dynamic slot, so any change re-serialises the whole payload. That is right
-for a cadastral outline or a delivery route; it is wrong for hundreds of kilobytes
-of static geometry. When it bites, the answer is an `ol/source/Vector` with a URL
-and a revision — not a bigger attribute.
+Still open: arbitrary HTML markers. Everything a marker can be drawn as today is
+drawn into the canvas — a pin, an icon, an emoji — which is what makes a thousand
+of them cheap and a keyboard able to reach them. Markup per marker is a different
+trade, and the DOM it would need sits inside `phx-update="ignore"`, where the
+popups already go to some length not to put anything LiveView owns.
 
 Issues and PRs welcome.
 

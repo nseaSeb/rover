@@ -58,6 +58,8 @@ defmodule RoverDev.DemoLive do
        shapes: shapes(:both),
        tiles: :ign_plan,
        overlay: false,
+       url_shapes: false,
+       parcels_rev: 1,
        heat: false,
        heat_radius: 14,
        cluster: false,
@@ -92,6 +94,11 @@ defmodule RoverDev.DemoLive do
   # which puts the whole image on the other side of the coordinate — an offset
   # that ignores `:rotation` then points at empty map.
   #
+  # `?source=url` loads four fields from /api/parcels.geojson instead of carrying
+  # them in an attribute, which is the case `shape_source` exists for. The
+  # browser suite needs it to watch the fetch happen, the framing wait for it,
+  # and a click on a feature the server has never seen still reach the server.
+  #
   # `?declutter=1` turns label decluttering on, which the browser suite needs to
   # check what it costs: every pin, group and point must still be drawn, and
   # still be clickable, when only their labels are being hidden.
@@ -110,6 +117,7 @@ defmodule RoverDev.DemoLive do
        shapes: shapes(shape_mode(params)),
        wmts: params["tiles"] == "wmts",
        declutter: params["declutter"] == "1",
+       url_shapes: params["source"] == "url",
        scenery: params["scenery"] == "1",
        interactions: interactions(params["interactions"])
      )
@@ -176,6 +184,7 @@ defmodule RoverDev.DemoLive do
       <button phx-click="cycle_shapes">Shapes: {shape_label(@shapes)}</button>
       <button phx-click="cycle_tiles">Tiles: {@tiles}</button>
       <button phx-click="toggle_overlay">Overlay: {if @overlay, do: "ortho 55%", else: "off"}</button>
+      <button phx-click="reload_parcels">Reload parcels (rev {@parcels_rev})</button>
       <button phx-click="reset">Reset</button>
       <button phx-click="fly_paris">Fly to Paris</button>
       <button phx-click="fit_first">Fit the first client</button>
@@ -205,6 +214,10 @@ defmodule RoverDev.DemoLive do
       heatmap_style={[radius: @heat_radius, blur: 22, opacity: 0.85]}
       tiles={basemap(@wmts, @tiles)}
       declutter={@declutter}
+      shape_source={
+        if @url_shapes,
+          do: {:url, "/api/parcels.geojson", rev: @parcels_rev, style: [color: "#b45309"]}
+      }
       layers={overlay_layers(@overlay)}
       height="28rem"
       controls={[:zoom, :attribution, :scale_line]}
@@ -417,6 +430,14 @@ defmodule RoverDev.DemoLive do
      |> assign(clients: yard, crowd: false, cluster: true, shapes: [])
      |> Rover.fly_to("clients", {45.76405, 4.8357}, zoom: 18, duration: 0)
      |> log("two vans in a yard at zoom 18, clustered")}
+  end
+
+  # What an application does when the file behind the URL has changed: bump the
+  # rev, and the browser asks a question no cache has an answer to.
+  def handle_event("reload_parcels", _params, socket) do
+    rev = socket.assigns.parcels_rev + 1
+
+    {:noreply, socket |> assign(parcels_rev: rev) |> log("parcels reloaded at rev #{rev}")}
   end
 
   def handle_event("toggle_overlay", _params, socket) do

@@ -1429,6 +1429,61 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
+  test("loads geometry from a url, frames it, and reports a click on it", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    const requests = []
+    page.on("request", (request) => {
+      if (request.url().includes("parcels.geojson")) requests.push(request.url())
+    })
+
+    await page.goto("/?shapes=none&source=url")
+    await mapReady(page)
+
+    // Fetched once, by the browser, with the rev that makes it this version of
+    // the file rather than whatever a cache last saw.
+    await expect.poll(() => requests.length).toBe(1)
+    expect(requests[0]).toContain("rev=1")
+
+    const loaded = () =>
+      page.evaluate(
+        (sel) => document.querySelector(sel)._rover.urlShapeLayer.source.getFeatures().length,
+        MAP
+      )
+
+    await expect.poll(loaded).toBe(4)
+
+    // The fit that brings them into view animates, and a pixel read while it is
+    // running belongs to a frame that has already moved on.
+    await page.waitForTimeout(600)
+
+    // Framed around geometry that was not on the map when the frame was first
+    // decided — the four fields span further east than any marker does.
+    const framed = await page.evaluate((sel) => {
+      const rover = document.querySelector(sel)._rover
+      const [, , east] = rover.map.getView().calculateExtent(rover.map.getSize())
+      const [, , fields] = rover.urlShapeLayer.extent
+
+      return east >= fields
+    }, MAP)
+
+    expect(framed, "the view does not contain the geometry it fetched").toBe(true)
+
+    // And a click on a feature the server has never seen still reaches it,
+    // carrying the id and properties the file itself declares.
+    const pixel = await shapePixel(page, MAP)
+    await page.locator(CANVAS).click({ position: pixel })
+    await expect(page.locator(".log")).toContainText(/shape F-0\d clicked/)
+
+    // A new rev is a new request; the same rev is not.
+    await page.getByRole("button", { name: /^Reload parcels/ }).click()
+    await expect.poll(() => requests.length).toBe(2)
+    expect(requests[1]).toContain("rev=2")
+
+    expect(problems).toEqual([])
+  })
+
   test("decluttering hides labels without hiding what they label", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)
@@ -1493,6 +1548,9 @@ test.describe("the playground", () => {
     // And a group of markers still drills in: the circle and its count are
     // obstacles, so decluttering never takes a dozen markers off the map at once.
     await page.getByRole("button", { name: /^Cluster:/ }).click()
+    // The button's own label is what says the round-trip landed. Scanning for a
+    // group before it does finds none, which reads as a broken feature.
+    await expect(page.getByRole("button", { name: "Cluster: on" })).toBeVisible()
 
     const group = await clusterPixel(page, MAP)
     const before = await page.evaluate(

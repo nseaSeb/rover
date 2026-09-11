@@ -84,6 +84,12 @@ defmodule Rover.MarkerTest do
       end
     end
 
+    test "rejects a mapping that is not a list at all" do
+      assert_raise ArgumentError, ~r/field mapping to be a keyword list/, fn ->
+        Marker.new_all!([], :latitude)
+      end
+    end
+
     test "rejects a mapping written as a bare list of keys" do
       assert_raise ArgumentError,
                    ~r/expected the marker field mapping to be a keyword list/,

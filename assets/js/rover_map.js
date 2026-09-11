@@ -31,6 +31,7 @@ import { MarkerLayer } from "./markers.js"
 import { OverlayLayers } from "./overlays.js"
 import { ShapeLayer, format as geoJsonFormat } from "./shapes.js"
 import { buildBasemapLayer, buildTileLayer, disposeLayer } from "./tiles.js"
+import { UrlShapeLayer } from "./url_shapes.js"
 
 // Re-exported where it has always lived, so a caller reaching for it — and the
 // unit suite that does — is not moved by an internal reshuffle.
@@ -74,6 +75,12 @@ export class RoverMap {
     this.markerLayer = new MarkerLayer()
     this.shapeLayer = new ShapeLayer()
     this.overlayLayers = new OverlayLayers()
+    this.urlShapeLayer = new UrlShapeLayer()
+    // Whether a document has ever finished loading into that layer. The first
+    // one to arrive gets a fit of its own: the geometry was not on the map at
+    // mount to be framed, so a map whose only content is a URL source would
+    // otherwise sit at its default zoom over nothing.
+    this.framedUrlShapes = false
     this.drawLayer = new DrawLayer()
     this.heatmapLayer = new HeatmapLayer()
     // A placeholder occupying slot 0 until the first applyTiles() call below
@@ -95,6 +102,7 @@ export class RoverMap {
         this.basemapLayer,
         this.overlayLayers.layer,
         this.heatmapLayer.layer,
+        this.urlShapeLayer.layer,
         this.shapeLayer.layer,
         this.drawLayer.layer,
         this.markerLayer.layer,
@@ -112,6 +120,17 @@ export class RoverMap {
 
     this.applyTiles(this.config.tiles)
     this.overlayLayers.reconcile(this.config.layers)
+    this.urlShapeLayer.reconcile(this.config.shapeSource)
+
+    // A fit, not a reconcile: features that arrive after the frame was decided
+    // have to be allowed to change it, once.
+    this.onFeaturesLoaded = () => {
+      const first = !this.framedUrlShapes
+      this.framedUrlShapes = true
+
+      this.maybeFit({ force: first && this.config.fit !== false })
+    }
+    this.urlShapeLayer.source.on("featuresloadend", this.onFeaturesLoaded)
     this.applyDeclutter(this.config)
     this.markerLayer.setClustering(this.config.cluster)
     this.applyAccessibility(this.config)
@@ -190,6 +209,10 @@ export class RoverMap {
     if (changed(previous.tiles, next.tiles)) this.applyTiles(next.tiles)
 
     if (changed(previous.layers, next.layers)) this.overlayLayers.reconcile(next.layers)
+
+    if (changed(previous.shapeSource, next.shapeSource)) {
+      this.urlShapeLayer.reconcile(next.shapeSource)
+    }
 
     // Controls and interactions were built once at mount. A map that locks
     // itself while a form is saving, or that turns on the scale line, needs them
@@ -278,8 +301,8 @@ export class RoverMap {
     })
   }
 
-  maybeFit() {
-    if (!shouldFit({ hasFitted: this.hasFitted, ...this.config })) return
+  maybeFit({ force = false } = {}) {
+    if (!force && !shouldFit({ hasFitted: this.hasFitted, ...this.config })) return
 
     const extent = this.contentExtent
     if (!extent || !Number.isFinite(extent[0])) return
@@ -304,6 +327,7 @@ export class RoverMap {
   get contentExtent() {
     const extents = [
       this.heatmapLayer.extent,
+      this.urlShapeLayer.extent,
       this.shapeLayer.extent,
       this.markerLayer.extent,
     ].filter(Boolean)
@@ -809,6 +833,7 @@ export class RoverMap {
   featureAt(pixel) {
     let marker = null
     let shape = null
+    let urlShape = null
 
     this.map.forEachFeatureAtPixel(
       pixel,
@@ -817,23 +842,29 @@ export class RoverMap {
           marker = marker || feature
         } else if (layer === this.shapeLayer.layer) {
           shape = shape || feature
+        } else if (layer === this.urlShapeLayer.layer) {
+          urlShape = urlShape || feature
         }
 
         return Boolean(marker)
       },
       {
         layerFilter: (layer) =>
-          layer === this.markerLayer.layer || layer === this.shapeLayer.layer,
+          layer === this.markerLayer.layer ||
+          layer === this.shapeLayer.layer ||
+          layer === this.urlShapeLayer.layer,
         hitTolerance: HIT_TOLERANCE,
       }
     )
 
+    // A shape the server sent wins over one read out of a file: it is the one
+    // the application knows by name, and the one that can open a popup.
     return {
       marker: this.markerLayer.markerFor(marker),
       cluster: this.markerLayer.clusterFor(marker),
       markerFeature: marker,
-      shape: this.shapeLayer.shapeFor(shape),
-      shapeFeature: shape,
+      shape: this.shapeLayer.shapeFor(shape) || this.urlShapeLayer.shapeFor(urlShape),
+      shapeFeature: shape || urlShape,
     }
   }
 
@@ -879,8 +910,10 @@ export class RoverMap {
   destroy() {
     if (this.resizeObserver) this.resizeObserver.disconnect()
     this.stopDrawing()
+    this.urlShapeLayer.source.un("featuresloadend", this.onFeaturesLoaded)
     this.markerLayer.dispose()
     this.overlayLayers.dispose()
+    this.urlShapeLayer.dispose()
     this.drawLayer.dispose()
     this.shapeLayer.dispose()
     this.heatmapLayer.dispose()

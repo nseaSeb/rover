@@ -331,6 +331,71 @@ defmodule Rover.ComponentsTest do
     end
   end
 
+  describe "shape_source" do
+    test "is absent unless asked for" do
+      refute Map.has_key?(config(render_map([])), "shapeSource")
+    end
+
+    test "reads false as no source, which is what a guard expression yields" do
+      # `shape_source={@loaded && {:url, ...}}` is the natural way to write it.
+      refute Map.has_key?(config(render_map(shape_source: false)), "shapeSource")
+    end
+
+    test "carries the url the browser is to fetch" do
+      source = config(render_map(shape_source: {:url, "/api/parcels.geojson"}))["shapeSource"]
+
+      assert source == %{"url" => "/api/parcels.geojson"}
+    end
+
+    test "carries a rev as a string, whatever the caller counted with" do
+      # A timestamp, a row count, a hash: it only has to differ when the file does.
+      source =
+        config(render_map(shape_source: {:url, "/p.geojson", rev: ~U[2026-09-11 10:00:00Z]}))[
+          "shapeSource"
+        ]
+
+      assert source["rev"] == "2026-09-11 10:00:00Z"
+
+      assert config(render_map(shape_source: {:url, "/p.geojson", rev: 7}))["shapeSource"]["rev"] ==
+               "7"
+    end
+
+    test "carries a style in the same shape a shape's own takes" do
+      source =
+        config(
+          render_map(
+            shape_source: {:url, "/p.geojson", style: [color: "#16a34a", fill_opacity: 0.1]}
+          )
+        )["shapeSource"]
+
+      assert source["style"] == %{"color" => "#16a34a", "fill_opacity" => 0.1}
+    end
+
+    test "reject a malformed source, an unknown option and an unknown style" do
+      assert_raise ArgumentError, ~r/invalid shape_source: "\/p.geojson"/, fn ->
+        render_map(shape_source: "/p.geojson")
+      end
+
+      assert_raise ArgumentError, ~r/unknown shape_source option :revision/, fn ->
+        render_map(shape_source: {:url, "/p.geojson", revision: 1})
+      end
+
+      assert_raise ArgumentError, ~r/unknown shape_source style :stroke/, fn ->
+        render_map(shape_source: {:url, "/p.geojson", style: [stroke: "#000"]})
+      end
+    end
+
+    test "reject options and a style written as bare lists of keys" do
+      assert_raise ArgumentError, ~r/invalid shape_source options/, fn ->
+        render_map(shape_source: {:url, "/p.geojson", [:rev]})
+      end
+
+      assert_raise ArgumentError, ~r/:style to be a keyword list/, fn ->
+        render_map(shape_source: {:url, "/p.geojson", style: :green})
+      end
+    end
+  end
+
   describe "declutter" do
     test "is absent unless asked for" do
       refute Map.has_key?(config(render_map([])), "declutter")
