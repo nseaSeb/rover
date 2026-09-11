@@ -1,9 +1,12 @@
 defmodule RoverDev.GeoJSONController do
   @moduledoc false
-  # What an application serving `shape_source` actually writes. Read-only, and
-  # answered from the session rather than from anything in the URL — a GET is
-  # not covered by `protect_from_forgery`, so the endpoint has to be safe to
-  # request from anywhere.
+  # The endpoint the browser suite fetches a `shape_source` from. Shaped like
+  # what an application would write — read-only, because a GET is not covered by
+  # `protect_from_forgery` and the endpoint has to be safe to request from
+  # anywhere — but not a working example of one: the rows below are a constant,
+  # the same for every caller, and the `:geojson` pipeline in `dev/router.ex`
+  # fetches no session to scope them by. The README carries the version that
+  # decides what to return from `conn.assigns.current_user`.
   use Phoenix.Controller, formats: [:json]
 
   # Four fields around Lyon, well clear of the markers so the browser suite can
@@ -35,11 +38,12 @@ defmodule RoverDev.GeoJSONController do
 
     conn
     |> put_resp_content_type("application/geo+json")
-    # Private, because these are one user's rows.
-    |> put_resp_header("cache-control", cache)
-    # And `vary`, because `private` only shuts out shared caches, not the
-    # browser's own: without it the next person to sign in on this machine is
+    # Both headers are here because the README recommends them, not because
+    # these rows need them: `private` for geometry that is one user's, and
+    # `vary` because `private` only shuts out shared caches and not the
+    # browser's own — without it the next person to sign in on a machine is
     # served the previous one's geometry from disk, with no request made.
+    |> put_resp_header("cache-control", cache)
     |> put_resp_header("vary", "cookie")
     |> send_resp(200, Jason.encode!(%{"type" => "FeatureCollection", "features" => features}))
   end

@@ -118,6 +118,22 @@ async function stubTiles(page) {
 }
 
 /**
+ * Everything a scenario is entitled to fail on, gathered per page.
+ *
+ * One list, because it is asserted empty in one place at the end of every
+ * scenario. `refuseTheNetwork` fills it before the test body starts and
+ * `failOnPageErrors` goes on filling the same one, so a refused request and a
+ * console error are the same kind of news.
+ */
+const problemLists = new WeakMap()
+
+function problemsFor(page) {
+  if (!problemLists.has(page)) problemLists.set(page, [])
+
+  return problemLists.get(page)
+}
+
+/**
  * Refuse every request that would leave the machine.
  *
  * A guard, not an optimisation, and it is here because the invariant drifted
@@ -129,16 +145,22 @@ async function stubTiles(page) {
  *
  * A suite that talks to the network is a monitor of other people's uptime
  * dressed as a guard, and this one runs with `retries: 0`. Adding a map, a
- * basemap preset or a font to the playground now fails loudly here rather than
- * quietly borrowing someone's CDN.
+ * basemap preset or a font to the playground now fails the scenario that added
+ * it rather than quietly borrowing someone's CDN.
  */
 async function refuseTheNetwork(page) {
+  const problems = problemsFor(page)
+
   await page.route("**", (route) => {
     const { hostname } = new URL(route.request().url())
 
     if (hostname === "127.0.0.1" || hostname === "localhost") return route.continue()
 
-    console.error(`[suite] refused a request to ${route.request().url()} — stub it or add a fixture`)
+    // Into the same list `failOnPageErrors` fills, which every scenario asserts
+    // is empty. Aborting alone is not enough: a dependency nothing paints with
+    // — a webfont, a sprite sheet, a beacon — would be refused in silence and
+    // the suite would stay green, which is the drift this guard exists to stop.
+    problems.push(`refused a request to ${route.request().url()} — stub it or add a fixture`)
 
     return route.abort()
   })
@@ -258,7 +280,7 @@ async function canvasHasPaintedPixelAt(page, selector, pixel) {
 
 /** Fail the test on anything the page logs as broken. Cheap, and catches a lot. */
 function failOnPageErrors(page) {
-  const problems = []
+  const problems = problemsFor(page)
 
   page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`))
   page.on("console", (message) => {

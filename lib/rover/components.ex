@@ -726,7 +726,8 @@ defmodule Rover.Components do
   # as "no source" costs nothing and saves a confusing error at render time.
   defp encode_shape_source(false), do: nil
 
-  defp encode_shape_source({:url, url}), do: encode_shape_source({:url, url, []})
+  defp encode_shape_source({:url, url}) when is_binary(url),
+    do: encode_shape_source({:url, url, []})
 
   defp encode_shape_source({:url, url, opts}) when is_binary(url) and is_list(opts) do
     Keyword.keyword?(opts) ||

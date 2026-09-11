@@ -380,6 +380,18 @@ defmodule Rover.ComponentsTest do
         render_map(shape_source: "/p.geojson")
       end
 
+      # Echoed as written, not as rewritten: the two-tuple form used to be
+      # widened to a three-tuple before its url was checked, so the error named
+      # an empty options list the caller never typed and sent them looking for
+      # a third element that was not in their code.
+      error =
+        assert_raise ArgumentError, fn ->
+          render_map(shape_source: {:url, URI.parse("/p.geojson")})
+        end
+
+      assert error.message =~ "invalid shape_source: {:url, %URI{"
+      refute error.message =~ "[]}"
+
       assert_raise ArgumentError, ~r/unknown shape_source option :revision/, fn ->
         render_map(shape_source: {:url, "/p.geojson", revision: 1})
       end
