@@ -284,9 +284,12 @@ that never changes and is the same for everybody.
 <.map id="parcels" shape_source={{:url, ~p"/api/parcels.geojson", rev: @parcels_rev}} />
 ```
 
-The browser fetches that once and caches it. `:rev` is appended as a query
-parameter, so changing it asks a question no cache has an answer to — a
-timestamp, a row count, a hash, anything that differs when the file does.
+`:rev` is appended as a query parameter — a timestamp, a row count, a hash,
+anything that differs when the file does. That is what makes each version its
+own URL, and what lets the browser keep one for as long as it likes: a changed
+file is a changed rev is a different request. Without a `:rev` there is nothing
+to tell one version from the next, so the endpoint has to be revalidated on
+every mount.
 `:style` takes `:color`, `:width`, `:fill_color` and `:fill_opacity` and applies
 them to every feature; changing it restyles what is loaded rather than fetching
 again.
@@ -296,15 +299,22 @@ The endpoint is an ordinary controller. It answers a GET, which
 what to return from the session rather than from anything in the URL:
 
 ```elixir
-def parcels(conn, _params) do
+def parcels(conn, params) do
   geojson = MyApp.Parcels.feature_collection_for(conn.assigns.current_user)
+
+  # A rev in the URL makes this answer permanent: it can only change by becoming
+  # a different URL. Without one, the browser has to ask again every time.
+  cache = if params["rev"], do: "private, max-age=31536000, immutable", else: "private, max-age=0"
 
   conn
   |> put_resp_content_type("application/geo+json")
-  |> put_resp_header("cache-control", "private, max-age=0")
+  |> put_resp_header("cache-control", cache)
   |> send_resp(200, Jason.encode!(geojson))
 end
 ```
+
+`params` is read for that decision and for nothing else: what to return is
+decided from the session.
 
 What this costs is the server's knowledge of what it sent. These features are
 drawn under the shapes it does send and they take part in the framing, and

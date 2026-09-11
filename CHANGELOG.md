@@ -47,9 +47,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   still arriving leaves two responses racing, and features are indexed by id: a
   stale response landing first takes the ids and the fresh ones are dropped as
   duplicates, leaving the old document on the map under the new URL until
-  somebody bumps again. Only the current request is accepted, a failed one says
-  which URL it was rather than leaving an empty layer to explain itself, and an
-  empty result is not mistaken for geometry to frame.
+  somebody bumps again. Only the current request is accepted; a failed one
+  empties the layer and says which URL it was, rather than leaving the last
+  document that did load on the map — clickable, framed, and answering to a URL
+  nobody is asking for — with one console line to say it is stale. An empty
+  result is not mistaken for geometry to frame, and a document pointed at
+  another region is framed afresh rather than landing off-screen.
 
   `UrlShapeLayer` joins the escape hatch's exports.
 

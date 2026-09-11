@@ -173,6 +173,73 @@ describe("UrlShapeLayer.reconcile", () => {
     assert.equal(loads, 1)
   })
 
+  it("empties the layer when a load fails, rather than leaving the last one showing", async () => {
+    const layer = new UrlShapeLayer()
+    layer.reconcile({ url, rev: 1 })
+    calls[0].respond(collection("F-01"))
+    await flush()
+
+    const errors = []
+    const original = console.error
+    console.error = () => errors.push(1)
+
+    try {
+      layer.reconcile({ url: "https://example.com/gone.geojson" })
+      calls[1].respond({}, false)
+      await flush()
+    } finally {
+      console.error = original
+    }
+
+    // A document that answers to a url nobody is asking for any more would go
+    // on being clickable and go on being framed.
+    assert.equal(layer.source.getFeatures().length, 0)
+    assert.equal(errors.length, 1)
+  })
+
+  it("keeps a failed response from emptying a load that overtook it", async () => {
+    const layer = new UrlShapeLayer()
+    layer.reconcile({ url, rev: 1 })
+    layer.reconcile({ url, rev: 2 })
+
+    calls[1].respond(collection("fresh"))
+    await flush()
+
+    const original = console.error
+    console.error = () => {}
+
+    try {
+      calls[0].respond({}, false)
+      await flush()
+    } finally {
+      console.error = original
+    }
+
+    assert.equal(layer.source.getFeatures().length, 1)
+  })
+
+  it("forgets it was framed when the document changes, and not when the rev does", () => {
+    const layer = new UrlShapeLayer()
+    layer.reconcile({ url, rev: 1 })
+    layer.framed = true
+
+    layer.reconcile({ url, rev: 2 })
+    assert.equal(layer.framed, true, "a rev bump is the same document, and the user's view is theirs")
+
+    layer.reconcile({ url: "https://example.com/other.geojson" })
+    assert.equal(layer.framed, false, "a different document is a different thing to frame")
+
+    layer.framed = true
+    layer.reconcile(null)
+    assert.equal(layer.framed, false)
+  })
+
+  it("puts the rev before a fragment, which is never sent to the server", () => {
+    new UrlShapeLayer().reconcile({ url: `${url}#lyon`, rev: 2 })
+
+    assert.equal(calls[0].url, `${url}?rev=2#lyon`)
+  })
+
   it("has no extent until something has loaded", () => {
     const layer = new UrlShapeLayer()
     layer.reconcile({ url })

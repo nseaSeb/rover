@@ -76,11 +76,6 @@ export class RoverMap {
     this.shapeLayer = new ShapeLayer()
     this.overlayLayers = new OverlayLayers()
     this.urlShapeLayer = new UrlShapeLayer({ onLoad: () => this.onUrlShapesLoaded() })
-    // Whether a document has ever finished loading into that layer. The first
-    // one to arrive gets a fit of its own: the geometry was not on the map at
-    // mount to be framed, so a map whose only content is a URL source would
-    // otherwise sit at its default zoom over nothing.
-    this.framedUrlShapes = false
     this.drawLayer = new DrawLayer()
     this.heatmapLayer = new HeatmapLayer()
     // A placeholder occupying slot 0 until the first applyTiles() call below
@@ -302,8 +297,8 @@ export class RoverMap {
    * moved to while it was arriving.
    */
   onUrlShapesLoaded() {
-    const frames = !this.framedUrlShapes && Boolean(this.urlShapeLayer.extent)
-    if (frames) this.framedUrlShapes = true
+    const frames = !this.urlShapeLayer.framed && Boolean(this.urlShapeLayer.extent)
+    if (frames) this.urlShapeLayer.framed = true
 
     this.maybeFit({ force: frames && this.config.fit !== false })
   }

@@ -35,6 +35,12 @@ export class UrlShapeLayer {
     this.spec = null
     this.onLoad = onLoad || (() => {})
 
+    // Whether the map has framed what this layer holds. The owner sets it; the
+    // layer clears it whenever the document changes, because a different
+    // document is a different thing to frame — a source toggled off and back on
+    // over another region would otherwise land entirely off-screen.
+    this.framed = false
+
     // Which request the features on the map belong to.
     //
     // The document is fetched here rather than through `source.setUrl`, and
@@ -69,6 +75,10 @@ export class UrlShapeLayer {
 
     if (previous && previous.url === this.spec.url && previous.rev === this.spec.rev) return
 
+    // A rev bump is the same document again, and the view the user has since
+    // chosen is theirs to keep. A different URL is not.
+    if (!previous || previous.url !== this.spec.url) this.framed = false
+
     this.load()
   }
 
@@ -97,7 +107,16 @@ export class UrlShapeLayer {
       // A 404, a 500 or a document that will not parse leaves the layer empty,
       // and empty is indistinguishable from "the file says so". Saying which it
       // was is the only thing that separates a bad path from an empty result.
-      .catch((error) => console.error(`[rover] could not load ${url}:`, error))
+      //
+      // Emptied, and not left showing the last document that did load: that one
+      // answers to a URL nobody is asking for any more, and it would go on being
+      // clickable and go on being framed with nothing but a console line to say
+      // it is stale.
+      .catch((error) => {
+        if (request === this.request) this.source.clear()
+
+        console.error(`[rover] could not load ${url}:`, error)
+      })
   }
 
   /**
@@ -127,6 +146,7 @@ export class UrlShapeLayer {
     // document nobody is asking for any more.
     this.request += 1
     this.requested = null
+    this.framed = false
     this.source.clear()
   }
 
@@ -142,7 +162,17 @@ export class UrlShapeLayer {
 function urlFor(spec) {
   if (spec.rev == null) return spec.url
 
-  const separator = spec.url.includes("?") ? "&" : "?"
+  // Split on the fragment first. A rev appended after one is never sent to the
+  // server at all, so it neither reaches the endpoint nor makes the request a
+  // different one — bumping it would silently stop reloading.
+  const [path, fragment] = splitFragment(spec.url)
+  const separator = path.includes("?") ? "&" : "?"
 
-  return `${spec.url}${separator}rev=${encodeURIComponent(spec.rev)}`
+  return `${path}${separator}rev=${encodeURIComponent(spec.rev)}${fragment}`
+}
+
+function splitFragment(url) {
+  const hash = url.indexOf("#")
+
+  return hash === -1 ? [url, ""] : [url.slice(0, hash), url.slice(hash)]
 }

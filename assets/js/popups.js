@@ -59,6 +59,11 @@ export class Popups {
     // to a marker the view has just moved away from.
     roverMap.observe("clusterClick", () => this.close())
     roverMap.observe("mapClick", () => this.close())
+    // Geometry from a `shape_source` opens nothing — there is no popup for a
+    // feature the server has never seen — but a click on it is still a click on
+    // "not this popup", and before it had a name of its own it fell through to
+    // `mapClick` and closed one.
+    roverMap.observe("sourceShapeClick", () => this.close())
 
     this.onPostrender = () => this.position()
     roverMap.map.on("postrender", this.onPostrender)
