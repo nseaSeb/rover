@@ -182,11 +182,14 @@ defmodule Rover.Components do
     payload carries whatever `id` and properties the GeoJSON declares — the id
     is the file's, or `nil`, and is not a shape the server can look up.
 
-    They take part in the framing, and a map with no `center` frames the first
-    document when it arrives, under `fit={:once}` and `fit={true}`. Under
-    `fit={false}` it is framed only when nothing else was there to frame at
-    mount — that one initial framing is what every centreless map gets. A
-    `center` owns the view outright.
+    They take part in the framing, but a document that arrives late claims no
+    fit of its own. A map with nothing to frame at mount has not spent the one
+    fit every centreless map gets, so the document claims that one — arriving
+    late is the only difference. A map that already framed its markers keeps the
+    view it has, which is what `fit={:once}` means and what `Rover.fly_to/4`
+    relies on: a source toggled on over another region lands where the view is,
+    and `Rover.fit_to/4` is how you go there. `fit={true}` refits on every
+    change, this one included.
     """
 
   attr :shape_fields, :list,

@@ -43,12 +43,6 @@ export class UrlShapeLayer {
     this.spec = null
     this.onLoad = onLoad || (() => {})
 
-    // Whether the map has framed what this layer holds. The owner sets it; the
-    // layer clears it whenever the document changes, because a different
-    // document is a different thing to frame — a source toggled off and back on
-    // over another region would otherwise land entirely off-screen.
-    this.framed = false
-
     // Which request the features on the map belong to.
     //
     // The document is fetched here rather than through `source.setUrl`, and
@@ -82,10 +76,6 @@ export class UrlShapeLayer {
     this.layer.setStyle(styleForShape(this.spec.style || {}))
 
     if (previous && previous.url === this.spec.url && previous.rev === this.spec.rev) return
-
-    // A rev bump is the same document again, and the view the user has since
-    // chosen is theirs to keep. A different URL is not.
-    if (!previous || previous.url !== this.spec.url) this.framed = false
 
     this.load()
   }
@@ -179,8 +169,8 @@ export class UrlShapeLayer {
 
     // A document whose features all carry `"geometry": null` — which GeoJSON
     // allows — has features and no extent, and OpenLayers answers that with
-    // infinities. Treating those as an extent marks the layer framed around
-    // nothing, and the next document to bring real geometry is never framed.
+    // infinities. Reporting those as an extent poisons the union every fit is
+    // computed from: the map frames the whole plane, or nothing at all.
     return Number.isFinite(extent[0]) ? extent : null
   }
 
@@ -188,7 +178,6 @@ export class UrlShapeLayer {
     // Bumped as well as emptied: a response already on its way belongs to a
     // document nobody is asking for any more.
     this.request += 1
-    this.framed = false
     this.source.clear()
   }
 

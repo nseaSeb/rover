@@ -353,13 +353,17 @@ there is nothing to open for a feature the server has never seen. The payload
 carries whatever `id` and properties the file declares; the id is the file's, or
 `nil`, and is not a shape to look up among the ones you are holding.
 
-They take part in the framing too: a map with no `center` frames the first
-document when it arrives, since the geometry is not there at mount to be framed.
-That deferred fit happens under `fit={:once}` as well — it *is* the one fit
-`:once` promises, just late. Under `fit={false}` it happens only when nothing
-else was there to frame at mount, that being the one initial framing every map
-without a `center` gets. Give it a `center` to own the view outright.
+They take part in the framing too, but a document that arrives late claims no
+fit of its own. A map with nothing to frame at mount never spent the one fit
+every map without a `center` gets, so the document claims that one — it *is* the
+fit `:once` promises, just late.
 
+A map that already framed its markers keeps the view it has. That is what
+`:once` means, and what `Rover.fly_to/4` relies on: a flight issued while a
+large document is downloading must still be where the user is when it lands. So
+a source toggled on over another region arrives where the view already is —
+`fit={true}` refits on every change if that is what you want, and
+`Rover.fit_to/4` frames on demand.
 
 ### Geometry is diffed by revision, not by hashing
 
