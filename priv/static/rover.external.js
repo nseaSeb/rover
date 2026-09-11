@@ -12285,7 +12285,10 @@ var UrlShapeLayer = class {
     const previous = this.spec;
     this.spec = spec || null;
     if (!this.spec) {
-      if (previous) this.clear();
+      if (previous) {
+        this.clear();
+        this.onLoad();
+      }
       return;
     }
     this.layer.setStyle(styleForShape(this.spec.style || {}));
@@ -12314,6 +12317,7 @@ var UrlShapeLayer = class {
       if (request === this.request) {
         this.source.clear();
         console.error(`[rover] could not load ${url}:`, error2);
+        this.onLoad();
       }
       return false;
     }).then((loaded) => loaded && this.onLoad()).catch((error2) => console.error("[rover] shape_source load callback failed:", error2));
@@ -12933,6 +12937,7 @@ var RoverMap = class {
     this.emit("shapeClick", { id: entry.shape.id, lat, lon, data: entry.shape.data ?? null });
   }
   featureAt(pixel) {
+    const sourceShapes = this.wants("sourceShapeClick");
     let marker = null;
     let shape = null;
     let urlShape = null;
@@ -12943,13 +12948,13 @@ var RoverMap = class {
           marker = marker || feature;
         } else if (layer === this.shapeLayer.layer) {
           shape = shape || feature;
-        } else if (layer === this.urlShapeLayer.layer) {
+        } else if (sourceShapes && layer === this.urlShapeLayer.layer) {
           urlShape = urlShape || feature;
         }
         return Boolean(marker);
       },
       {
-        layerFilter: (layer) => layer === this.markerLayer.layer || layer === this.shapeLayer.layer || layer === this.urlShapeLayer.layer,
+        layerFilter: (layer) => layer === this.markerLayer.layer || layer === this.shapeLayer.layer || sourceShapes && layer === this.urlShapeLayer.layer,
         hitTolerance: HIT_TOLERANCE
       }
     );

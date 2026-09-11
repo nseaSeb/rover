@@ -69,7 +69,15 @@ export class UrlShapeLayer {
     this.spec = spec || null
 
     if (!this.spec) {
-      if (previous) this.clear()
+      if (previous) {
+        this.clear()
+        // Losing a document is a change to what the map holds, like gaining
+        // one: under `fit={true}` the view has to stop framing geometry that is
+        // no longer there. `dispose()` clears too, and deliberately does not
+        // come through here — there is no view left to reframe.
+        this.onLoad()
+      }
+
       return
     }
 
@@ -130,6 +138,10 @@ export class UrlShapeLayer {
         if (request === this.request) {
           this.source.clear()
           console.error(`[rover] could not load ${url}:`, error)
+
+          // Emptied is a change too, and the same one as above: a view framed
+          // on the last document should not stay there under `fit={true}`.
+          this.onLoad()
         }
 
         return false

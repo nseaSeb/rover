@@ -345,7 +345,13 @@ async function shapePixel(page, selector) {
   return pixel
 }
 
-/** A pixel carrying geometry loaded from a `shape_source`, and nothing else. */
+/**
+ * A pixel carrying geometry loaded from a `shape_source`, and nothing else.
+ *
+ * Asks the layer, not `featureAt`. `featureAt` hit-tests that layer only when
+ * something is listening for its clicks, and the scenario this helper matters
+ * most to is the one where nothing is — the backdrop that must stay scenery.
+ */
 async function sourceShapePixel(page) {
   const pixel = await page.evaluate((sel) => {
     const rover = document.querySelector(sel)._rover
@@ -353,8 +359,11 @@ async function sourceShapePixel(page) {
 
     for (let x = 4; x < width - 4; x += 4) {
       for (let y = 4; y < height - 4; y += 4) {
+        const coordinate = rover.map.getCoordinateFromPixel([x, y])
+        const loaded = rover.urlShapeLayer.source.getFeaturesAtCoordinate(coordinate)
         const at = rover.featureAt([x, y])
-        if (at.sourceShape && !at.marker && !at.shape) return { x, y }
+
+        if (loaded.length > 0 && !at.marker && !at.shape) return { x, y }
       }
     }
 
@@ -1752,6 +1761,16 @@ test.describe("the playground", () => {
     await page.waitForTimeout(600)
 
     const inside = await sourceShapePixel(page)
+
+    // Not hit-tested at all, which is where the cursor and the click below both
+    // come from: `featureAt` runs on every pointermove, and this layer holds
+    // more features than any other on the map.
+    const tested = await page.evaluate(
+      ([sel, at]) => Boolean(document.querySelector(sel)._rover.featureAt([at.x, at.y]).sourceShape),
+      [MAP, inside]
+    )
+
+    expect(tested, "a backdrop nobody listens to was hit-tested anyway").toBe(false)
 
     // Not a target either: no pointer cursor over something a click does nothing to.
     await page.locator(CANVAS).hover({ position: inside })
