@@ -336,9 +336,13 @@ defmodule Rover.ComponentsTest do
       refute Map.has_key?(config(render_map([])), "shapeSource")
     end
 
-    test "reads false as no source, which is what a guard expression yields" do
-      # `shape_source={@loaded && {:url, ...}}` is the natural way to write it.
+    test "reads false as no source, and nil as no style, which is what a guard yields" do
+      # `shape_source={@loaded && {:url, ...}}` and `style: @maybe_style` are the
+      # natural ways to write either as a condition.
       refute Map.has_key?(config(render_map(shape_source: false)), "shapeSource")
+
+      source = config(render_map(shape_source: {:url, "/p.geojson", style: nil}))["shapeSource"]
+      assert source == %{"url" => "/p.geojson"}
     end
 
     test "carries the url the browser is to fetch" do

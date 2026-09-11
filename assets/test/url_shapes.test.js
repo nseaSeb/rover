@@ -1,19 +1,71 @@
 import assert from "node:assert/strict"
-import { describe, it } from "node:test"
+import { beforeEach, describe, it } from "node:test"
 
 import { UrlShapeLayer } from "../js/url_shapes.js"
 
 const url = "https://example.com/parcels.geojson"
 
-// The claim this layer exists for: a document is fetched when it changes, and
-// not otherwise. Re-requesting hundreds of kilobytes because a colour moved
-// would undo the reason for loading geometry this way at all.
+const collection = (...ids) => ({
+  type: "FeatureCollection",
+  features: ids.map((id) => ({
+    type: "Feature",
+    id,
+    properties: { name: `field ${id}` },
+    geometry: { type: "Point", coordinates: [4.85, 45.75] },
+  })),
+})
+
+// Everything the loader queues after a response lands: a `text()` of its own,
+// then the `.then` that adds the features. Resolving a microtask twice does not
+// reach the end of that chain, and a test that stops short of it reads as a
+// feature that never loaded.
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+/**
+ * A stand-in for the network that hands back control of when each response
+ * lands — which is the only way to write down what should happen when two are
+ * in flight at once.
+ */
+function stubFetch() {
+  const calls = []
+
+  globalThis.fetch = (requested) => {
+    let settle
+
+    const promise = new Promise((resolve) => {
+      settle = resolve
+    })
+
+    calls.push({
+      url: requested,
+      respond: (body, ok = true) =>
+        settle({ ok, status: ok ? 200 : 404, statusText: "", text: async () => JSON.stringify(body) }),
+    })
+
+    return promise
+  }
+
+  return calls
+}
+
 describe("UrlShapeLayer.reconcile", () => {
-  it("points the source at the document it was given", () => {
+  let calls
+
+  beforeEach(() => {
+    calls = stubFetch()
+  })
+
+  it("fetches the document it was given", async () => {
     const layer = new UrlShapeLayer()
     layer.reconcile({ url })
 
-    assert.equal(layer.source.getUrl(), url)
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].url, url)
+
+    calls[0].respond(collection("F-01", "F-02"))
+    await flush()
+
+    assert.equal(layer.source.getFeatures().length, 2)
   })
 
   it("sits under the shapes the server sends", () => {
@@ -22,66 +74,103 @@ describe("UrlShapeLayer.reconcile", () => {
   })
 
   it("carries the rev as a query parameter, so no cache answers the old question", () => {
-    const layer = new UrlShapeLayer()
-    layer.reconcile({ url, rev: 7 })
+    new UrlShapeLayer().reconcile({ url, rev: 7 })
 
-    assert.equal(layer.source.getUrl(), `${url}?rev=7`)
+    assert.equal(calls[0].url, `${url}?rev=7`)
   })
 
   it("keeps a query string the url already had", () => {
-    const layer = new UrlShapeLayer()
-    layer.reconcile({ url: `${url}?commune=69123`, rev: "a b" })
+    new UrlShapeLayer().reconcile({ url: `${url}?commune=69123`, rev: "a b" })
 
-    assert.equal(layer.source.getUrl(), `${url}?commune=69123&rev=a%20b`)
+    assert.equal(calls[0].url, `${url}?commune=69123&rev=a%20b`)
   })
 
   it("refetches when the rev changes", () => {
     const layer = new UrlShapeLayer()
     layer.reconcile({ url, rev: 1 })
-
-    let refreshed = 0
-    layer.source.refresh = () => refreshed++
-
     layer.reconcile({ url, rev: 2 })
 
-    assert.equal(refreshed, 1)
-    assert.equal(layer.source.getUrl(), `${url}?rev=2`)
+    assert.deepEqual(
+      calls.map((call) => call.url),
+      [`${url}?rev=1`, `${url}?rev=2`]
+    )
   })
 
   it("restyles without refetching", () => {
     const layer = new UrlShapeLayer()
     layer.reconcile({ url, rev: 1, style: { color: "#111111" } })
-
-    let refreshed = 0
-    layer.source.refresh = () => refreshed++
-
     layer.reconcile({ url, rev: 1, style: { color: "#16a34a" } })
 
-    assert.equal(refreshed, 0, "a colour change re-requested the whole document")
+    assert.equal(calls.length, 1, "a colour change re-requested the whole document")
     assert.equal(layer.layer.getStyle().getStroke().getColor(), "#16a34a")
   })
 
   it("does nothing at all when the spec is unchanged", () => {
     const layer = new UrlShapeLayer()
     layer.reconcile({ url, rev: 1 })
-
-    let refreshed = 0
-    layer.source.refresh = () => refreshed++
-
     layer.reconcile({ url, rev: 1 })
 
-    assert.equal(refreshed, 0)
+    assert.equal(calls.length, 1)
   })
 
-  it("forgets the document when the source goes away", () => {
+  // The regression this class keeps a request counter for. A rev bumped while a
+  // large document is still arriving leaves two responses racing, and
+  // OpenLayers indexes features by id: a stale response landing first takes the
+  // ids, and the fresh features are then dropped as duplicates — the old
+  // document left on the map, under the new url, until somebody bumps again.
+  it("ignores a stale response that lands after a newer request went out", async () => {
+    const layer = new UrlShapeLayer()
+    layer.reconcile({ url, rev: 1 })
+    layer.reconcile({ url, rev: 2 })
+
+    calls[1].respond(collection("fresh"))
+    await flush()
+
+    calls[0].respond(collection("stale"))
+    await flush()
+
+    assert.deepEqual(
+      layer.source.getFeatures().map((feature) => feature.getId()),
+      ["fresh"]
+    )
+  })
+
+  it("ignores a response to a document nobody is asking for any more", async () => {
     const layer = new UrlShapeLayer()
     layer.reconcile({ url })
     layer.reconcile(null)
 
-    // Not merely emptied: a source still pointing at the document would fetch
-    // it again on the next refresh.
-    assert.equal(layer.source.getUrl(), undefined)
+    calls[0].respond(collection("F-01"))
+    await flush()
+
     assert.equal(layer.source.getFeatures().length, 0)
+  })
+
+  it("says which document failed, rather than leaving an empty layer to explain itself", async () => {
+    const errors = []
+    const original = console.error
+    console.error = (...args) => errors.push(args.join(" "))
+
+    try {
+      new UrlShapeLayer().reconcile({ url })
+      calls[0].respond({}, false)
+      await flush()
+    } finally {
+      console.error = original
+    }
+
+    assert.match(errors.join("\n"), /could not load https:\/\/example\.com\/parcels\.geojson/)
+  })
+
+  it("calls back only for a load that landed, so a caller can frame it", async () => {
+    let loads = 0
+    const layer = new UrlShapeLayer({ onLoad: () => loads++ })
+    layer.reconcile({ url })
+
+    calls[0].respond(collection("F-01"))
+    await flush()
+
+    assert.equal(loads, 1)
   })
 
   it("has no extent until something has loaded", () => {

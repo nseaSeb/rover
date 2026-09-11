@@ -99,6 +99,11 @@ defmodule RoverDev.DemoLive do
   # browser suite needs it to watch the fetch happen, the framing wait for it,
   # and a click on a feature the server has never seen still reach the server.
   #
+  # `?shape_click=off` keeps the shape popup and drops `on_shape_click`, which is
+  # the combination that made geometry from a `shape_source` claim clicks it has
+  # nothing to do with: a popup slot is a reason to claim a click on a shape the
+  # server named, and no reason at all to claim one on a feature it has not.
+  #
   # `?declutter=1` turns label decluttering on, which the browser suite needs to
   # check what it costs: every pin, group and point must still be drawn, and
   # still be clickable, when only their labels are being hidden.
@@ -118,6 +123,7 @@ defmodule RoverDev.DemoLive do
        wmts: params["tiles"] == "wmts",
        declutter: params["declutter"] == "1",
        url_shapes: params["source"] == "url",
+       shape_click: params["shape_click"] != "off",
        scenery: params["scenery"] == "1",
        interactions: interactions(params["interactions"])
      )
@@ -223,7 +229,7 @@ defmodule RoverDev.DemoLive do
       controls={[:zoom, :attribution, :scale_line]}
       on_marker_click="marker_clicked"
       on_cluster_click="cluster_clicked"
-      on_shape_click={if @scenery, do: nil, else: "shape_clicked"}
+      on_shape_click={if @scenery or not @shape_click, do: nil, else: "shape_clicked"}
       on_map_click="map_clicked"
       on_move_end="moved"
       on_marker_drag_end="marker_dragged"

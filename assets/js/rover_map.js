@@ -75,7 +75,7 @@ export class RoverMap {
     this.markerLayer = new MarkerLayer()
     this.shapeLayer = new ShapeLayer()
     this.overlayLayers = new OverlayLayers()
-    this.urlShapeLayer = new UrlShapeLayer()
+    this.urlShapeLayer = new UrlShapeLayer({ onLoad: () => this.onUrlShapesLoaded() })
     // Whether a document has ever finished loading into that layer. The first
     // one to arrive gets a fit of its own: the geometry was not on the map at
     // mount to be framed, so a map whose only content is a URL source would
@@ -121,16 +121,6 @@ export class RoverMap {
     this.applyTiles(this.config.tiles)
     this.overlayLayers.reconcile(this.config.layers)
     this.urlShapeLayer.reconcile(this.config.shapeSource)
-
-    // A fit, not a reconcile: features that arrive after the frame was decided
-    // have to be allowed to change it, once.
-    this.onFeaturesLoaded = () => {
-      const first = !this.framedUrlShapes
-      this.framedUrlShapes = true
-
-      this.maybeFit({ force: first && this.config.fit !== false })
-    }
-    this.urlShapeLayer.source.on("featuresloadend", this.onFeaturesLoaded)
     this.applyDeclutter(this.config)
     this.markerLayer.setClustering(this.config.cluster)
     this.applyAccessibility(this.config)
@@ -301,6 +291,23 @@ export class RoverMap {
     })
   }
 
+  /**
+   * A document has arrived. Frame it, once.
+   *
+   * Features that were not on the map when the frame was decided have to be
+   * allowed to change it, or a map whose only content is a URL source sits at
+   * its default zoom over nothing. Only the first document to bring any
+   * geometry does: an empty result is not something to frame, and forcing a fit
+   * for one would yank the view to the markers, away from wherever the user had
+   * moved to while it was arriving.
+   */
+  onUrlShapesLoaded() {
+    const frames = !this.framedUrlShapes && Boolean(this.urlShapeLayer.extent)
+    if (frames) this.framedUrlShapes = true
+
+    this.maybeFit({ force: frames && this.config.fit !== false })
+  }
+
   maybeFit({ force = false } = {}) {
     if (!force && !shouldFit({ hasFitted: this.hasFitted, ...this.config })) return
 
@@ -317,7 +324,12 @@ export class RoverMap {
     this.map.getView().fit(extent, {
       size: this.map.getSize(),
       padding: [padding, padding, padding, padding],
-      maxZoom: fitMaxZoom(this.config, this.shapeLayer.entries.size > 0),
+      // Geometry is geometry wherever it came from: the marker-only ceiling
+      // would frame a single parcel loaded by URL as a speck.
+      maxZoom: fitMaxZoom(
+        this.config,
+        this.shapeLayer.entries.size > 0 || Boolean(this.urlShapeLayer.extent)
+      ),
       duration,
     })
   }
@@ -641,8 +653,9 @@ export class RoverMap {
       if (this.drawing) return this.hideTooltip()
       if (event.dragging) return this.hideTooltip()
 
-      const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel)
-      const clickableShape = shape && this.wants("shapeClick")
+      const { marker, cluster, markerFeature, shape, sourceShape } = this.featureAt(event.pixel)
+      const clickableShape =
+        (shape && this.wants("shapeClick")) || (sourceShape && this.wants("sourceShapeClick"))
 
       this.map.getTargetElement().style.cursor =
         marker || cluster || clickableShape ? "pointer" : ""
@@ -672,7 +685,7 @@ export class RoverMap {
       // this every corner of a polygon also dismissed whatever was open.
       if (this.drawing) return
 
-      const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel)
+      const { marker, cluster, markerFeature, shape, sourceShape } = this.featureAt(event.pixel)
       const { lat, lon } = unproject(event.coordinate)
 
       if (cluster) {
@@ -698,6 +711,8 @@ export class RoverMap {
         })
       } else if (shape && this.wants("shapeClick")) {
         this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null })
+      } else if (sourceShape && this.wants("sourceShapeClick")) {
+        this.emit("sourceShapeClick", { id: sourceShape.id, lat, lon, data: sourceShape.data })
       } else {
         // A shape with no click handler is scenery, not a target. Filled polygons
         // are hit-testable across their whole interior, so claiming the click here
@@ -857,19 +872,29 @@ export class RoverMap {
       }
     )
 
-    // A shape the server sent wins over one read out of a file: it is the one
-    // the application knows by name, and the one that can open a popup.
+    // Kept apart, not merged. A shape the server sent can open a popup and can
+    // be claimed because one exists; one read out of a file can do neither, and
+    // treating them alike made every polygon in a backdrop swallow the map
+    // clicks underneath it on any map that happened to have a popup slot.
     return {
       marker: this.markerLayer.markerFor(marker),
       cluster: this.markerLayer.clusterFor(marker),
       markerFeature: marker,
-      shape: this.shapeLayer.shapeFor(shape) || this.urlShapeLayer.shapeFor(urlShape),
-      shapeFeature: shape || urlShape,
+      shape: this.shapeLayer.shapeFor(shape),
+      shapeFeature: shape,
+      sourceShape: this.urlShapeLayer.shapeFor(urlShape),
+      sourceShapeFeature: urlShape,
     }
   }
 
   emit(name, payload) {
-    const event = (this.config.events || {})[name]
+    // A click on geometry from a `shape_source` reaches the same server handler
+    // as any other shape click — it is the same thing to an application. It is
+    // not the same thing here: the popup layer has nothing to open for one, and
+    // a file's id colliding with a shape's would otherwise open that shape's
+    // popup. So the two travel under different names on the client and arrive
+    // under one on the server.
+    const event = (this.config.events || {})[name === "sourceShapeClick" ? "shapeClick" : name]
     if (event) this.push(event, payload)
 
     const subscribers = this.listeners[name]
@@ -910,7 +935,6 @@ export class RoverMap {
   destroy() {
     if (this.resizeObserver) this.resizeObserver.disconnect()
     this.stopDrawing()
-    this.urlShapeLayer.source.un("featuresloadend", this.onFeaturesLoaded)
     this.markerLayer.dispose()
     this.overlayLayers.dispose()
     this.urlShapeLayer.dispose()
@@ -1033,9 +1057,14 @@ export function buildInteractions(config) {
 export function wantsEvent(config, listeners, name) {
   const subscribers = (listeners || {})[name]
   const popup = name === "shapeClick" && Boolean((config || {}).shapePopup)
+  // A `shape_source` click is wired to `on_shape_click` like any other, but a
+  // popup slot is not a reason to claim one: there is no popup for a feature
+  // the server has never seen, so claiming it would only swallow the map click
+  // underneath — the scenery rule again, for geometry the server cannot name.
+  const event = name === "sourceShapeClick" ? "shapeClick" : name
 
   return (
-    Boolean(((config || {}).events || {})[name]) ||
+    Boolean(((config || {}).events || {})[event]) ||
     popup ||
     Boolean(subscribers && subscribers.length)
   )

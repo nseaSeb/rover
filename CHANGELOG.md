@@ -36,6 +36,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   GeoJSON declares. There are no popups, no keyboard entries and no `:editable`
   for them, because all three need a shape the server can name.
 
+  Clicks on it reach `on_shape_click` like any other, but they travel under a
+  name of their own on the client: a popup slot is a reason to claim a click on
+  a shape the server named, and no reason at all to claim one on a feature it
+  has not — and a file's id colliding with a shape's would otherwise open that
+  shape's popup over geometry that has nothing to do with it.
+
+  The document is fetched here rather than through OpenLayers' own loader,
+  which has no handle to cancel one. A rev bumped while a large document is
+  still arriving leaves two responses racing, and features are indexed by id: a
+  stale response landing first takes the ids and the fresh ones are dropped as
+  duplicates, leaving the old document on the map under the new URL until
+  somebody bumps again. Only the current request is accepted, a failed one says
+  which URL it was rather than leaving an empty layer to explain itself, and an
+  empty result is not mistaken for geometry to frame.
+
   `UrlShapeLayer` joins the escape hatch's exports.
 
 ## [0.8.0] - 2026-09-08

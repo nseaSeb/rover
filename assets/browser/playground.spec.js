@@ -221,6 +221,27 @@ async function shapePixel(page, selector) {
   return pixel
 }
 
+/** A pixel carrying geometry loaded from a `shape_source`, and nothing else. */
+async function sourceShapePixel(page) {
+  const pixel = await page.evaluate((sel) => {
+    const rover = document.querySelector(sel)._rover
+    const [width, height] = rover.map.getSize()
+
+    for (let x = 4; x < width - 4; x += 4) {
+      for (let y = 4; y < height - 4; y += 4) {
+        const at = rover.featureAt([x, y])
+        if (at.sourceShape && !at.marker && !at.shape) return { x, y }
+      }
+    }
+
+    return null
+  }, MAP)
+
+  if (!pixel) throw new Error("no pixel carrying url-loaded geometry alone")
+
+  return pixel
+}
+
 /**
  * A pixel carrying a cluster of more than one marker.
  *
@@ -1472,7 +1493,7 @@ test.describe("the playground", () => {
 
     // And a click on a feature the server has never seen still reaches it,
     // carrying the id and properties the file itself declares.
-    const pixel = await shapePixel(page, MAP)
+    const pixel = await sourceShapePixel(page)
     await page.locator(CANVAS).click({ position: pixel })
     await expect(page.locator(".log")).toContainText(/shape F-0\d clicked/)
 
@@ -1480,6 +1501,41 @@ test.describe("the playground", () => {
     await page.getByRole("button", { name: /^Reload parcels/ }).click()
     await expect.poll(() => requests.length).toBe(2)
     expect(requests[1]).toContain("rev=2")
+
+    expect(problems).toEqual([])
+  })
+
+  test("geometry from a url claims no click a popup cannot answer", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    // A shape popup and no `on_shape_click`. For a shape the server named that
+    // is enough to claim a click — the popup is what answers it. For a feature
+    // read out of a file there is no popup to open, so claiming one would only
+    // swallow the map click underneath: the scenery rule, for geometry the
+    // server cannot name.
+    await page.goto("/?shapes=none&source=url&shape_click=off")
+    await mapReady(page)
+
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (sel) => document.querySelector(sel)._rover.urlShapeLayer.source.getFeatures().length,
+          MAP
+        )
+      )
+      .toBe(4)
+    await page.waitForTimeout(600)
+
+    const inside = await sourceShapePixel(page)
+
+    // Not a target either: no pointer cursor over something a click does nothing to.
+    await page.locator(CANVAS).hover({ position: inside })
+    const cursor = await page.evaluate((sel) => document.querySelector(sel).style.cursor, CANVAS)
+    expect(cursor).toBe("")
+
+    await page.locator(CANVAS).click({ position: inside })
+    await expect(page.locator(".log")).toContainText("map clicked at")
 
     expect(problems).toEqual([])
   })

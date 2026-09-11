@@ -12256,8 +12256,8 @@ function appearanceOf2(shape) {
 import VectorLayer5 from "ol/layer/Vector.js";
 import VectorSource6 from "ol/source/Vector.js";
 var UrlShapeLayer = class {
-  constructor() {
-    this.source = new VectorSource6({ format, wrapX: false });
+  constructor({ onLoad } = {}) {
+    this.source = new VectorSource6({ wrapX: false });
     this.layer = new VectorLayer5({
       source: this.source,
       // Under the shapes the server sends, over the tiles: geometry loaded in
@@ -12267,6 +12267,9 @@ var UrlShapeLayer = class {
       updateWhileInteracting: false
     });
     this.spec = null;
+    this.onLoad = onLoad || (() => {
+    });
+    this.request = 0;
   }
   /**
    * Point the layer at a document, or restyle what it has, or empty it.
@@ -12285,8 +12288,22 @@ var UrlShapeLayer = class {
     }
     this.layer.setStyle(styleForShape(this.spec.style || {}));
     if (previous && previous.url === this.spec.url && previous.rev === this.spec.rev) return;
-    this.source.setUrl(urlFor(this.spec));
-    this.source.refresh();
+    this.load();
+  }
+  load() {
+    const url = urlFor(this.spec);
+    this.request += 1;
+    const request = this.request;
+    this.requested = url;
+    fetch(url, { credentials: "same-origin" }).then((response) => {
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      return response.text();
+    }).then((text) => {
+      if (request !== this.request) return;
+      this.source.clear();
+      this.source.addFeatures(format.readFeatures(text));
+      this.onLoad();
+    }).catch((error2) => console.error(`[rover] could not load ${url}:`, error2));
   }
   /**
    * A click target, in the shape the rest of the map speaks.
@@ -12307,7 +12324,8 @@ var UrlShapeLayer = class {
     return this.source.getFeatures().length > 0 ? this.source.getExtent() : null;
   }
   clear() {
-    this.source.setUrl(void 0);
+    this.request += 1;
+    this.requested = null;
     this.source.clear();
   }
   dispose() {
@@ -12340,7 +12358,7 @@ var RoverMap = class {
     this.markerLayer = new MarkerLayer();
     this.shapeLayer = new ShapeLayer();
     this.overlayLayers = new OverlayLayers();
-    this.urlShapeLayer = new UrlShapeLayer();
+    this.urlShapeLayer = new UrlShapeLayer({ onLoad: () => this.onUrlShapesLoaded() });
     this.framedUrlShapes = false;
     this.drawLayer = new DrawLayer();
     this.heatmapLayer = new HeatmapLayer();
@@ -12375,12 +12393,6 @@ var RoverMap = class {
     this.applyTiles(this.config.tiles);
     this.overlayLayers.reconcile(this.config.layers);
     this.urlShapeLayer.reconcile(this.config.shapeSource);
-    this.onFeaturesLoaded = () => {
-      const first = !this.framedUrlShapes;
-      this.framedUrlShapes = true;
-      this.maybeFit({ force: first && this.config.fit !== false });
-    };
-    this.urlShapeLayer.source.on("featuresloadend", this.onFeaturesLoaded);
     this.applyDeclutter(this.config);
     this.markerLayer.setClustering(this.config.cluster);
     this.applyAccessibility(this.config);
@@ -12513,6 +12525,21 @@ var RoverMap = class {
       duration: ms
     });
   }
+  /**
+   * A document has arrived. Frame it, once.
+   *
+   * Features that were not on the map when the frame was decided have to be
+   * allowed to change it, or a map whose only content is a URL source sits at
+   * its default zoom over nothing. Only the first document to bring any
+   * geometry does: an empty result is not something to frame, and forcing a fit
+   * for one would yank the view to the markers, away from wherever the user had
+   * moved to while it was arriving.
+   */
+  onUrlShapesLoaded() {
+    const frames = !this.framedUrlShapes && Boolean(this.urlShapeLayer.extent);
+    if (frames) this.framedUrlShapes = true;
+    this.maybeFit({ force: frames && this.config.fit !== false });
+  }
   maybeFit({ force = false } = {}) {
     if (!force && !shouldFit({ hasFitted: this.hasFitted, ...this.config })) return;
     const extent = this.contentExtent;
@@ -12524,7 +12551,12 @@ var RoverMap = class {
     this.map.getView().fit(extent, {
       size: this.map.getSize(),
       padding: [padding, padding, padding, padding],
-      maxZoom: fitMaxZoom(this.config, this.shapeLayer.entries.size > 0),
+      // Geometry is geometry wherever it came from: the marker-only ceiling
+      // would frame a single parcel loaded by URL as a speck.
+      maxZoom: fitMaxZoom(
+        this.config,
+        this.shapeLayer.entries.size > 0 || Boolean(this.urlShapeLayer.extent)
+      ),
       duration
     });
   }
@@ -12742,8 +12774,8 @@ var RoverMap = class {
       if (this.config.interactive === false) return;
       if (this.drawing) return this.hideTooltip();
       if (event.dragging) return this.hideTooltip();
-      const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel);
-      const clickableShape = shape && this.wants("shapeClick");
+      const { marker, cluster, markerFeature, shape, sourceShape } = this.featureAt(event.pixel);
+      const clickableShape = shape && this.wants("shapeClick") || sourceShape && this.wants("sourceShapeClick");
       this.map.getTargetElement().style.cursor = marker || cluster || clickableShape ? "pointer" : "";
       if (cluster) {
         this.hideTooltip();
@@ -12759,7 +12791,7 @@ var RoverMap = class {
     this.map.on("singleclick", (event) => {
       if (this.config.interactive === false) return;
       if (this.drawing) return;
-      const { marker, cluster, markerFeature, shape } = this.featureAt(event.pixel);
+      const { marker, cluster, markerFeature, shape, sourceShape } = this.featureAt(event.pixel);
       const { lat, lon } = unproject(event.coordinate);
       if (cluster) {
         this.emit("clusterClick", {
@@ -12780,6 +12812,8 @@ var RoverMap = class {
         });
       } else if (shape && this.wants("shapeClick")) {
         this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null });
+      } else if (sourceShape && this.wants("sourceShapeClick")) {
+        this.emit("sourceShapeClick", { id: sourceShape.id, lat, lon, data: sourceShape.data });
       } else {
         this.emit("mapClick", { lat, lon });
       }
@@ -12899,12 +12933,14 @@ var RoverMap = class {
       marker: this.markerLayer.markerFor(marker),
       cluster: this.markerLayer.clusterFor(marker),
       markerFeature: marker,
-      shape: this.shapeLayer.shapeFor(shape) || this.urlShapeLayer.shapeFor(urlShape),
-      shapeFeature: shape || urlShape
+      shape: this.shapeLayer.shapeFor(shape),
+      shapeFeature: shape,
+      sourceShape: this.urlShapeLayer.shapeFor(urlShape),
+      sourceShapeFeature: urlShape
     };
   }
   emit(name, payload) {
-    const event = (this.config.events || {})[name];
+    const event = (this.config.events || {})[name === "sourceShapeClick" ? "shapeClick" : name];
     if (event) this.push(event, payload);
     const subscribers = this.listeners[name];
     if (subscribers) subscribers.forEach((fn) => fn(payload));
@@ -12934,7 +12970,6 @@ var RoverMap = class {
   destroy() {
     if (this.resizeObserver) this.resizeObserver.disconnect();
     this.stopDrawing();
-    this.urlShapeLayer.source.un("featuresloadend", this.onFeaturesLoaded);
     this.markerLayer.dispose();
     this.overlayLayers.dispose();
     this.urlShapeLayer.dispose();
@@ -12992,7 +13027,8 @@ function buildInteractions(config) {
 function wantsEvent(config, listeners, name) {
   const subscribers = (listeners || {})[name];
   const popup = name === "shapeClick" && Boolean((config || {}).shapePopup);
-  return Boolean(((config || {}).events || {})[name]) || popup || Boolean(subscribers && subscribers.length);
+  const event = name === "sourceShapeClick" ? "shapeClick" : name;
+  return Boolean(((config || {}).events || {})[event]) || popup || Boolean(subscribers && subscribers.length);
 }
 function shouldFit({ hasFitted, derivedCenter, fit }) {
   if (!hasFitted && derivedCenter) return true;
