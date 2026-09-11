@@ -85,6 +85,13 @@ function wmtsCapabilities({ layer, matrixSet, template }) {
 async function stubTiles(page) {
   const urls = []
 
+  // The playground's second map is on `:carto_light` on every page, so a test
+  // that stubs only the main map's tiles still reaches out to the network for
+  // that one — and a CDN that answers a CI runner without an
+  // `access-control-allow-origin` header fails an unrelated test with a CORS
+  // console error. Nothing in this suite should need the network.
+  await stubCartoRasterTiles(page)
+
   await page.route("**://data.geopf.fr/**", (route) => {
     urls.push(route.request().url())
 
@@ -104,9 +111,10 @@ async function stubTiles(page) {
 
 /**
  * Stub the three raster Carto endpoints the same way as the IGN tiles above, so
- * cycling through them on the way to the vector preset is fast and offline. Their
- * URLs are all under `basemaps.cartocdn.com` but never overlap the vector style
- * document (`.../gl/*-gl-style/style.json`) or its tile source
+ * the playground's second map — `:carto_light` on every page — and cycling
+ * through the presets are both fast and offline. Their URLs are all under
+ * `basemaps.cartocdn.com` but never overlap the vector style document
+ * (`.../gl/*-gl-style/style.json`) or its tile source
  * (`tiles.basemaps.cartocdn.com`), which stay unstubbed for the vector scenario.
  */
 async function stubCartoRasterTiles(page) {
@@ -1097,7 +1105,6 @@ test.describe("the playground", () => {
 
   test("paints a vector basemap end to end", async ({ page }) => {
     await stubTiles(page)
-    await stubCartoRasterTiles(page)
     const problems = failOnPageErrors(page)
 
     // No shapes: the only thing that can paint a pixel outside the three
