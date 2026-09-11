@@ -341,6 +341,16 @@ defmodule Rover.ComponentsTest do
       # natural ways to write either as a condition.
       refute Map.has_key?(config(render_map(shape_source: false)), "shapeSource")
 
+      # `style: @dark && [...]` and `rev: @loaded && @rev` are the same idiom as
+      # the attribute itself, and a guard that does not fire yields `false`.
+      source =
+        config(render_map(shape_source: {:url, "/p.geojson", style: false, rev: false}))[
+          "shapeSource"
+        ]
+
+      refute Map.has_key?(source, "style")
+      refute Map.has_key?(source, "rev")
+
       source = config(render_map(shape_source: {:url, "/p.geojson", style: nil}))["shapeSource"]
       assert source == %{"url" => "/p.geojson"}
     end
