@@ -27,7 +27,7 @@ defmodule Rover do
   Add the dependency:
 
       def deps do
-        [{:rover, "~> 0.8"}]
+        [{:rover, "~> 0.9"}]
       end
 
   Register the hook in `assets/js/app.js`. Rover ships a prebuilt bundle with
