@@ -185,7 +185,8 @@ defmodule Rover.Components do
     They take part in the framing, but a document that arrives late claims no
     fit of its own. A map with nothing to frame at mount has not spent the one
     fit every centreless map gets, so the document claims that one — arriving
-    late is the only difference. A map that already framed its markers keeps the
+    late is the only difference, and a `Rover.fly_to/4` or `Rover.fit_to/4`
+    spends it first if one was issued. A map that already framed its markers keeps the
     view it has, which is what `fit={:once}` means and what `Rover.fly_to/4`
     relies on: a source toggled on over another region lands where the view is,
     and `Rover.fit_to/4` is how you go there. `fit={true}` refits on every
@@ -769,9 +770,16 @@ defmodule Rover.Components do
   end
 
   defp encode_shape_rev(nil), do: nil
+  # `rev: @loaded && @rev` yields `false`, the same idiom the attribute itself
+  # allows. Without this the browser asks for `?rev=false` and caches it as a
+  # version of its own.
+  defp encode_shape_rev(false), do: nil
   defp encode_shape_rev(rev), do: to_string(rev)
 
   defp encode_shape_source_style(nil), do: nil
+  # And `style: @dark && [color: "#fff"]`, for the same reason: a guard that
+  # does not fire yields `false`, which is no style rather than an error.
+  defp encode_shape_source_style(false), do: nil
   defp encode_shape_source_style([]), do: nil
 
   defp encode_shape_source_style(style) when is_list(style) do

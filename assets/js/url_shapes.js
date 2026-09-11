@@ -77,6 +77,13 @@ export class UrlShapeLayer {
 
     if (previous && previous.url === this.spec.url && previous.rev === this.spec.rev) return
 
+    // A different document, so what is on the map answers to a URL nobody is
+    // asking for any more: it would go on being clickable — reporting ids from
+    // the old file while the server has moved on — and go on being framed,
+    // until the response lands. A rev bump is the same document again, and
+    // emptying for one would blink it.
+    if (previous && previous.url !== this.spec.url) this.source.clear()
+
     this.load()
   }
 

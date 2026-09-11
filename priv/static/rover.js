@@ -61166,6 +61166,7 @@ var UrlShapeLayer = class {
     }
     this.layer.setStyle(styleForShape(this.spec.style || {}));
     if (previous && previous.url === this.spec.url && previous.rev === this.spec.rev) return;
+    if (previous && previous.url !== this.spec.url) this.source.clear();
     this.load();
   }
   load() {
@@ -61391,12 +61392,15 @@ var RoverMap = class {
   /**
    * A one-shot move, from `Rover.fly_to/4`.
    *
-   * Deliberately does not touch `config` or `hasFitted`: the view has been moved,
-   * but nothing about what the server is rendering has changed, so the next update
-   * must not undo this and must not think a fit is owed.
+   * Sets `hasFitted`, because the view has been decided and no fit is owed: on
+   * a map with nothing to frame at mount the initial fit is still outstanding,
+   * and content arriving after the flight would otherwise spend it by pulling
+   * the view back. `config` is left alone — nothing about what the server is
+   * rendering has changed, and `fit={true}` still means every change refits.
    */
   flyTo({ center, zoom, duration }) {
     const ms = duration ?? ANIMATION_MS;
+    this.hasFitted = true;
     this.beQuiet(ms);
     this.map.getView().animate({
       center: project(center[0], center[1]),
@@ -61405,13 +61409,14 @@ var RoverMap = class {
       duration: ms
     });
   }
-  /** A one-shot fit, from `Rover.fit_to/4`. */
+  /** A one-shot fit, from `Rover.fit_to/4`. It decides the view, like `flyTo`. */
   fitTo({ bbox: bbox2, padding, maxZoom, duration }) {
     const [south, west, north, east] = bbox2;
     const [minX, minY] = project(south, west);
     const [maxX, maxY] = project(north, east);
     const ms = duration ?? ANIMATION_MS;
     const pad = padding ?? 48;
+    this.hasFitted = true;
     this.beQuiet(ms);
     this.map.getView().fit([minX, minY, maxX, maxY], {
       size: this.map.getSize(),

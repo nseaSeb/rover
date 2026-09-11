@@ -52,9 +52,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   They take part in the framing, but claim no fit of their own for having
   arrived late. A map with nothing to frame at mount has not spent the one fit
   every map without a `center` gets, so the first document claims that one; a
-  map that already framed its markers keeps the view it has, which is what
-  `fit={:once}` means and what a `Rover.fly_to/4` issued while the document was
-  downloading relies on.
+  map that already framed its markers, or that was flown somewhere, keeps the
+  view it has.
 
 - **`on_source_shape_click`**: clicks on `shape_source` geometry, carrying
   whatever `id` and properties the GeoJSON declares.
@@ -69,6 +68,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shape's would open that shape's popup over geometry with nothing to do with it.
 
   `UrlShapeLayer` joins the escape hatch's exports.
+
+### Fixed
+
+- `Rover.fly_to/4` and `Rover.fit_to/4` now count as a map's initial framing.
+  A map with no `center` is framed around its content once, and until now that
+  fit was still owed after a flight: on a map whose content arrives
+  asynchronously — markers from a slow query, or a `shape_source` document — it
+  ran when the content landed and pulled the view back off wherever the
+  application had just sent it. Both commands are decisions about the view, and
+  the client's own contract for them said so: "the next update must not undo
+  this and must not think a fit is owed."
+
+  `fit={true}` is unaffected: it refits on every change, which is what it means.
 
 ## [0.8.0] - 2026-09-08
 

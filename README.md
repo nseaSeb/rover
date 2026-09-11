@@ -356,7 +356,8 @@ carries whatever `id` and properties the file declares; the id is the file's, or
 They take part in the framing too, but a document that arrives late claims no
 fit of its own. A map with nothing to frame at mount never spent the one fit
 every map without a `center` gets, so the document claims that one — it *is* the
-fit `:once` promises, just late.
+fit `:once` promises, just late — unless a `Rover.fly_to/4` or `Rover.fit_to/4`
+spent it first, those being decisions about the view that content must not undo.
 
 A map that already framed its markers keeps the view it has. That is what
 `:once` means, and what `Rover.fly_to/4` relies on: a flight issued while a

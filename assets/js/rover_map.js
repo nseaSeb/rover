@@ -252,12 +252,15 @@ export class RoverMap {
   /**
    * A one-shot move, from `Rover.fly_to/4`.
    *
-   * Deliberately does not touch `config` or `hasFitted`: the view has been moved,
-   * but nothing about what the server is rendering has changed, so the next update
-   * must not undo this and must not think a fit is owed.
+   * Sets `hasFitted`, because the view has been decided and no fit is owed: on
+   * a map with nothing to frame at mount the initial fit is still outstanding,
+   * and content arriving after the flight would otherwise spend it by pulling
+   * the view back. `config` is left alone — nothing about what the server is
+   * rendering has changed, and `fit={true}` still means every change refits.
    */
   flyTo({ center, zoom, duration }) {
     const ms = duration ?? ANIMATION_MS
+    this.hasFitted = true
     this.beQuiet(ms)
 
     this.map.getView().animate({
@@ -268,7 +271,7 @@ export class RoverMap {
     })
   }
 
-  /** A one-shot fit, from `Rover.fit_to/4`. */
+  /** A one-shot fit, from `Rover.fit_to/4`. It decides the view, like `flyTo`. */
   fitTo({ bbox, padding, maxZoom, duration }) {
     const [south, west, north, east] = bbox
     const [minX, minY] = project(south, west)
@@ -276,6 +279,7 @@ export class RoverMap {
 
     const ms = duration ?? ANIMATION_MS
     const pad = padding ?? 48
+    this.hasFitted = true
     this.beQuiet(ms)
 
     this.map.getView().fit([minX, minY, maxX, maxY], {

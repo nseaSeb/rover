@@ -109,6 +109,11 @@ defmodule Rover do
   This is a one-shot command instead. Nothing is assigned, no attribute changes,
   and the map keeps its declarative framing for everything else.
 
+  It does count as the map's initial framing, though: a map with no `center` is
+  framed around its content once, and a flight is a decision about the view, so
+  content arriving afterwards will not pull it back. `fit={true}` still refits
+  on every change.
+
       def handle_event("select_client", %{"id" => id}, socket) do
         client = Enum.find(socket.assigns.clients, &(&1.id == id))
 
@@ -146,6 +151,9 @@ defmodule Rover do
   the view to it — using the viewport size, which only the client knows.
 
       {:noreply, Rover.fit_to(socket, "fleet", vehicles_on_shift)}
+
+  Like `fly_to/4`, this counts as the map's initial framing: content arriving
+  afterwards will not pull the view back off what you framed.
 
   ## Options
 

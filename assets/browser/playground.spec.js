@@ -1663,62 +1663,70 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
-  test("a document that lands after a flight leaves the view where the flight put it", async ({
-    page,
-  }) => {
-    await stubTiles(page)
-    const problems = failOnPageErrors(page)
+  // Both maps, because the view is decided two different ways. One has markers,
+  // so it framed them at mount and owes no fit; the other has nothing, so its
+  // one fit is still outstanding when the flight takes off — and the flight is
+  // what spends it.
+  for (const [what, query] of [
+    ["a framed map", "/?shapes=none&source=url"],
+    ["a map that never framed anything", "/?shapes=none&markers=none&source=url"],
+  ]) {
+    test(`a document landing after a flight leaves ${what} where the flight put it`, async ({
+      page,
+    }) => {
+      await stubTiles(page)
+      const problems = failOnPageErrors(page)
 
-    // The regression this exists for: the deferred fit used to bypass the table
-    // that decides when a fit is owed, so it ran whatever had happened since —
-    // discarding a `Rover.fly_to/4` issued while the document was downloading,
-    // and giving a `fit={:once}` map the second fit `:once` rules out.
-    let release
-    const held = new Promise((resolve) => {
-      release = resolve
-    })
+      // The regression this exists for: the deferred fit used to bypass the table
+      // that decides when a fit is owed, so it ran whatever had happened since —
+      // discarding a `Rover.fly_to/4` issued while the document was downloading,
+      // and giving a `fit={:once}` map the second fit `:once` rules out.
+      let release
+      const held = new Promise((resolve) => {
+        release = resolve
+      })
 
-    await page.route("**/api/parcels.geojson**", async (route) => {
-      const response = await route.fetch()
-      await held
-      await route.fulfill({ response })
-    })
+      await page.route("**/api/parcels.geojson**", async (route) => {
+        const response = await route.fetch()
+        await held
+        await route.fulfill({ response })
+      })
 
-    // Markers at mount, so the map spends its one fit framing them.
-    await page.goto("/?shapes=none&source=url")
-    await mapReady(page)
+      await page.goto(query)
+      await mapReady(page)
 
-    await page.getByRole("button", { name: "Fly to Paris" }).click()
-    await page.waitForTimeout(900)
+      await page.getByRole("button", { name: "Fly to Paris" }).click()
+      await page.waitForTimeout(900)
 
-    const view = () =>
-      page.evaluate((sel) => {
-        const map = document.querySelector(sel)._rover.map
-        return { center: map.getView().getCenter(), zoom: map.getView().getZoom() }
-      }, MAP)
+      const view = () =>
+        page.evaluate((sel) => {
+          const map = document.querySelector(sel)._rover.map
+          return { center: map.getView().getCenter(), zoom: map.getView().getZoom() }
+        }, MAP)
 
-    const flown = await view()
+      const flown = await view()
 
-    release()
+      release()
 
-    await expect
-      .poll(() =>
-        page.evaluate(
-          (sel) => document.querySelector(sel)._rover.urlShapeLayer.source.getFeatures().length,
-          MAP
+      await expect
+        .poll(() =>
+          page.evaluate(
+            (sel) => document.querySelector(sel)._rover.urlShapeLayer.source.getFeatures().length,
+            MAP
+          )
         )
-      )
-      .toBe(4)
-    await page.waitForTimeout(600)
+        .toBe(4)
+      await page.waitForTimeout(600)
 
-    const after = await view()
+      const after = await view()
 
-    expect(after.zoom, "the document pulled the view back off Paris").toBeCloseTo(flown.zoom, 1)
-    expect(after.center[0]).toBeCloseTo(flown.center[0], 0)
-    expect(after.center[1]).toBeCloseTo(flown.center[1], 0)
+      expect(after.zoom, "the document pulled the view back off Paris").toBeCloseTo(flown.zoom, 1)
+      expect(after.center[0]).toBeCloseTo(flown.center[0], 0)
+      expect(after.center[1]).toBeCloseTo(flown.center[1], 0)
 
-    expect(problems).toEqual([])
-  })
+      expect(problems).toEqual([])
+    })
+  }
 
   test("geometry from a url is scenery until its own handler is wired", async ({ page }) => {
     await stubTiles(page)

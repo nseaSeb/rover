@@ -229,6 +229,32 @@ describe("UrlShapeLayer.reconcile", () => {
     assert.equal(layer.source.getFeatures().length, 1)
   })
 
+  it("empties the layer when the document changes, before the new one lands", async () => {
+    // What is on the map answers to a URL nobody is asking for any more: it
+    // would go on being clickable, reporting ids from the old file, and go on
+    // being framed, until the response arrives.
+    const layer = new UrlShapeLayer()
+    layer.reconcile({ url })
+    calls[0].respond(collection("F-01"))
+    await flush()
+
+    layer.reconcile({ url: "https://example.com/other.geojson" })
+
+    assert.equal(layer.source.getFeatures().length, 0)
+  })
+
+  it("keeps what it has across a rev bump, which would otherwise blink", async () => {
+    const layer = new UrlShapeLayer()
+    layer.reconcile({ url, rev: 1 })
+    calls[0].respond(collection("F-01"))
+    await flush()
+
+    layer.reconcile({ url, rev: 2 })
+
+    // The same document again: emptying now would show a hole until it lands.
+    assert.deepEqual(ids(layer), ["F-01"])
+  })
+
   it("puts the rev before a fragment, which is never sent to the server", () => {
     new UrlShapeLayer().reconcile({ url: `${url}#lyon`, rev: 2 })
 
