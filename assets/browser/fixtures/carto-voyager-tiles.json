@@ -1,0 +1,1 @@
+{"tilejson":"2.0.0","tiles":["https://vector.test/{z}/{x}/{y}.mvt"],"minzoom":0,"maxzoom":14,"bounds":[-180,-85.0511,180,85.0511],"attribution":"&copy; <a href=\"https://carto.com/about-carto/\" target=\"_blank\" rel=\"noopener\">CARTO</a>, &copy; <a href=\"http://www.openstreetmap.org/about/\" target=\"_blank\">OpenStreetMap</a> contributors"}

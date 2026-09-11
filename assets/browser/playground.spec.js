@@ -1,3 +1,8 @@
+import { readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { gunzipSync } from "node:zlib"
+
 import { expect, test } from "@playwright/test"
 
 /**
@@ -85,11 +90,14 @@ function wmtsCapabilities({ layer, matrixSet, template }) {
 async function stubTiles(page) {
   const urls = []
 
+  // First, so that every route registered after it wins: Playwright matches
+  // handlers in reverse order of registration. What is left for this one to
+  // answer is whatever nothing else claimed, and the answer is no.
+  await refuseTheNetwork(page)
+
   // The playground's second map is on `:carto_light` on every page, so a test
   // that stubs only the main map's tiles still reaches out to the network for
-  // that one — and a CDN that answers a CI runner without an
-  // `access-control-allow-origin` header fails an unrelated test with a CORS
-  // console error. Nothing in this suite should need the network.
+  // that one.
   await stubCartoRasterTiles(page)
 
   await page.route("**://data.geopf.fr/**", (route) => {
@@ -110,6 +118,33 @@ async function stubTiles(page) {
 }
 
 /**
+ * Refuse every request that would leave the machine.
+ *
+ * A guard, not an optimisation, and it is here because the invariant drifted
+ * once without anybody noticing: the playground renders a second map on
+ * `:carto_light`, so for months every scenario fetched real tiles for it. That
+ * held until a CI runner was answered without an `access-control-allow-origin`
+ * header, and the CORS console error failed "does not yank the view when a
+ * marker moves" — a test about marker updates.
+ *
+ * A suite that talks to the network is a monitor of other people's uptime
+ * dressed as a guard, and this one runs with `retries: 0`. Adding a map, a
+ * basemap preset or a font to the playground now fails loudly here rather than
+ * quietly borrowing someone's CDN.
+ */
+async function refuseTheNetwork(page) {
+  await page.route("**", (route) => {
+    const { hostname } = new URL(route.request().url())
+
+    if (hostname === "127.0.0.1" || hostname === "localhost") return route.continue()
+
+    console.error(`[suite] refused a request to ${route.request().url()} — stub it or add a fixture`)
+
+    return route.abort()
+  })
+}
+
+/**
  * Stub the three raster Carto endpoints the same way as the IGN tiles above, so
  * the playground's second map — `:carto_light` on every page — and cycling
  * through the presets are both fast and offline. Their URLs are all under
@@ -127,6 +162,65 @@ async function stubCartoRasterTiles(page) {
         headers: { "access-control-allow-origin": "*" },
         body: TILE,
       })
+  )
+}
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures")
+
+/**
+ * Serve the vector basemap from fixtures captured off Carto's own endpoints.
+ *
+ * This scenario was the last one in the suite reaching the network, and the
+ * failure it invites is the one that has already bitten: a CDN that answers a
+ * CI runner without the header the browser wants logs a console error, and the
+ * test fails for a reason that has nothing to do with the code under test.
+ *
+ * The fixtures are the real documents, pruned to what can be served without a
+ * second round of them: the 27 symbol layers are dropped, and with them the
+ * sprite sheet, the glyph ranges and the webfonts `ol-mapbox-style` pulls from
+ * jsdelivr for `text-font`. What is left is the real style's background, fills
+ * and lines over a real vector tile, which is what this test is about — that
+ * `apply()` builds a group that paints.
+ *
+ * What it no longer proves is that the style Carto publishes today is still one
+ * OpenLayers can read. Nothing in the suite does, deliberately: a test that
+ * fails when a third party changes something is a monitor, not a guard, and
+ * this suite has `retries: 0`.
+ */
+async function stubVectorBasemap(page) {
+  const tile = gunzipSync(readFileSync(join(FIXTURES, "carto-voyager-tile.mvt.gz")))
+
+  await page.route("**://basemaps.cartocdn.com/gl/**/style.json", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: readFileSync(join(FIXTURES, "carto-voyager-style.json"), "utf8"),
+    })
+  )
+
+  // The style's source is rewritten to this host in the fixture, so nothing
+  // under `tiles*.basemaps.cartocdn.com` is asked for at all — and a request
+  // that escapes the rewrite has an obviously fake host to show for it.
+  await page.route("**://vector.test/tiles.json", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: readFileSync(join(FIXTURES, "carto-voyager-tiles.json"), "utf8"),
+    })
+  )
+
+  // One tile, for every coordinate asked for. A vector tile's geometry is in
+  // its own local coordinate space, so the same bytes render as a plausible
+  // map wherever they are placed.
+  await page.route("**://vector.test/**.mvt", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/vnd.mapbox-vector-tile",
+      headers: { "access-control-allow-origin": "*" },
+      body: tile,
+    })
   )
 }
 
@@ -1105,6 +1199,7 @@ test.describe("the playground", () => {
 
   test("paints a vector basemap end to end", async ({ page }) => {
     await stubTiles(page)
+    await stubVectorBasemap(page)
     const problems = failOnPageErrors(page)
 
     // No shapes: the only thing that can paint a pixel outside the three
@@ -1113,8 +1208,8 @@ test.describe("the playground", () => {
     await mapReady(page)
 
     // ign_plan -> ign_ortho -> carto_light -> carto_dark -> carto_voyager_vector.
-    // The first three are stubbed above; only the last one hits Carto's real
-    // vector tile CDN for its style document, sprite, and MVT tiles.
+    // Every one of them is served from a stub or a fixture: nothing in this
+    // suite leaves the machine.
     for (let clicks = 0; clicks < 4; clicks += 1) {
       await page.getByRole("button", { name: /^Tiles:/ }).click()
     }
@@ -1122,9 +1217,9 @@ test.describe("the playground", () => {
 
     const pixel = await emptyPixel(page)
 
-    // ol-mapbox-style resolves progressively as the style, sprite and first
-    // tiles load over the real network, so this is the one assertion in the
-    // suite that needs real time rather than a stubbed, instant response.
+    // `apply()` resolves progressively as the style document and the first
+    // tiles are read, so this still polls — the documents are instant now, but
+    // decoding a real vector tile and rendering it is not.
     await expect
       .poll(() => canvasHasPaintedPixelAt(page, MAP, pixel), { timeout: 20_000 })
       .toBe(true)
