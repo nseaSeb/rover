@@ -21,6 +21,20 @@ const collection = (...ids) => ({
 // feature that never loaded.
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
+// The ids the file declared, which are deliberately not the features' own — see
+// the duplicate-id case below.
+const ids = (layer) => layer.source.getFeatures().map((feature) => layer.shapeFor(feature).id)
+
+// One loaded document, with control over what it says.
+async function loaded(body, calls) {
+  const layer = new UrlShapeLayer()
+  layer.reconcile({ url })
+  calls[0].respond(body)
+  await flush()
+
+  return layer
+}
+
 /**
  * A stand-in for the network that hands back control of when each response
  * lands — which is the only way to write down what should happen when two are
@@ -129,10 +143,7 @@ describe("UrlShapeLayer.reconcile", () => {
     calls[0].respond(collection("stale"))
     await flush()
 
-    assert.deepEqual(
-      layer.source.getFeatures().map((feature) => feature.getId()),
-      ["fresh"]
-    )
+    assert.deepEqual(ids(layer), ["fresh"])
   })
 
   it("ignores a response to a document nobody is asking for any more", async () => {
@@ -240,6 +251,33 @@ describe("UrlShapeLayer.reconcile", () => {
     assert.equal(calls[0].url, `${url}?rev=2#lyon`)
   })
 
+  // The regression this parks the file's id for. `ol/source/Vector` indexes
+  // features by id and silently refuses a second one whose id is already taken,
+  // so a document repeating an id — a parcel split into several Features —
+  // loses every repeat, with no error and nothing logged.
+  it("keeps every feature of a document that repeats an id", async () => {
+    const layer = await loaded(collection("F-01", "F-01", "F-02"), calls)
+
+    assert.equal(layer.source.getFeatures().length, 3)
+    assert.deepEqual(ids(layer), ["F-01", "F-01", "F-02"])
+  })
+
+  it("has no extent for a document whose geometry is all null", async () => {
+    // GeoJSON allows it, and OpenLayers answers with infinities — which read as
+    // an extent, mark the layer framed around nothing, and stop the next
+    // document that brings real geometry from ever being framed.
+    const layer = await loaded(
+      {
+        type: "FeatureCollection",
+        features: [{ type: "Feature", id: "F-01", properties: {}, geometry: null }],
+      },
+      calls
+    )
+
+    assert.equal(layer.source.getFeatures().length, 1)
+    assert.equal(layer.extent, null)
+  })
+
   it("has no extent until something has loaded", () => {
     const layer = new UrlShapeLayer()
     layer.reconcile({ url })
@@ -249,23 +287,49 @@ describe("UrlShapeLayer.reconcile", () => {
 })
 
 describe("UrlShapeLayer.shapeFor", () => {
-  const featureLike = (id, properties) => ({
-    getId: () => id,
-    getProperties: () => ({ geometry: {}, ...properties }),
+  let calls
+
+  beforeEach(() => {
+    calls = stubFetch()
   })
 
-  it("reports the id and properties the file declares", () => {
-    const shape = new UrlShapeLayer().shapeFor(featureLike("AB214", { section: "AB" }))
+  const feature = (layer) => layer.source.getFeatures()[0]
 
-    assert.deepEqual(shape, { id: "AB214", data: { section: "AB" } })
+  it("reports the id and properties the file declares, and nothing else", async () => {
+    const layer = await loaded(
+      {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            id: "AB214",
+            properties: { section: "AB" },
+            geometry: { type: "Point", coordinates: [4.85, 45.75] },
+          },
+        ],
+      },
+      calls
+    )
+
+    // Neither the geometry nor the id Rover parked out of OpenLayers' way is
+    // data the file declared.
+    assert.deepEqual(layer.shapeFor(feature(layer)), { id: "AB214", data: { section: "AB" } })
   })
 
-  it("reports nothing rather than undefined for a file that declares neither", () => {
+  it("reports nothing rather than undefined for a file that declares neither", async () => {
     // GeoJSON is under no obligation to carry an id, and `undefined` reaching
     // the server is worse than null.
-    const shape = new UrlShapeLayer().shapeFor(featureLike(undefined, {}))
+    const layer = await loaded(
+      {
+        type: "FeatureCollection",
+        features: [
+          { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [4.85, 45.75] } },
+        ],
+      },
+      calls
+    )
 
-    assert.deepEqual(shape, { id: null, data: null })
+    assert.deepEqual(layer.shapeFor(feature(layer)), { id: null, data: null })
   })
 
   it("is null for no feature at all, so a miss reads like every other miss", () => {

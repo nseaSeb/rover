@@ -511,6 +511,13 @@ defmodule RoverDev.DemoLive do
      )}
   end
 
+  # The flag first: an id from a `shape_source` names a feature in a file, not
+  # one of the shapes this LiveView is holding, and looking it up among them
+  # would find nothing or — worse — something else.
+  def handle_event("shape_clicked", %{"source" => true, "id" => id}, socket) do
+    {:noreply, log(socket, "source shape #{id} clicked")}
+  end
+
   def handle_event("shape_clicked", %{"id" => id, "lat" => lat, "lon" => lon}, socket) do
     {:noreply, log(socket, "shape #{id} clicked at #{fmt(lat)}, #{fmt(lon)}")}
   end

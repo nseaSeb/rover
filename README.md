@@ -309,6 +309,10 @@ def parcels(conn, params) do
   conn
   |> put_resp_content_type("application/geo+json")
   |> put_resp_header("cache-control", cache)
+  # `private` shuts out shared caches, not the browser's own. Without `vary`,
+  # the next person to sign in on this machine is served the last one's
+  # geometry from disk, with no request made.
+  |> put_resp_header("vary", "cookie")
   |> send_resp(200, Jason.encode!(geojson))
 end
 ```
@@ -317,11 +321,31 @@ end
 decided from the session.
 
 What this costs is the server's knowledge of what it sent. These features are
-drawn under the shapes it does send and they take part in the framing, and
-`on_shape_click` reports them with whatever `id` and properties the GeoJSON
-declares — but there are no popups, no keyboard entries and no `:editable` for
-them, because all three need a shape the server can name. Use `shapes` for the
-geometry you interact with and `shape_source` for the backdrop.
+drawn under the shapes it does send, and there are no popups, no keyboard
+entries and no `:editable` for them, because all three need a shape the server
+can name. Use `shapes` for the geometry you interact with and `shape_source`
+for the backdrop.
+
+`on_shape_click` does report them, carrying `"source" => true` alongside
+whatever `id` and properties the GeoJSON declares — the id is the file's, or
+`nil`, so a handler that looks one up among the shapes it manages should say
+which it is answering:
+
+```elixir
+def handle_event("shape_clicked", %{"source" => true, "id" => id}, socket) do
+  {:noreply, assign(socket, highlighted_parcel: id)}
+end
+
+def handle_event("shape_clicked", %{"id" => id}, socket) do
+  {:noreply, assign(socket, selected: Enum.find(socket.assigns.shapes, &(&1.id == id)))}
+end
+```
+
+They take part in the framing too, and a map with no `center` waits for the
+first document to arrive before framing — the geometry is not there at mount to
+be framed. That one deferred fit happens even under `fit={:once}`, which is
+what makes a map whose only content is a URL source open anywhere but its
+default zoom; `fit={false}` is how to be left alone entirely.
 
 ### Geometry is diffed by revision, not by hashing
 

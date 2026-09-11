@@ -170,10 +170,19 @@ defmodule Rover.Components do
         already loaded rather than fetching again.
 
     The server never sees these features, which is the trade. They are drawn
-    under the shapes it does send, they take part in the framing, and
-    `on_shape_click` reports them with whatever `id` and properties the GeoJSON
-    carries — but there are no popups, no keyboard entries and no `:editable`
-    for them, because all three need a shape the server can name.
+    under the shapes it does send, and there are no popups, no keyboard entries
+    and no `:editable` for them, because all three need a shape the server can
+    name.
+
+    `on_shape_click` does report them, with `"source" => true` alongside
+    whatever `id` and properties the GeoJSON declares — the id is the file's, or
+    `nil`, so a handler looking one up among the shapes it manages should match
+    on that flag first.
+
+    They take part in the framing, and the first document to arrive is framed
+    even under `fit={:once}`: the geometry was not on the map at mount to be
+    framed, and a map whose only content is a URL source would otherwise open at
+    its default zoom over nothing. `fit={false}` is how to be left alone.
     """
 
   attr :shape_fields, :list,
