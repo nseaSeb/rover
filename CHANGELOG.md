@@ -69,9 +69,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   `UrlShapeLayer` joins the escape hatch's exports.
 
-### Fixed
+### Changed
 
 - `Rover.fly_to/4` and `Rover.fit_to/4` now count as a map's initial framing.
+
   A map with no `center` is framed around its content once, and until now that
   fit was still owed after a flight: on a map whose content arrives
   asynchronously — markers from a slow query, or a `shape_source` document — it
@@ -80,7 +81,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the client's own contract for them said so: "the next update must not undo
   this and must not think a fit is owed."
 
-  `fit={true}` is unaffected: it refits on every change, which is what it means.
+  Under **Changed** rather than **Fixed**, because an application can be relying
+  on the old behaviour: one that flies to a placeholder region at mount while
+  its markers load used to be reframed around them when they arrived, and now
+  stays where it flew. If that is what you wanted, `fit={true}` refits on every
+  change, and framing on arrival is what leaving the view alone at mount already
+  does.
 
 ## [0.8.0] - 2026-09-08
 

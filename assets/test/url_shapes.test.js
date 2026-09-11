@@ -229,6 +229,40 @@ describe("UrlShapeLayer.reconcile", () => {
     assert.equal(layer.source.getFeatures().length, 1)
   })
 
+  it("calls back when it loses a document, so a fit={true} map stops framing it", async () => {
+    // Losing geometry is a change to what the map holds, like gaining it.
+    let loads = 0
+    const layer = new UrlShapeLayer({ onLoad: () => loads++ })
+    layer.reconcile({ url })
+    calls[0].respond(collection("F-01"))
+    await flush()
+
+    layer.reconcile(null)
+    assert.equal(loads, 2, "dropping the source never told the map to reframe")
+
+    // And nothing to lose is nothing to report.
+    layer.reconcile(null)
+    assert.equal(loads, 2)
+  })
+
+  it("calls back when a load fails, having emptied the layer", async () => {
+    let loads = 0
+    const layer = new UrlShapeLayer({ onLoad: () => loads++ })
+    layer.reconcile({ url })
+
+    const original = console.error
+    console.error = () => {}
+
+    try {
+      calls[0].respond({}, false)
+      await flush()
+    } finally {
+      console.error = original
+    }
+
+    assert.equal(loads, 1)
+  })
+
   it("empties the layer when the document changes, before the new one lands", async () => {
     // What is on the map answers to a URL nobody is asking for any more: it
     // would go on being clickable, reporting ids from the old file, and go on

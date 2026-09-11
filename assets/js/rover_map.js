@@ -847,6 +847,13 @@ export class RoverMap {
   }
 
   featureAt(pixel) {
+    // A backdrop nobody listens to is not hit-tested at all. This runs on every
+    // pointermove, and the layer a `shape_source` fills is the one holding the
+    // most features on the map — hundreds of kilobytes of cadastre, tested
+    // against every move of the cursor, for a result the click handler then
+    // throws away because no handler is wired.
+    const sourceShapes = this.wants("sourceShapeClick")
+
     let marker = null
     let shape = null
     let urlShape = null
@@ -858,7 +865,7 @@ export class RoverMap {
           marker = marker || feature
         } else if (layer === this.shapeLayer.layer) {
           shape = shape || feature
-        } else if (layer === this.urlShapeLayer.layer) {
+        } else if (sourceShapes && layer === this.urlShapeLayer.layer) {
           urlShape = urlShape || feature
         }
 
@@ -868,7 +875,7 @@ export class RoverMap {
         layerFilter: (layer) =>
           layer === this.markerLayer.layer ||
           layer === this.shapeLayer.layer ||
-          layer === this.urlShapeLayer.layer,
+          (sourceShapes && layer === this.urlShapeLayer.layer),
         hitTolerance: HIT_TOLERANCE,
       }
     )
