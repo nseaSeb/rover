@@ -59,6 +59,7 @@ defmodule RoverDev.DemoLive do
        tiles: :ign_plan,
        overlay: false,
        url_shapes: false,
+       source_shape_click: true,
        parcels_rev: 1,
        heat: false,
        heat_radius: 14,
@@ -104,6 +105,12 @@ defmodule RoverDev.DemoLive do
   # nothing to do with: a popup slot is a reason to claim a click on a shape the
   # server named, and no reason at all to claim one on a feature it has not.
   #
+  # `?source_click=off` drops `on_source_shape_click` alone, leaving both
+  # `on_shape_click` and `on_map_click` wired. That is the map a cadastral
+  # backdrop is actually put on, and the one that showed the backdrop eating
+  # every map click across the viewport when a source click was wired to the
+  # shape handler.
+  #
   # `?declutter=1` turns label decluttering on, which the browser suite needs to
   # check what it costs: every pin, group and point must still be drawn, and
   # still be clickable, when only their labels are being hidden.
@@ -124,6 +131,7 @@ defmodule RoverDev.DemoLive do
        declutter: params["declutter"] == "1",
        url_shapes: params["source"] == "url",
        shape_click: params["shape_click"] != "off",
+       source_shape_click: params["source_click"] != "off",
        scenery: params["scenery"] == "1",
        interactions: interactions(params["interactions"])
      )
@@ -230,6 +238,7 @@ defmodule RoverDev.DemoLive do
       on_marker_click="marker_clicked"
       on_cluster_click="cluster_clicked"
       on_shape_click={if @scenery or not @shape_click, do: nil, else: "shape_clicked"}
+      on_source_shape_click={if @source_shape_click, do: "source_shape_clicked"}
       on_map_click="map_clicked"
       on_move_end="moved"
       on_marker_drag_end="marker_dragged"
@@ -511,10 +520,10 @@ defmodule RoverDev.DemoLive do
      )}
   end
 
-  # The flag first: an id from a `shape_source` names a feature in a file, not
-  # one of the shapes this LiveView is holding, and looking it up among them
-  # would find nothing or — worse — something else.
-  def handle_event("shape_clicked", %{"source" => true, "id" => id}, socket) do
+  # Its own handler, because an id from a `shape_source` names a feature in a
+  # file, not one of the shapes this LiveView is holding: looking it up among
+  # them would find nothing or — worse — something else.
+  def handle_event("source_shape_clicked", %{"id" => id}, socket) do
     {:noreply, log(socket, "source shape #{id} clicked")}
   end
 

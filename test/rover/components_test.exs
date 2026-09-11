@@ -682,6 +682,18 @@ defmodule Rover.ComponentsTest do
       refute Map.has_key?(config(render_map(markers: @lyon))["events"], "shapeClick")
     end
 
+    test "a shape_source has a handler of its own, separate from on_shape_click" do
+      # Separate because without one the geometry is scenery: `on_shape_click`
+      # is no reason to claim a click on a feature the server has never seen,
+      # and a backdrop covering the viewport would swallow every map click.
+      events = config(render_map(on_shape_click: "picked"))["events"]
+      refute Map.has_key?(events, "sourceShapeClick")
+
+      events = config(render_map(on_source_shape_click: "picked"))["events"]
+      assert events["sourceShapeClick"] == "picked"
+      refute Map.has_key?(events, "shapeClick")
+    end
+
     test "carry :editable only when true" do
       [shape] = shapes(render_map(shapes: [%{id: "p", geometry: @polygon}]))
       refute Map.has_key?(shape, "editable")

@@ -1518,16 +1518,17 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 
-  test("geometry from a url claims no click a popup cannot answer", async ({ page }) => {
+  test("geometry from a url is scenery until its own handler is wired", async ({ page }) => {
     await stubTiles(page)
     const problems = failOnPageErrors(page)
 
-    // A shape popup and no `on_shape_click`. For a shape the server named that
-    // is enough to claim a click — the popup is what answers it. For a feature
-    // read out of a file there is no popup to open, so claiming one would only
-    // swallow the map click underneath: the scenery rule, for geometry the
-    // server cannot name.
-    await page.goto("/?shapes=none&source=url&shape_click=off")
+    // The map a cadastral backdrop is actually put on: `on_shape_click` wired,
+    // `on_map_click` wired, a shape popup declared — and nothing wired for the
+    // source. Neither of the first two is a reason to claim a click on a
+    // feature the server has never seen: there is no popup to open for one and
+    // no shape for the handler to look up, so claiming it would only swallow
+    // the map click underneath, across the whole area the file covers.
+    await page.goto("/?shapes=none&source=url&source_click=off")
     await mapReady(page)
 
     await expect

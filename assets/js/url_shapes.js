@@ -142,6 +142,12 @@ export class UrlShapeLayer {
       // document that failed to load, and take the one that just loaded fine
       // off the map with it.
       .then((loaded) => loaded && this.onLoad())
+      // The callback's own failures, reported as its own and no further: the
+      // document loaded, so the source keeps what it holds. Without this the
+      // chain ends on a rejection nobody handles, which Rover's console
+      // convention never shows and the browser suite's `pageerror` listener
+      // never sees.
+      .catch((error) => console.error("[rover] shape_source load callback failed:", error))
   }
 
   /**

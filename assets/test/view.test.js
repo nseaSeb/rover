@@ -219,6 +219,17 @@ describe("wantsEvent", () => {
     assert.equal(wantsEvent({}, { shapeClick: [] }, "shapeClick"), false)
   })
 
+  // The same rule for geometry the server cannot name, which is the case that
+  // caught it out: a cadastral backdrop covers the viewport, so a source click
+  // claimed on the strength of `on_shape_click` or a popup slot leaves the map
+  // with no `on_map_click` anywhere.
+  it("is false for a url source until its own handler is wired", () => {
+    const wired = { events: { shapeClick: "pick" }, shapePopup: true }
+
+    assert.equal(wantsEvent(wired, {}, "sourceShapeClick"), false)
+    assert.equal(wantsEvent({ events: { sourceShapeClick: "pick" } }, {}, "sourceShapeClick"), true)
+  })
+
   it("survives a missing config or listener map", () => {
     assert.equal(wantsEvent(null, null, "shapeClick"), false)
   })

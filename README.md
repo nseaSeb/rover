@@ -140,6 +140,7 @@ end
 | `on_marker_click` | `%{"id" =>, "lat" =>, "lon" =>, "data" =>}` |
 | `on_cluster_click` | `%{"count" =>, "ids" => [id, …], "lat" =>, "lon" =>}` |
 | `on_shape_click` | `%{"id" =>, "lat" =>, "lon" =>, "data" =>}` |
+| `on_source_shape_click` | `%{"id" =>, "lat" =>, "lon" =>, "data" =>}` |
 | `on_map_click` | `%{"lat" =>, "lon" =>}` |
 | `on_move_end` | `%{"center" => [lat, lon], "zoom" =>, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
 | `on_marker_drag_end` | `%{"id" =>, "lat" =>, "lon" =>}` |
@@ -326,27 +327,39 @@ entries and no `:editable` for them, because all three need a shape the server
 can name. Use `shapes` for the geometry you interact with and `shape_source`
 for the backdrop.
 
-`on_shape_click` does report them, carrying `"source" => true` alongside
-whatever `id` and properties the GeoJSON declares — the id is the file's, or
-`nil`, so a handler that looks one up among the shapes it manages should say
-which it is answering:
+Clicks reach `on_source_shape_click`, which is a handler of its own and not
+`on_shape_click`:
+
+```heex
+<.map id="parcels"
+      shape_source={{:url, ~p"/api/parcels.geojson", rev: @parcels_rev}}
+      shapes={@routes}
+      on_shape_click="shape_clicked"
+      on_source_shape_click="parcel_clicked"
+      on_map_click="map_clicked" />
+```
 
 ```elixir
-def handle_event("shape_clicked", %{"source" => true, "id" => id}, socket) do
+def handle_event("parcel_clicked", %{"id" => id}, socket) do
   {:noreply, assign(socket, highlighted_parcel: id)}
-end
-
-def handle_event("shape_clicked", %{"id" => id}, socket) do
-  {:noreply, assign(socket, selected: Enum.find(socket.assigns.shapes, &(&1.id == id)))}
 end
 ```
 
+Two handlers rather than one flag in the payload, because without a handler this
+geometry has to be scenery. A cadastral backdrop covers the whole viewport; if
+`on_shape_click` were reason enough to claim a click on it, the map above would
+never see an `on_map_click` anywhere. A `<:shape_popup>` is no reason either —
+there is nothing to open for a feature the server has never seen. The payload
+carries whatever `id` and properties the file declares; the id is the file's, or
+`nil`, and is not a shape to look up among the ones you are holding.
+
 They take part in the framing too: a map with no `center` frames the first
-document when it arrives, since the geometry is not there at mount to be
-framed. That deferred fit happens under `fit={:once}` as well — it *is* the
-one fit `:once` promises, just late — and, like every initial framing, it
-happens whatever `fit` says, because a map given no `center` has asked to be
-framed around its content. Give it a `center` to own the view outright.
+document when it arrives, since the geometry is not there at mount to be framed.
+That deferred fit happens under `fit={:once}` as well — it *is* the one fit
+`:once` promises, just late. Under `fit={false}` it happens only when nothing
+else was there to frame at mount, that being the one initial framing every map
+without a `center` gets. Give it a `center` to own the view outright.
+
 
 ### Geometry is diffed by revision, not by hashing
 
