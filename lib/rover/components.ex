@@ -179,10 +179,12 @@ defmodule Rover.Components do
     `nil`, so a handler looking one up among the shapes it manages should match
     on that flag first.
 
-    They take part in the framing, and the first document to arrive is framed
-    even under `fit={:once}`: the geometry was not on the map at mount to be
-    framed, and a map whose only content is a URL source would otherwise open at
-    its default zoom over nothing. `fit={false}` is how to be left alone.
+    They take part in the framing, and a map with no `center` frames the first
+    document when it arrives: the geometry was not there at mount to be framed,
+    and such a map would otherwise open at its default zoom over nothing. That
+    is the same rule as every initial framing — a map given no `center` is
+    framed around its content whatever `fit` says — so `center` is what owns the
+    view outright, not `fit={false}`.
     """
 
   attr :shape_fields, :list,

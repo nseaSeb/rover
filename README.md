@@ -341,11 +341,12 @@ def handle_event("shape_clicked", %{"id" => id}, socket) do
 end
 ```
 
-They take part in the framing too, and a map with no `center` waits for the
-first document to arrive before framing — the geometry is not there at mount to
-be framed. That one deferred fit happens even under `fit={:once}`, which is
-what makes a map whose only content is a URL source open anywhere but its
-default zoom; `fit={false}` is how to be left alone entirely.
+They take part in the framing too: a map with no `center` frames the first
+document when it arrives, since the geometry is not there at mount to be
+framed. That deferred fit happens under `fit={:once}` as well — it *is* the
+one fit `:once` promises, just late — and, like every initial framing, it
+happens whatever `fit` says, because a map given no `center` has asked to be
+framed around its content. Give it a `center` to own the view outright.
 
 ### Geometry is diffed by revision, not by hashing
 
