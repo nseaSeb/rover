@@ -1603,18 +1603,6 @@ test.describe("the playground", () => {
     // running belongs to a frame that has already moved on.
     await page.waitForTimeout(600)
 
-    // Framed around geometry that was not on the map when the frame was first
-    // decided — the four fields span further east than any marker does.
-    const framed = await page.evaluate((sel) => {
-      const rover = document.querySelector(sel)._rover
-      const [, , east] = rover.map.getView().calculateExtent(rover.map.getSize())
-      const [, , fields] = rover.urlShapeLayer.extent
-
-      return east >= fields
-    }, MAP)
-
-    expect(framed, "the view does not contain the geometry it fetched").toBe(true)
-
     // And a click on a feature the server has never seen still reaches it,
     // carrying the id and properties the file itself declares.
     // Reported as a source click, so a handler can tell a feature from a file
@@ -1638,6 +1626,96 @@ test.describe("the playground", () => {
     await page.getByRole("button", { name: /^Reload parcels/ }).click()
     await expect.poll(() => requests.length).toBe(2)
     expect(requests[1]).toContain("rev=2")
+
+    expect(problems).toEqual([])
+  })
+
+  test("frames a document that lands on a map with nothing else to frame", async ({ page }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    // No markers and no shapes: the map has nothing to frame at mount, so it
+    // bails before claiming the one fit a map without a `center` gets. The
+    // document that arrives is what claims it.
+    await page.goto("/?shapes=none&markers=none&source=url")
+    await mapReady(page)
+
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (sel) => document.querySelector(sel)._rover.urlShapeLayer.source.getFeatures().length,
+          MAP
+        )
+      )
+      .toBe(4)
+    await page.waitForTimeout(600)
+
+    const framed = await page.evaluate((sel) => {
+      const rover = document.querySelector(sel)._rover
+      const [, , east] = rover.map.getView().calculateExtent(rover.map.getSize())
+      const [, , fields] = rover.urlShapeLayer.extent
+
+      return east >= fields
+    }, MAP)
+
+    expect(framed, "the view does not contain the geometry it fetched").toBe(true)
+
+    expect(problems).toEqual([])
+  })
+
+  test("a document that lands after a flight leaves the view where the flight put it", async ({
+    page,
+  }) => {
+    await stubTiles(page)
+    const problems = failOnPageErrors(page)
+
+    // The regression this exists for: the deferred fit used to bypass the table
+    // that decides when a fit is owed, so it ran whatever had happened since —
+    // discarding a `Rover.fly_to/4` issued while the document was downloading,
+    // and giving a `fit={:once}` map the second fit `:once` rules out.
+    let release
+    const held = new Promise((resolve) => {
+      release = resolve
+    })
+
+    await page.route("**/api/parcels.geojson**", async (route) => {
+      const response = await route.fetch()
+      await held
+      await route.fulfill({ response })
+    })
+
+    // Markers at mount, so the map spends its one fit framing them.
+    await page.goto("/?shapes=none&source=url")
+    await mapReady(page)
+
+    await page.getByRole("button", { name: "Fly to Paris" }).click()
+    await page.waitForTimeout(900)
+
+    const view = () =>
+      page.evaluate((sel) => {
+        const map = document.querySelector(sel)._rover.map
+        return { center: map.getView().getCenter(), zoom: map.getView().getZoom() }
+      }, MAP)
+
+    const flown = await view()
+
+    release()
+
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (sel) => document.querySelector(sel)._rover.urlShapeLayer.source.getFeatures().length,
+          MAP
+        )
+      )
+      .toBe(4)
+    await page.waitForTimeout(600)
+
+    const after = await view()
+
+    expect(after.zoom, "the document pulled the view back off Paris").toBeCloseTo(flown.zoom, 1)
+    expect(after.center[0]).toBeCloseTo(flown.center[0], 0)
+    expect(after.center[1]).toBeCloseTo(flown.center[1], 0)
 
     expect(problems).toEqual([])
   })

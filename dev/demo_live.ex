@@ -59,6 +59,7 @@ defmodule RoverDev.DemoLive do
        tiles: :ign_plan,
        overlay: false,
        url_shapes: false,
+       no_markers: false,
        source_shape_click: true,
        parcels_rev: 1,
        heat: false,
@@ -105,6 +106,11 @@ defmodule RoverDev.DemoLive do
   # nothing to do with: a popup slot is a reason to claim a click on a shape the
   # server named, and no reason at all to claim one on a feature it has not.
   #
+  # `?markers=none` empties the marker list, which is the only way to get a map
+  # with nothing to frame at mount. That is what the deferred fit needs: a
+  # document arriving on a map that has already framed its markers does not get
+  # a second fit, and must not — the user may have moved since.
+  #
   # `?source_click=off` drops `on_source_shape_click` alone, leaving both
   # `on_shape_click` and `on_map_click` wired. That is the map a cadastral
   # backdrop is actually put on, and the one that showed the backdrop eating
@@ -130,6 +136,7 @@ defmodule RoverDev.DemoLive do
        wmts: params["tiles"] == "wmts",
        declutter: params["declutter"] == "1",
        url_shapes: params["source"] == "url",
+       no_markers: params["markers"] == "none",
        shape_click: params["shape_click"] != "off",
        source_shape_click: params["source_click"] != "off",
        scenery: params["scenery"] == "1",
@@ -221,7 +228,7 @@ defmodule RoverDev.DemoLive do
       label="Clients around Lyon"
       interactive={@interactive}
       interactions={@interactions}
-      markers={if @crowd, do: @clients ++ crowd(), else: @clients}
+      markers={markers(@clients, @crowd, @no_markers)}
       cluster={@cluster}
       shapes={@shapes}
       heatmap={if @heat, do: heat_points(), else: []}
@@ -651,6 +658,12 @@ defmodule RoverDev.DemoLive do
   defp next_draw(:polygon), do: :line
   defp next_draw(:line), do: :point
   defp next_draw(:point), do: nil
+
+  # A map with nothing to frame at mount, which is the only way to see the fit a
+  # late-arriving document is entitled to.
+  defp markers(_clients, _crowd, true), do: []
+  defp markers(clients, true, _none), do: clients ++ crowd()
+  defp markers(clients, false, _none), do: clients
 
   defp shapes(:none), do: []
 

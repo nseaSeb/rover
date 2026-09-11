@@ -229,22 +229,6 @@ describe("UrlShapeLayer.reconcile", () => {
     assert.equal(layer.source.getFeatures().length, 1)
   })
 
-  it("forgets it was framed when the document changes, and not when the rev does", () => {
-    const layer = new UrlShapeLayer()
-    layer.reconcile({ url, rev: 1 })
-    layer.framed = true
-
-    layer.reconcile({ url, rev: 2 })
-    assert.equal(layer.framed, true, "a rev bump is the same document, and the user's view is theirs")
-
-    layer.reconcile({ url: "https://example.com/other.geojson" })
-    assert.equal(layer.framed, false, "a different document is a different thing to frame")
-
-    layer.framed = true
-    layer.reconcile(null)
-    assert.equal(layer.framed, false)
-  })
-
   it("puts the rev before a fragment, which is never sent to the server", () => {
     new UrlShapeLayer().reconcile({ url: `${url}#lyon`, rev: 2 })
 
@@ -264,8 +248,7 @@ describe("UrlShapeLayer.reconcile", () => {
 
   it("has no extent for a document whose geometry is all null", async () => {
     // GeoJSON allows it, and OpenLayers answers with infinities — which read as
-    // an extent, mark the layer framed around nothing, and stop the next
-    // document that brings real geometry from ever being framed.
+    // an extent and poison the union every fit is computed from.
     const layer = await loaded(
       {
         type: "FeatureCollection",

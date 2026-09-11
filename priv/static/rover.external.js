@@ -12271,7 +12271,6 @@ var UrlShapeLayer = class {
     this.spec = null;
     this.onLoad = onLoad || (() => {
     });
-    this.framed = false;
     this.request = 0;
   }
   /**
@@ -12291,7 +12290,6 @@ var UrlShapeLayer = class {
     }
     this.layer.setStyle(styleForShape(this.spec.style || {}));
     if (previous && previous.url === this.spec.url && previous.rev === this.spec.rev) return;
-    if (!previous || previous.url !== this.spec.url) this.framed = false;
     this.load();
   }
   load() {
@@ -12343,7 +12341,6 @@ var UrlShapeLayer = class {
   }
   clear() {
     this.request += 1;
-    this.framed = false;
     this.source.clear();
   }
   dispose() {
@@ -12548,22 +12545,22 @@ var RoverMap = class {
     });
   }
   /**
-   * A document has arrived. Frame it, once.
+   * A document has arrived. It is content like any other.
    *
-   * Features that were not on the map when the frame was decided have to be
-   * allowed to change it, or a map whose only content is a URL source sits at
-   * its default zoom over nothing. Only the first document to bring any
-   * geometry does: an empty result is not something to frame, and forcing a fit
-   * for one would yank the view to the markers, away from wherever the user had
-   * moved to while it was arriving.
+   * `shouldFit` decides, with no exception made for having arrived late. A map
+   * that had nothing to frame at mount bailed before claiming its one fit, so
+   * the document gets it; a map already framed keeps the view it has, which is
+   * what `:once` means and what `Rover.fly_to/4` relies on — this ran after a
+   * flight, and a forced fit here discarded it.
+   *
+   * An empty document frames nothing and, because `maybeFit` bails before
+   * marking anything, leaves the next one that brings geometry free to frame.
    */
   onUrlShapesLoaded() {
-    const frames = !this.urlShapeLayer.framed && Boolean(this.urlShapeLayer.extent);
-    if (frames) this.urlShapeLayer.framed = true;
-    this.maybeFit({ force: frames && this.config.fit !== false });
+    this.maybeFit();
   }
-  maybeFit({ force = false } = {}) {
-    if (!force && !shouldFit({ hasFitted: this.hasFitted, ...this.config })) return;
+  maybeFit() {
+    if (!shouldFit({ hasFitted: this.hasFitted, ...this.config })) return;
     const extent = this.contentExtent;
     if (!extent || !Number.isFinite(extent[0])) return;
     const duration = this.hasFitted ? ANIMATION_MS : 0;
@@ -12851,7 +12848,7 @@ var RoverMap = class {
       });
     });
   }
-  // Returns whichever of the two layers is under the pixel. Markers win ties:
+  // Returns whichever of the three layers is under the pixel. Markers win ties:
   // they are drawn on top, and a pin sitting inside its own parcel outline should
   // answer the click. forEachFeatureAtPixel iterates topmost-first, so stopping
   // as soon as a marker is found is enough to enforce that.

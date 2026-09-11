@@ -30,10 +30,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the drawing path.
 
   What it costs is the server's knowledge of what it sent. These features are
-  drawn under the shapes it does send, and they take part in the framing — a map
-  whose only content is a URL source waits for the first load and frames that.
-  There are no popups, no keyboard entries and no `:editable` for them, because
-  all three need a shape the server can name.
+  drawn under the shapes it does send, and there are no popups, no keyboard
+  entries and no `:editable` for them, because all three need a shape the server
+  can name.
+
+  The document is fetched here rather than through OpenLayers' own loader,
+  which has no handle to cancel one. A rev bumped while a large document is
+  still arriving leaves two responses racing, and features are indexed by id: a
+  stale response landing first takes the ids and the fresh ones are dropped as
+  duplicates, leaving the old document on the map under the new URL until
+  somebody bumps again. Only the current request is accepted; a failed one
+  empties the layer and says which URL it was, rather than leaving the last
+  document that did load on the map — clickable, framed, and answering to a URL
+  nobody is asking for — with one console line to say it is stale.
+
+  A file's own id is kept beside its feature rather than on it:
+  `ol/source/Vector` indexes by that and silently refuses a second feature whose
+  id is taken, so a document repeating one — a parcel split into several
+  `Feature`s — would lose every repeat, with nothing logged.
+
+  They take part in the framing, but claim no fit of their own for having
+  arrived late. A map with nothing to frame at mount has not spent the one fit
+  every map without a `center` gets, so the first document claims that one; a
+  map that already framed its markers keeps the view it has, which is what
+  `fit={:once}` means and what a `Rover.fly_to/4` issued while the document was
+  downloading relies on.
 
 - **`on_source_shape_click`**: clicks on `shape_source` geometry, carrying
   whatever `id` and properties the GeoJSON declares.
@@ -46,23 +67,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   name. A `<:shape_popup>` is no reason to claim one either: there is nothing to
   open for a feature the server has never seen, and a file's id colliding with a
   shape's would open that shape's popup over geometry with nothing to do with it.
-
-  The document is fetched here rather than through OpenLayers' own loader,
-  which has no handle to cancel one. A rev bumped while a large document is
-  still arriving leaves two responses racing, and features are indexed by id: a
-  stale response landing first takes the ids and the fresh ones are dropped as
-  duplicates, leaving the old document on the map under the new URL until
-  somebody bumps again. Only the current request is accepted; a failed one
-  empties the layer and says which URL it was, rather than leaving the last
-  document that did load on the map — clickable, framed, and answering to a URL
-  nobody is asking for — with one console line to say it is stale. An empty
-  result is not mistaken for geometry to frame, and a document pointed at
-  another region is framed afresh rather than landing off-screen.
-
-  The file's own id is kept off the feature's: `ol/source/Vector` indexes by
-  that and silently refuses a second feature whose id is taken, so a document
-  repeating one — a parcel split into several `Feature`s — would lose every
-  repeat with nothing logged.
 
   `UrlShapeLayer` joins the escape hatch's exports.
 
