@@ -21,10 +21,8 @@ import { format, styleForShape } from "./shapes.js"
  * whatever id and properties the GeoJSON itself declares.
  */
 export class UrlShapeLayer {
-  constructor() {
-    // No `url` yet: the source is built once and pointed at a document by
-    // `reconcile`, so a change of URL is a reload rather than a new layer.
-    this.source = new VectorSource({ format, wrapX: false })
+  constructor({ onLoad } = {}) {
+    this.source = new VectorSource({ wrapX: false })
     this.layer = new VectorLayer({
       source: this.source,
       // Under the shapes the server sends, over the tiles: geometry loaded in
@@ -35,6 +33,19 @@ export class UrlShapeLayer {
     })
 
     this.spec = null
+    this.onLoad = onLoad || (() => {})
+
+    // Which request the features on the map belong to.
+    //
+    // The document is fetched here rather than through `source.setUrl`, and
+    // this counter is why. A rev bumped while a large one is still arriving
+    // leaves two responses racing, and OpenLayers' own loader has no handle to
+    // cancel the first: it indexes features by id, so a stale response landing
+    // second is ignored, and one landing first takes the ids and makes the
+    // fresh features duplicates to be dropped — leaving the old document on the
+    // map, under the new URL, until somebody bumps the rev again. A response
+    // from anything but the current request is thrown away instead.
+    this.request = 0
   }
 
   /**
@@ -58,11 +69,35 @@ export class UrlShapeLayer {
 
     if (previous && previous.url === this.spec.url && previous.rev === this.spec.rev) return
 
-    // setUrl then refresh, not refresh alone: a bare refresh re-requests the
-    // same URL, which an HTTP cache is entitled to answer from its copy — and
-    // the whole point of a rev is to ask a question the cache has not heard.
-    this.source.setUrl(urlFor(this.spec))
-    this.source.refresh()
+    this.load()
+  }
+
+  load() {
+    const url = urlFor(this.spec)
+    this.request += 1
+    const request = this.request
+
+    this.requested = url
+
+    fetch(url, { credentials: "same-origin" })
+      .then((response) => {
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
+
+        return response.text()
+      })
+      .then((text) => {
+        // A newer request has been made, or the source has been emptied, since
+        // this one went out.
+        if (request !== this.request) return
+
+        this.source.clear()
+        this.source.addFeatures(format.readFeatures(text))
+        this.onLoad()
+      })
+      // A 404, a 500 or a document that will not parse leaves the layer empty,
+      // and empty is indistinguishable from "the file says so". Saying which it
+      // was is the only thing that separates a bad path from an empty result.
+      .catch((error) => console.error(`[rover] could not load ${url}:`, error))
   }
 
   /**
@@ -88,9 +123,10 @@ export class UrlShapeLayer {
   }
 
   clear() {
-    // Both, and in this order: clearing alone leaves the source pointed at the
-    // document, and the next `refresh()` would fetch it all over again.
-    this.source.setUrl(undefined)
+    // Bumped as well as emptied: a response already on its way belongs to a
+    // document nobody is asking for any more.
+    this.request += 1
+    this.requested = null
     this.source.clear()
   }
 

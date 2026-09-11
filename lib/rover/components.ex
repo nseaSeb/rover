@@ -752,6 +752,7 @@ defmodule Rover.Components do
   defp encode_shape_rev(nil), do: nil
   defp encode_shape_rev(rev), do: to_string(rev)
 
+  defp encode_shape_source_style(nil), do: nil
   defp encode_shape_source_style([]), do: nil
 
   defp encode_shape_source_style(style) when is_list(style) do
