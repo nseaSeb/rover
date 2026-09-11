@@ -12252,6 +12252,75 @@ function appearanceOf2(shape) {
   ].join("|");
 }
 
+// js/url_shapes.js
+import VectorLayer5 from "ol/layer/Vector.js";
+import VectorSource6 from "ol/source/Vector.js";
+var UrlShapeLayer = class {
+  constructor() {
+    this.source = new VectorSource6({ format, wrapX: false });
+    this.layer = new VectorLayer5({
+      source: this.source,
+      // Under the shapes the server sends, over the tiles: geometry loaded in
+      // bulk is backdrop for the shapes an application is actually managing.
+      zIndex: 4,
+      updateWhileAnimating: false,
+      updateWhileInteracting: false
+    });
+    this.spec = null;
+  }
+  /**
+   * Point the layer at a document, or restyle what it has, or empty it.
+   *
+   * Refetching and restyling are separate on purpose. A style is a handful of
+   * numbers the server can change on any render; the document behind it can be
+   * hundreds of kilobytes, and re-requesting it because a colour moved would
+   * undo the reason for loading it this way.
+   */
+  reconcile(spec) {
+    const previous = this.spec;
+    this.spec = spec || null;
+    if (!this.spec) {
+      if (previous) this.clear();
+      return;
+    }
+    this.layer.setStyle(styleForShape(this.spec.style || {}));
+    if (previous && previous.url === this.spec.url && previous.rev === this.spec.rev) return;
+    this.source.setUrl(urlFor(this.spec));
+    this.source.refresh();
+  }
+  /**
+   * A click target, in the shape the rest of the map speaks.
+   *
+   * `null` for both the id and the data of a feature that declares neither: a
+   * GeoJSON file is under no obligation to carry an `id` member, and reporting
+   * `undefined` to the server is worse than reporting nothing.
+   */
+  shapeFor(feature) {
+    if (!feature) return null;
+    const { geometry, ...properties } = feature.getProperties();
+    return {
+      id: feature.getId() ?? null,
+      data: Object.keys(properties).length > 0 ? properties : null
+    };
+  }
+  get extent() {
+    return this.source.getFeatures().length > 0 ? this.source.getExtent() : null;
+  }
+  clear() {
+    this.source.setUrl(void 0);
+    this.source.clear();
+  }
+  dispose() {
+    this.clear();
+    this.spec = null;
+  }
+};
+function urlFor(spec) {
+  if (spec.rev == null) return spec.url;
+  const separator = spec.url.includes("?") ? "&" : "?";
+  return `${spec.url}${separator}rev=${encodeURIComponent(spec.rev)}`;
+}
+
 // js/rover_map.js
 var HIT_TOLERANCE = 6;
 var ANIMATION_MS = 350;
@@ -12271,6 +12340,8 @@ var RoverMap = class {
     this.markerLayer = new MarkerLayer();
     this.shapeLayer = new ShapeLayer();
     this.overlayLayers = new OverlayLayers();
+    this.urlShapeLayer = new UrlShapeLayer();
+    this.framedUrlShapes = false;
     this.drawLayer = new DrawLayer();
     this.heatmapLayer = new HeatmapLayer();
     this.basemapLayer = new TileLayer3({ zIndex: 0, visible: false });
@@ -12286,6 +12357,7 @@ var RoverMap = class {
         this.basemapLayer,
         this.overlayLayers.layer,
         this.heatmapLayer.layer,
+        this.urlShapeLayer.layer,
         this.shapeLayer.layer,
         this.drawLayer.layer,
         this.markerLayer.layer
@@ -12302,6 +12374,13 @@ var RoverMap = class {
     });
     this.applyTiles(this.config.tiles);
     this.overlayLayers.reconcile(this.config.layers);
+    this.urlShapeLayer.reconcile(this.config.shapeSource);
+    this.onFeaturesLoaded = () => {
+      const first = !this.framedUrlShapes;
+      this.framedUrlShapes = true;
+      this.maybeFit({ force: first && this.config.fit !== false });
+    };
+    this.urlShapeLayer.source.on("featuresloadend", this.onFeaturesLoaded);
     this.applyDeclutter(this.config);
     this.markerLayer.setClustering(this.config.cluster);
     this.applyAccessibility(this.config);
@@ -12365,6 +12444,9 @@ var RoverMap = class {
     if (shouldRecenter(previous, next)) this.animateTo(next.center, next.zoom);
     if (changed(previous.tiles, next.tiles)) this.applyTiles(next.tiles);
     if (changed(previous.layers, next.layers)) this.overlayLayers.reconcile(next.layers);
+    if (changed(previous.shapeSource, next.shapeSource)) {
+      this.urlShapeLayer.reconcile(next.shapeSource);
+    }
     if (changed(previous.controls, next.controls) || previous.interactive !== next.interactive) {
       this.applyControls(next);
     }
@@ -12431,8 +12513,8 @@ var RoverMap = class {
       duration: ms
     });
   }
-  maybeFit() {
-    if (!shouldFit({ hasFitted: this.hasFitted, ...this.config })) return;
+  maybeFit({ force = false } = {}) {
+    if (!force && !shouldFit({ hasFitted: this.hasFitted, ...this.config })) return;
     const extent = this.contentExtent;
     if (!extent || !Number.isFinite(extent[0])) return;
     const duration = this.hasFitted ? ANIMATION_MS : 0;
@@ -12451,6 +12533,7 @@ var RoverMap = class {
   get contentExtent() {
     const extents = [
       this.heatmapLayer.extent,
+      this.urlShapeLayer.extent,
       this.shapeLayer.extent,
       this.markerLayer.extent
     ].filter(Boolean);
@@ -12794,6 +12877,7 @@ var RoverMap = class {
   featureAt(pixel) {
     let marker = null;
     let shape = null;
+    let urlShape = null;
     this.map.forEachFeatureAtPixel(
       pixel,
       (feature, layer) => {
@@ -12801,11 +12885,13 @@ var RoverMap = class {
           marker = marker || feature;
         } else if (layer === this.shapeLayer.layer) {
           shape = shape || feature;
+        } else if (layer === this.urlShapeLayer.layer) {
+          urlShape = urlShape || feature;
         }
         return Boolean(marker);
       },
       {
-        layerFilter: (layer) => layer === this.markerLayer.layer || layer === this.shapeLayer.layer,
+        layerFilter: (layer) => layer === this.markerLayer.layer || layer === this.shapeLayer.layer || layer === this.urlShapeLayer.layer,
         hitTolerance: HIT_TOLERANCE
       }
     );
@@ -12813,8 +12899,8 @@ var RoverMap = class {
       marker: this.markerLayer.markerFor(marker),
       cluster: this.markerLayer.clusterFor(marker),
       markerFeature: marker,
-      shape: this.shapeLayer.shapeFor(shape),
-      shapeFeature: shape
+      shape: this.shapeLayer.shapeFor(shape) || this.urlShapeLayer.shapeFor(urlShape),
+      shapeFeature: shape || urlShape
     };
   }
   emit(name, payload) {
@@ -12848,8 +12934,10 @@ var RoverMap = class {
   destroy() {
     if (this.resizeObserver) this.resizeObserver.disconnect();
     this.stopDrawing();
+    this.urlShapeLayer.source.un("featuresloadend", this.onFeaturesLoaded);
     this.markerLayer.dispose();
     this.overlayLayers.dispose();
+    this.urlShapeLayer.dispose();
     this.drawLayer.dispose();
     this.shapeLayer.dispose();
     this.heatmapLayer.dispose();
@@ -13052,6 +13140,7 @@ export {
   RoverHooks,
   RoverMap,
   ShapeLayer,
+  UrlShapeLayer,
   index_default as default,
   extentToBbox,
   project,

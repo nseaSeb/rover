@@ -8,6 +8,7 @@ export { MarkerLayer } from "./markers.js"
 export { ShapeLayer } from "./shapes.js"
 export { DrawLayer } from "./draw.js"
 export { HeatmapLayer } from "./heatmap.js"
+export { UrlShapeLayer } from "./url_shapes.js"
 export { project, unproject, extentToBbox } from "./coords.js"
 
 import { RoverHooks } from "./hook.js"
