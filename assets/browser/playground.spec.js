@@ -1493,9 +1493,11 @@ test.describe("the playground", () => {
 
     // And a click on a feature the server has never seen still reaches it,
     // carrying the id and properties the file itself declares.
+    // Reported as a source click, so a handler can tell a feature from a file
+    // apart from a shape it is holding before it looks the id up.
     const pixel = await sourceShapePixel(page)
     await page.locator(CANVAS).click({ position: pixel })
-    await expect(page.locator(".log")).toContainText(/shape F-0\d clicked/)
+    await expect(page.locator(".log")).toContainText(/source shape F-0\d clicked/)
 
     // An open popup closes on a click that lands on the backdrop. It opens
     // nothing of its own — there is no popup for a feature the server has never

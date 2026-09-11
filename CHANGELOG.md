@@ -36,8 +36,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   GeoJSON declares. There are no popups, no keyboard entries and no `:editable`
   for them, because all three need a shape the server can name.
 
-  Clicks on it reach `on_shape_click` like any other, but they travel under a
-  name of their own on the client: a popup slot is a reason to claim a click on
+  Clicks on it reach `on_shape_click` carrying `"source" => true`: the id is the
+  file's, or nil, and a handler that looks one up among the shapes it manages
+  has to be able to tell the two apart. They travel under a name of their own
+  on the client, too: a popup slot is a reason to claim a click on
   a shape the server named, and no reason at all to claim one on a feature it
   has not — and a file's id colliding with a shape's would otherwise open that
   shape's popup over geometry that has nothing to do with it.
@@ -53,6 +55,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nobody is asking for — with one console line to say it is stale. An empty
   result is not mistaken for geometry to frame, and a document pointed at
   another region is framed afresh rather than landing off-screen.
+
+  The file's own id is kept off the feature's: `ol/source/Vector` indexes by
+  that and silently refuses a second feature whose id is taken, so a document
+  repeating one — a parcel split into several `Feature`s — would lose every
+  repeat with nothing logged.
 
   `UrlShapeLayer` joins the escape hatch's exports.
 

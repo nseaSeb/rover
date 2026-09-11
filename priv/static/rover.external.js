@@ -12256,6 +12256,7 @@ function appearanceOf2(shape) {
 // js/url_shapes.js
 import VectorLayer5 from "ol/layer/Vector.js";
 import VectorSource6 from "ol/source/Vector.js";
+var SOURCE_ID = "rover:sourceId";
 var UrlShapeLayer = class {
   constructor({ onLoad } = {}) {
     this.source = new VectorSource6({ wrapX: false });
@@ -12297,19 +12298,24 @@ var UrlShapeLayer = class {
     const url = urlFor(this.spec);
     this.request += 1;
     const request = this.request;
-    this.requested = url;
     fetch(url, { credentials: "same-origin" }).then((response) => {
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
       return response.text();
     }).then((text) => {
-      if (request !== this.request) return;
+      if (request !== this.request) return false;
+      const features = format.readFeatures(text);
+      features.forEach((feature) => {
+        feature.set(SOURCE_ID, feature.getId() ?? null, true);
+        feature.setId(void 0);
+      });
       this.source.clear();
-      this.source.addFeatures(format.readFeatures(text));
-      this.onLoad();
+      this.source.addFeatures(features);
+      return true;
     }).catch((error2) => {
       if (request === this.request) this.source.clear();
       console.error(`[rover] could not load ${url}:`, error2);
-    });
+      return false;
+    }).then((loaded) => loaded && this.onLoad());
   }
   /**
    * A click target, in the shape the rest of the map speaks.
@@ -12320,18 +12326,21 @@ var UrlShapeLayer = class {
    */
   shapeFor(feature) {
     if (!feature) return null;
-    const { geometry, ...properties } = feature.getProperties();
+    const properties = { ...feature.getProperties() };
+    delete properties[feature.getGeometryName()];
+    delete properties[SOURCE_ID];
     return {
-      id: feature.getId() ?? null,
+      id: feature.get(SOURCE_ID) ?? null,
       data: Object.keys(properties).length > 0 ? properties : null
     };
   }
   get extent() {
-    return this.source.getFeatures().length > 0 ? this.source.getExtent() : null;
+    if (this.source.isEmpty()) return null;
+    const extent = this.source.getExtent();
+    return Number.isFinite(extent[0]) ? extent : null;
   }
   clear() {
     this.request += 1;
-    this.requested = null;
     this.framed = false;
     this.source.clear();
   }
@@ -12824,7 +12833,13 @@ var RoverMap = class {
       } else if (shape && this.wants("shapeClick")) {
         this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null });
       } else if (sourceShape && this.wants("sourceShapeClick")) {
-        this.emit("sourceShapeClick", { id: sourceShape.id, lat, lon, data: sourceShape.data });
+        this.emit("sourceShapeClick", {
+          id: sourceShape.id,
+          lat,
+          lon,
+          data: sourceShape.data,
+          source: true
+        });
       } else {
         this.emit("mapClick", { lat, lon });
       }

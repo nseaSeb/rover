@@ -3,6 +3,14 @@ import VectorSource from "ol/source/Vector.js"
 
 import { format, styleForShape } from "./shapes.js"
 
+// Where a feature's own id from the file is kept. Not as the feature's id:
+// `ol/source/Vector` indexes by that and silently refuses a second feature
+// whose id is already taken, so a document that repeats one — a parcel split
+// into several Features, or `1` beside `"1"` — would lose every repeat with
+// nothing logged and no error. `ShapeLayer` sidesteps the same rule by keying
+// its own features `id:index`.
+const SOURCE_ID = "rover:sourceId"
+
 /**
  * Geometry the browser fetches for itself, from a URL the server named.
  *
@@ -87,8 +95,6 @@ export class UrlShapeLayer {
     this.request += 1
     const request = this.request
 
-    this.requested = url
-
     fetch(url, { credentials: "same-origin" })
       .then((response) => {
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
@@ -98,11 +104,19 @@ export class UrlShapeLayer {
       .then((text) => {
         // A newer request has been made, or the source has been emptied, since
         // this one went out.
-        if (request !== this.request) return
+        if (request !== this.request) return false
+
+        const features = format.readFeatures(text)
+
+        features.forEach((feature) => {
+          feature.set(SOURCE_ID, feature.getId() ?? null, true)
+          feature.setId(undefined)
+        })
 
         this.source.clear()
-        this.source.addFeatures(format.readFeatures(text))
-        this.onLoad()
+        this.source.addFeatures(features)
+
+        return true
       })
       // A 404, a 500 or a document that will not parse leaves the layer empty,
       // and empty is indistinguishable from "the file says so". Saying which it
@@ -116,7 +130,14 @@ export class UrlShapeLayer {
         if (request === this.request) this.source.clear()
 
         console.error(`[rover] could not load ${url}:`, error)
+
+        return false
       })
+      // After the catch, not inside it. A callback that throws — framing a map
+      // whose container has no size yet, say — would otherwise be reported as a
+      // document that failed to load, and take the one that just loaded fine
+      // off the map with it.
+      .then((loaded) => loaded && this.onLoad())
   }
 
   /**
@@ -129,23 +150,34 @@ export class UrlShapeLayer {
   shapeFor(feature) {
     if (!feature) return null
 
-    const { geometry, ...properties } = feature.getProperties()
+    const properties = { ...feature.getProperties() }
+    // The geometry by the name this feature actually keeps it under, and the id
+    // Rover parked out of OpenLayers' way. Neither is data the file declared.
+    delete properties[feature.getGeometryName()]
+    delete properties[SOURCE_ID]
 
     return {
-      id: feature.getId() ?? null,
+      id: feature.get(SOURCE_ID) ?? null,
       data: Object.keys(properties).length > 0 ? properties : null,
     }
   }
 
   get extent() {
-    return this.source.getFeatures().length > 0 ? this.source.getExtent() : null
+    if (this.source.isEmpty()) return null
+
+    const extent = this.source.getExtent()
+
+    // A document whose features all carry `"geometry": null` — which GeoJSON
+    // allows — has features and no extent, and OpenLayers answers that with
+    // infinities. Treating those as an extent marks the layer framed around
+    // nothing, and the next document to bring real geometry is never framed.
+    return Number.isFinite(extent[0]) ? extent : null
   }
 
   clear() {
     // Bumped as well as emptied: a response already on its way belongs to a
     // document nobody is asking for any more.
     this.request += 1
-    this.requested = null
     this.framed = false
     this.source.clear()
   }

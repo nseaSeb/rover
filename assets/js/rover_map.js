@@ -707,7 +707,17 @@ export class RoverMap {
       } else if (shape && this.wants("shapeClick")) {
         this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null })
       } else if (sourceShape && this.wants("sourceShapeClick")) {
-        this.emit("sourceShapeClick", { id: sourceShape.id, lat, lon, data: sourceShape.data })
+        // `source: true`, because this arrives at the same handler as a click
+        // on a shape the server sent and is not the same thing: the id is the
+        // file's, or null, and looking it up among the shapes the application
+        // knows would find nothing — or, worse, the wrong one.
+        this.emit("sourceShapeClick", {
+          id: sourceShape.id,
+          lat,
+          lon,
+          data: sourceShape.data,
+          source: true,
+        })
       } else {
         // A shape with no click handler is scenery, not a target. Filled polygons
         // are hit-testable across their whole interior, so claiming the click here

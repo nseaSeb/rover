@@ -37,6 +37,10 @@ defmodule RoverDev.GeoJSONController do
     |> put_resp_content_type("application/geo+json")
     # Private, because these are one user's rows.
     |> put_resp_header("cache-control", cache)
+    # And `vary`, because `private` only shuts out shared caches, not the
+    # browser's own: without it the next person to sign in on this machine is
+    # served the previous one's geometry from disk, with no request made.
+    |> put_resp_header("vary", "cookie")
     |> send_resp(200, Jason.encode!(%{"type" => "FeatureCollection", "features" => features}))
   end
 end
