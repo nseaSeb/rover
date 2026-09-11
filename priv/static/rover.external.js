@@ -169,6 +169,7 @@ var Popups = class {
     );
     roverMap.observe("clusterClick", () => this.close());
     roverMap.observe("mapClick", () => this.close());
+    roverMap.observe("sourceShapeClick", () => this.close());
     this.onPostrender = () => this.position();
     roverMap.map.on("postrender", this.onPostrender);
     this.onKeydown = (event) => {
@@ -12269,6 +12270,7 @@ var UrlShapeLayer = class {
     this.spec = null;
     this.onLoad = onLoad || (() => {
     });
+    this.framed = false;
     this.request = 0;
   }
   /**
@@ -12288,6 +12290,7 @@ var UrlShapeLayer = class {
     }
     this.layer.setStyle(styleForShape(this.spec.style || {}));
     if (previous && previous.url === this.spec.url && previous.rev === this.spec.rev) return;
+    if (!previous || previous.url !== this.spec.url) this.framed = false;
     this.load();
   }
   load() {
@@ -12303,7 +12306,10 @@ var UrlShapeLayer = class {
       this.source.clear();
       this.source.addFeatures(format.readFeatures(text));
       this.onLoad();
-    }).catch((error2) => console.error(`[rover] could not load ${url}:`, error2));
+    }).catch((error2) => {
+      if (request === this.request) this.source.clear();
+      console.error(`[rover] could not load ${url}:`, error2);
+    });
   }
   /**
    * A click target, in the shape the rest of the map speaks.
@@ -12326,6 +12332,7 @@ var UrlShapeLayer = class {
   clear() {
     this.request += 1;
     this.requested = null;
+    this.framed = false;
     this.source.clear();
   }
   dispose() {
@@ -12335,8 +12342,13 @@ var UrlShapeLayer = class {
 };
 function urlFor(spec) {
   if (spec.rev == null) return spec.url;
-  const separator = spec.url.includes("?") ? "&" : "?";
-  return `${spec.url}${separator}rev=${encodeURIComponent(spec.rev)}`;
+  const [path, fragment] = splitFragment(spec.url);
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}rev=${encodeURIComponent(spec.rev)}${fragment}`;
+}
+function splitFragment(url) {
+  const hash = url.indexOf("#");
+  return hash === -1 ? [url, ""] : [url.slice(0, hash), url.slice(hash)];
 }
 
 // js/rover_map.js
@@ -12359,7 +12371,6 @@ var RoverMap = class {
     this.shapeLayer = new ShapeLayer();
     this.overlayLayers = new OverlayLayers();
     this.urlShapeLayer = new UrlShapeLayer({ onLoad: () => this.onUrlShapesLoaded() });
-    this.framedUrlShapes = false;
     this.drawLayer = new DrawLayer();
     this.heatmapLayer = new HeatmapLayer();
     this.basemapLayer = new TileLayer3({ zIndex: 0, visible: false });
@@ -12536,8 +12547,8 @@ var RoverMap = class {
    * moved to while it was arriving.
    */
   onUrlShapesLoaded() {
-    const frames = !this.framedUrlShapes && Boolean(this.urlShapeLayer.extent);
-    if (frames) this.framedUrlShapes = true;
+    const frames = !this.urlShapeLayer.framed && Boolean(this.urlShapeLayer.extent);
+    if (frames) this.urlShapeLayer.framed = true;
     this.maybeFit({ force: frames && this.config.fit !== false });
   }
   maybeFit({ force = false } = {}) {

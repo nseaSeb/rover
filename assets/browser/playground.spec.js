@@ -1497,6 +1497,17 @@ test.describe("the playground", () => {
     await page.locator(CANVAS).click({ position: pixel })
     await expect(page.locator(".log")).toContainText(/shape F-0\d clicked/)
 
+    // An open popup closes on a click that lands on the backdrop. It opens
+    // nothing of its own — there is no popup for a feature the server has never
+    // seen — but it is still a click on "not this popup", and it stopped being
+    // a plain map click the moment it got a name of its own.
+    const popup = page.locator(`${MAP} [data-rover-popup-for="marker:1"]`)
+    await page.locator(CANVAS).click({ position: await markerPixel(page, 1) })
+    await expect(popup).toBeVisible()
+
+    await page.locator(CANVAS).click({ position: await sourceShapePixel(page) })
+    await expect(popup).toBeHidden()
+
     // A new rev is a new request; the same rev is not.
     await page.getByRole("button", { name: /^Reload parcels/ }).click()
     await expect.poll(() => requests.length).toBe(2)

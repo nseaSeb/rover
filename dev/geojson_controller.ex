@@ -16,21 +16,27 @@ defmodule RoverDev.GeoJSONController do
   ]
 
   def parcels(conn, params) do
+    # With a rev in the URL this answer can never go stale: a changed file is a
+    # changed rev is a different URL, so the browser may keep it forever.
+    # Without one, nothing distinguishes one version from the next, and it has
+    # to ask again every time.
+    cache =
+      if params["rev"], do: "private, max-age=31536000, immutable", else: "private, max-age=0"
+
     features =
       Enum.map(@fields, fn {id, name, ring} ->
         %{
           "type" => "Feature",
           "id" => id,
-          "properties" => %{"name" => name, "rev" => params["rev"]},
+          "properties" => %{"name" => name},
           "geometry" => %{"type" => "Polygon", "coordinates" => [ring ++ [hd(ring)]]}
         }
       end)
 
     conn
     |> put_resp_content_type("application/geo+json")
-    # Private, because these are one user's rows; the rev in the URL is what
-    # makes a changed file a different request rather than a stale hit.
-    |> put_resp_header("cache-control", "private, max-age=0")
+    # Private, because these are one user's rows.
+    |> put_resp_header("cache-control", cache)
     |> send_resp(200, Jason.encode!(%{"type" => "FeatureCollection", "features" => features}))
   end
 end
