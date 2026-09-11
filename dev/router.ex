@@ -16,6 +16,10 @@ defmodule RoverDev.Router do
   # the content type.
   pipeline :geojson do
     plug :accepts, ["json"]
+    # Without this `conn.params` is empty: nothing else in this pipeline fetches
+    # the query string, so the controller's `rev` — and the caching decision it
+    # makes — would never see one.
+    plug :fetch_query_params
   end
 
   scope "/" do

@@ -12312,8 +12312,10 @@ var UrlShapeLayer = class {
       this.source.addFeatures(features);
       return true;
     }).catch((error2) => {
-      if (request === this.request) this.source.clear();
-      console.error(`[rover] could not load ${url}:`, error2);
+      if (request === this.request) {
+        this.source.clear();
+        console.error(`[rover] could not load ${url}:`, error2);
+      }
       return false;
     }).then((loaded) => loaded && this.onLoad());
   }

@@ -127,9 +127,13 @@ export class UrlShapeLayer {
       // clickable and go on being framed with nothing but a console line to say
       // it is stale.
       .catch((error) => {
-        if (request === this.request) this.source.clear()
-
-        console.error(`[rover] could not load ${url}:`, error)
+        // Both gated: a request that has already been superseded has nothing to
+        // report. Its features are not this layer's to drop, and naming a URL
+        // the map abandoned two revs ago is noise, not a diagnosis.
+        if (request === this.request) {
+          this.source.clear()
+          console.error(`[rover] could not load ${url}:`, error)
+        }
 
         return false
       })
