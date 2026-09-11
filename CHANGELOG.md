@@ -30,19 +30,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the drawing path.
 
   What it costs is the server's knowledge of what it sent. These features are
-  drawn under the shapes it does send, they take part in the framing — a map
-  whose only content is a URL source waits for the first load and frames that —
-  and `on_shape_click` reports them with whatever `id` and properties the
-  GeoJSON declares. There are no popups, no keyboard entries and no `:editable`
-  for them, because all three need a shape the server can name.
+  drawn under the shapes it does send, and they take part in the framing — a map
+  whose only content is a URL source waits for the first load and frames that.
+  There are no popups, no keyboard entries and no `:editable` for them, because
+  all three need a shape the server can name.
 
-  Clicks on it reach `on_shape_click` carrying `"source" => true`: the id is the
-  file's, or nil, and a handler that looks one up among the shapes it manages
-  has to be able to tell the two apart. They travel under a name of their own
-  on the client, too: a popup slot is a reason to claim a click on
-  a shape the server named, and no reason at all to claim one on a feature it
-  has not — and a file's id colliding with a shape's would otherwise open that
-  shape's popup over geometry that has nothing to do with it.
+- **`on_source_shape_click`**: clicks on `shape_source` geometry, carrying
+  whatever `id` and properties the GeoJSON declares.
+
+  A handler of its own rather than `on_shape_click` with a flag in the payload,
+  because without one this geometry has to be scenery. A cadastral backdrop
+  covers the whole viewport, so a click claimed on the strength of
+  `on_shape_click` would leave the map with no `on_map_click` anywhere — the
+  rule 0.7.0 established for decorative shapes, for geometry the server cannot
+  name. A `<:shape_popup>` is no reason to claim one either: there is nothing to
+  open for a feature the server has never seen, and a file's id colliding with a
+  shape's would open that shape's popup over geometry with nothing to do with it.
 
   The document is fetched here rather than through OpenLayers' own loader,
   which has no handle to cancel one. A rev bumped while a large document is

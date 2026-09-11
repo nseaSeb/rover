@@ -707,17 +707,10 @@ export class RoverMap {
       } else if (shape && this.wants("shapeClick")) {
         this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null })
       } else if (sourceShape && this.wants("sourceShapeClick")) {
-        // `source: true`, because this arrives at the same handler as a click
-        // on a shape the server sent and is not the same thing: the id is the
-        // file's, or null, and looking it up among the shapes the application
-        // knows would find nothing — or, worse, the wrong one.
-        this.emit("sourceShapeClick", {
-          id: sourceShape.id,
-          lat,
-          lon,
-          data: sourceShape.data,
-          source: true,
-        })
+        // Its own event, not `shapeClick`: the id is the file's, or null, and
+        // looking it up among the shapes the application knows would find
+        // nothing — or, worse, the wrong one.
+        this.emit("sourceShapeClick", { id: sourceShape.id, lat, lon, data: sourceShape.data })
       } else {
         // A shape with no click handler is scenery, not a target. Filled polygons
         // are hit-testable across their whole interior, so claiming the click here
@@ -893,13 +886,7 @@ export class RoverMap {
   }
 
   emit(name, payload) {
-    // A click on geometry from a `shape_source` reaches the same server handler
-    // as any other shape click — it is the same thing to an application. It is
-    // not the same thing here: the popup layer has nothing to open for one, and
-    // a file's id colliding with a shape's would otherwise open that shape's
-    // popup. So the two travel under different names on the client and arrive
-    // under one on the server.
-    const event = (this.config.events || {})[name === "sourceShapeClick" ? "shapeClick" : name]
+    const event = (this.config.events || {})[name]
     if (event) this.push(event, payload)
 
     const subscribers = this.listeners[name]
@@ -1061,15 +1048,16 @@ export function buildInteractions(config) {
  */
 export function wantsEvent(config, listeners, name) {
   const subscribers = (listeners || {})[name]
+  // Only `shapeClick`, and by construction: a popup slot is a reason to claim a
+  // click on a shape the server named, and no reason at all to claim one on a
+  // feature it has never seen — there is nothing to open for that, so claiming
+  // it would only swallow the map click underneath. Geometry from a
+  // `shape_source` therefore has a handler of its own, `on_source_shape_click`,
+  // and is scenery until somebody wires it.
   const popup = name === "shapeClick" && Boolean((config || {}).shapePopup)
-  // A `shape_source` click is wired to `on_shape_click` like any other, but a
-  // popup slot is not a reason to claim one: there is no popup for a feature
-  // the server has never seen, so claiming it would only swallow the map click
-  // underneath — the scenery rule again, for geometry the server cannot name.
-  const event = name === "sourceShapeClick" ? "shapeClick" : name
 
   return (
-    Boolean(((config || {}).events || {})[event]) ||
+    Boolean(((config || {}).events || {})[name]) ||
     popup ||
     Boolean(subscribers && subscribers.length)
   )

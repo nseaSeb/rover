@@ -12317,7 +12317,7 @@ var UrlShapeLayer = class {
         console.error(`[rover] could not load ${url}:`, error2);
       }
       return false;
-    }).then((loaded) => loaded && this.onLoad());
+    }).then((loaded) => loaded && this.onLoad()).catch((error2) => console.error("[rover] shape_source load callback failed:", error2));
   }
   /**
    * A click target, in the shape the rest of the map speaks.
@@ -12835,13 +12835,7 @@ var RoverMap = class {
       } else if (shape && this.wants("shapeClick")) {
         this.emit("shapeClick", { id: shape.id, lat, lon, data: shape.data ?? null });
       } else if (sourceShape && this.wants("sourceShapeClick")) {
-        this.emit("sourceShapeClick", {
-          id: sourceShape.id,
-          lat,
-          lon,
-          data: sourceShape.data,
-          source: true
-        });
+        this.emit("sourceShapeClick", { id: sourceShape.id, lat, lon, data: sourceShape.data });
       } else {
         this.emit("mapClick", { lat, lon });
       }
@@ -12968,7 +12962,7 @@ var RoverMap = class {
     };
   }
   emit(name, payload) {
-    const event = (this.config.events || {})[name === "sourceShapeClick" ? "shapeClick" : name];
+    const event = (this.config.events || {})[name];
     if (event) this.push(event, payload);
     const subscribers = this.listeners[name];
     if (subscribers) subscribers.forEach((fn) => fn(payload));
@@ -13055,8 +13049,7 @@ function buildInteractions(config) {
 function wantsEvent(config, listeners, name) {
   const subscribers = (listeners || {})[name];
   const popup = name === "shapeClick" && Boolean((config || {}).shapePopup);
-  const event = name === "sourceShapeClick" ? "shapeClick" : name;
-  return Boolean(((config || {}).events || {})[event]) || popup || Boolean(subscribers && subscribers.length);
+  return Boolean(((config || {}).events || {})[name]) || popup || Boolean(subscribers && subscribers.length);
 }
 function shouldFit({ hasFitted, derivedCenter, fit }) {
   if (!hasFitted && derivedCenter) return true;

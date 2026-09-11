@@ -35,6 +35,7 @@ defmodule Rover.Components do
   | `on_marker_click` | `%{"id" => id, "lat" => lat, "lon" => lon, "data" => data}` |
   | `on_cluster_click` | `%{"count" => n, "ids" => [id, …], "lat" => lat, "lon" => lon}` |
   | `on_shape_click` | `%{"id" => id, "lat" => lat, "lon" => lon, "data" => data}` |
+  | `on_source_shape_click` | `%{"id" => id, "lat" => lat, "lon" => lon, "data" => data}` |
   | `on_map_click` | `%{"lat" => lat, "lon" => lon}` |
   | `on_move_end` | `%{"center" => [lat, lon], "zoom" => zoom, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
   | `on_marker_drag_end` | `%{"id" => id, "lat" => lat, "lon" => lon}` |
@@ -174,17 +175,18 @@ defmodule Rover.Components do
     and no `:editable` for them, because all three need a shape the server can
     name.
 
-    `on_shape_click` does report them, with `"source" => true` alongside
-    whatever `id` and properties the GeoJSON declares — the id is the file's, or
-    `nil`, so a handler looking one up among the shapes it manages should match
-    on that flag first.
+    Clicks are reported to `on_source_shape_click`, and only to it: a handler of
+    its own rather than `on_shape_click`, because without one this geometry is
+    scenery and must not claim the click. A cadastral backdrop covering the
+    whole viewport would otherwise swallow every `on_map_click` on the map. The
+    payload carries whatever `id` and properties the GeoJSON declares — the id
+    is the file's, or `nil`, and is not a shape the server can look up.
 
     They take part in the framing, and a map with no `center` frames the first
-    document when it arrives: the geometry was not there at mount to be framed,
-    and such a map would otherwise open at its default zoom over nothing. That
-    is the same rule as every initial framing — a map given no `center` is
-    framed around its content whatever `fit` says — so `center` is what owns the
-    view outright, not `fit={false}`.
+    document when it arrives, under `fit={:once}` and `fit={true}`. Under
+    `fit={false}` it is framed only when nothing else was there to frame at
+    mount — that one initial framing is what every centreless map gets. A
+    `center` owns the view outright.
     """
 
   attr :shape_fields, :list,
@@ -357,6 +359,7 @@ defmodule Rover.Components do
 
   attr :on_marker_click, :string, default: nil
   attr :on_shape_click, :string, default: nil
+  attr :on_source_shape_click, :string, default: nil
   attr :on_map_click, :string, default: nil
   attr :on_move_end, :string, default: nil
   attr :on_marker_drag_end, :string, default: nil
@@ -620,6 +623,7 @@ defmodule Rover.Components do
           markerClick: assigns.on_marker_click,
           clusterClick: assigns.on_cluster_click,
           shapeClick: assigns.on_shape_click,
+          sourceShapeClick: assigns.on_source_shape_click,
           mapClick: assigns.on_map_click,
           moveEnd: assigns.on_move_end,
           markerDragEnd: assigns.on_marker_drag_end,
