@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-10-03
+
+### Changed
+
+- **The bundled `ol-mapbox-style` is now 13.5.1** (was 13.4.3), in all three
+  bundles in `priv/static`. It renders every `{:vector, style_url}` basemap,
+  the Carto vector presets included:
+  - The icon cache now keys on the layer's declutter mode, so two symbol
+    layers sharing an icon no longer share one cached image built for the
+    first layer's declutter mode.
+  - A raster layer in the style document that sets `raster-resampling:
+    "nearest"` is now drawn without interpolation, instead of always being
+    smoothed.
+
 ## [0.9.0] - 2026-09-11
 
 ### Added
@@ -683,6 +697,7 @@ them.
   back as strings and will not match.
 - `fit` governs *re*fitting; the initial framing is separate.
 
+[0.9.1]: https://github.com/nseaSeb/rover/releases/tag/v0.9.1
 [0.9.0]: https://github.com/nseaSeb/rover/releases/tag/v0.9.0
 [0.8.0]: https://github.com/nseaSeb/rover/releases/tag/v0.8.0
 [0.7.0]: https://github.com/nseaSeb/rover/releases/tag/v0.7.0
