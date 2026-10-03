@@ -15,6 +15,6 @@
     "@playwright/test": "^1.63.0",
     "esbuild": "^0.28.2",
     "ol": "^10.4.0",
-    "ol-mapbox-style": "^13.4.3"
+    "ol-mapbox-style": "^13.5.1"
   }
 }

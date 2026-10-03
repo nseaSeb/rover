@@ -8919,6 +8919,9 @@ function raster(inputs, data) {
   return new ImageData(shadeData, width, height);
 }
 
+// node_modules/ol-mapbox-style/src/stylespec.js
+var stylespec_default = latest;
+
 // node_modules/mapbox-to-css-font/index.js
 var fontWeights = {
   thin: 100,
@@ -9588,7 +9591,11 @@ function getValue(layer, layoutOrPaint, property, feature, functionCache, featur
   if (!functions[property]) {
     let value = (layer[layoutOrPaint] || emptyObj)[property];
     const rootKey = `layers[${layerId}].${layoutOrPaint}.${property}`;
-    const propertySpec = latest[`${layoutOrPaint}_${layer.type}`] && latest[`${layoutOrPaint}_${layer.type}`][property];
+    const sections = (
+      /** @type {Object<string, any>} */
+      stylespec_default
+    );
+    const propertySpec = sections[`${layoutOrPaint}_${layer.type}`] && sections[`${layoutOrPaint}_${layer.type}`][property];
     if (value === void 0) {
       if (propertySpec) {
         value = propertySpec.default;
@@ -9916,7 +9923,8 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
           opacity = getValue(
             layer,
             "paint",
-            layer.type + "-opacity",
+            `${/** @type {'fill'|'fill-extrusion'} */
+            layer.type}-opacity`,
             f,
             functionCache,
             featureState
@@ -9925,7 +9933,8 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
             const fillIcon = getValue(
               layer,
               "paint",
-              layer.type + "-pattern",
+              `${/** @type {'fill'|'fill-extrusion'} */
+              layer.type}-pattern`,
               f,
               functionCache,
               featureState
@@ -9979,7 +9988,8 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
               getValue(
                 layer,
                 "paint",
-                layer.type + "-color",
+                `${/** @type {'fill'|'fill-extrusion'} */
+                layer.type}-color`,
                 f,
                 functionCache,
                 featureState
@@ -9991,7 +10001,8 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
                 getValue(
                   layer,
                   "paint",
-                  layer.type + "-outline-color",
+                  `${/** @type {'fill'} */
+                  layer.type}-outline-color`,
                   f,
                   functionCache,
                   featureState
@@ -10267,18 +10278,18 @@ function stylefunction(olLayer, glStyle, sourceOrLayers, resolutions = defaultRe
                     functionCache,
                     featureState
                   );
-                  let iconCacheKey = `${icon}.${iconSize}.${haloWidth}.${haloColor}.${iconAlignedWithMap}`;
+                  const declutterMode = getDeclutterMode(
+                    layer,
+                    f,
+                    "icon",
+                    functionCache
+                  );
+                  let iconCacheKey = `${icon}.${iconSize}.${haloWidth}.${haloColor}.${iconAlignedWithMap}.${declutterMode}`;
                   if (iconColor !== null) {
                     iconCacheKey += `.${iconColor}`;
                   }
                   iconImg = iconImageCache[iconCacheKey];
                   if (!iconImg) {
-                    const declutterMode = getDeclutterMode(
-                      layer,
-                      f,
-                      "icon",
-                      functionCache
-                    );
                     let displacement;
                     if ("icon-offset" in layout) {
                       displacement = getValue(
@@ -11490,11 +11501,11 @@ function getBboxTemplate(projection) {
   const projCode = projection ? projection.getCode() : "EPSG:3857";
   return `{bbox-${projCode.toLowerCase().replace(/[^a-z0-9]/g, "-")}}`;
 }
-function setupRasterSource(glSource, styleUrl, options) {
+function setupRasterSource(glSource, styleUrl, options, interpolate) {
   return new Promise(function(resolve, reject) {
     getTileJson(glSource, styleUrl, options).then(function({ tileJson, tileLoadFunction }) {
       const source = new TileJSON({
-        interpolate: options.interpolate === void 0 ? true : options.interpolate,
+        interpolate: interpolate !== void 0 ? interpolate : options.interpolate === void 0 ? true : options.interpolate,
         transition: 0,
         crossOrigin: "anonymous",
         tileJSON: tileJson
@@ -11527,9 +11538,9 @@ function setupRasterSource(glSource, styleUrl, options) {
     });
   });
 }
-function setupRasterLayer(glSource, styleUrl, options) {
+function setupRasterLayer(glSource, styleUrl, options, interpolate) {
   const layer = new TileLayer();
-  setupRasterSource(glSource, styleUrl, options).then(function(source) {
+  setupRasterSource(glSource, styleUrl, options, interpolate).then(function(source) {
     layer.setSource(source);
   }).catch(function() {
     layer.setSource(void 0);
@@ -11663,12 +11674,24 @@ function setupLayer(glStyle, styleUrl, glLayer, options) {
         return rasterOperationKeys.includes(key);
       }
     );
+    const interpolate = getValue(
+      glLayer,
+      "paint",
+      "raster-resampling",
+      emptyObj,
+      functionCache
+    ) === "nearest" ? false : void 0;
     if (requiresOperations) {
-      const tileLayer = setupRasterLayer(glSource, styleUrl, options);
+      const tileLayer = setupRasterLayer(
+        glSource,
+        styleUrl,
+        options,
+        interpolate
+      );
       layer = createRasterOpLayer(tileLayer);
       configureRasterOpLayer(layer, glLayer, options, functionCache);
     } else {
-      layer = setupRasterLayer(glSource, styleUrl, options);
+      layer = setupRasterLayer(glSource, styleUrl, options, interpolate);
     }
     layer.setVisible(
       glLayer.layout ? getValue(glLayer, "layout", "visibility", emptyObj, functionCache) !== "none" : true
