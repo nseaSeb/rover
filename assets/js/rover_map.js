@@ -326,7 +326,7 @@ export class RoverMap {
       // would frame a single parcel loaded by URL as a speck.
       maxZoom: fitMaxZoom(
         this.config,
-        this.shapeLayer.entries.size > 0 || Boolean(this.urlShapeLayer.extent)
+        Boolean(this.shapeLayer.extent) || Boolean(this.urlShapeLayer.extent)
       ),
       duration,
     })

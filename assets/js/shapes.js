@@ -183,7 +183,7 @@ export class ShapeLayer {
   }
 
   get extent() {
-    return this.entries.size > 0 ? this.source.getExtent() : null
+    return this.entries.size > 0 ? drawn(this.source.getExtent()) : null
   }
 
   /**
@@ -192,7 +192,9 @@ export class ShapeLayer {
    * Counting features is not enough to know there is something to point at:
    * GeoJSON allows `"geometry": null`, and since OpenLayers 10.11 an empty
    * `coordinates` array is read the same way, so a shape can draw a feature
-   * that has no geometry at all.
+   * that has no geometry at all. One that has a geometry can still have no
+   * coordinates: `ST_AsGeoJSON` writes `GEOMETRYCOLLECTION EMPTY` as a
+   * collection of nothing.
    */
   extentOf(key) {
     const entry = this.entries.get(key)
@@ -204,13 +206,20 @@ export class ShapeLayer {
     const extent = createEmpty()
     geometries.forEach((geometry) => extend(extent, geometry.getExtent()))
 
-    return extent
+    return drawn(extent)
   }
 
   dispose() {
     this.source.clear()
     this.entries.clear()
   }
+}
+
+// An extent that covers no coordinate at all is OpenLayers' empty one, made of
+// infinities. Handed on as content it frames the whole plane, or centres a popup
+// on NaN; `null` is what every caller already reads as "nothing here".
+function drawn(extent) {
+  return Number.isFinite(extent[0]) ? extent : null
 }
 
 function readGeometry(shape) {

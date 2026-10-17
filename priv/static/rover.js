@@ -65431,7 +65431,7 @@ var ShapeLayer = class {
     return null;
   }
   get extent() {
-    return this.entries.size > 0 ? this.source.getExtent() : null;
+    return this.entries.size > 0 ? drawn(this.source.getExtent()) : null;
   }
   /**
    * The extent of everything one shape drew, or `null` when it drew nothing.
@@ -65439,7 +65439,9 @@ var ShapeLayer = class {
    * Counting features is not enough to know there is something to point at:
    * GeoJSON allows `"geometry": null`, and since OpenLayers 10.11 an empty
    * `coordinates` array is read the same way, so a shape can draw a feature
-   * that has no geometry at all.
+   * that has no geometry at all. One that has a geometry can still have no
+   * coordinates: `ST_AsGeoJSON` writes `GEOMETRYCOLLECTION EMPTY` as a
+   * collection of nothing.
    */
   extentOf(key) {
     const entry = this.entries.get(key);
@@ -65448,13 +65450,16 @@ var ShapeLayer = class {
     if (geometries.length === 0) return null;
     const extent = createEmpty();
     geometries.forEach((geometry) => extend(extent, geometry.getExtent()));
-    return extent;
+    return drawn(extent);
   }
   dispose() {
     this.source.clear();
     this.entries.clear();
   }
 };
+function drawn(extent) {
+  return Number.isFinite(extent[0]) ? extent : null;
+}
 function readGeometry2(shape) {
   try {
     return format.readFeatures(shape.geometry);
@@ -65853,7 +65858,7 @@ var RoverMap = class {
       // would frame a single parcel loaded by URL as a speck.
       maxZoom: fitMaxZoom(
         this.config,
-        this.shapeLayer.entries.size > 0 || Boolean(this.urlShapeLayer.extent)
+        Boolean(this.shapeLayer.extent) || Boolean(this.urlShapeLayer.extent)
       ),
       duration
     });

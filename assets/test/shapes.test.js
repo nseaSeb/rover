@@ -378,6 +378,10 @@ describe("ShapeLayer.extentOf", () => {
   for (const [name, geometry] of [
     ["an empty coordinates array", { type: "Point", coordinates: [] }],
     ["a null geometry", { type: "Feature", geometry: null, properties: {} }],
+    // These two keep a geometry object, one with no coordinate in it: the
+    // first is what ST_AsGeoJSON writes for GEOMETRYCOLLECTION EMPTY.
+    ["an empty GeometryCollection", { type: "GeometryCollection", geometries: [] }],
+    ["a polygon with an empty ring", { type: "Polygon", coordinates: [[]] }],
   ]) {
     it(`is null for a shape drawn from ${name}`, () => {
       const layer = new ShapeLayer()
@@ -385,6 +389,31 @@ describe("ShapeLayer.extentOf", () => {
 
       assert.equal(features(layer, 1).length, 1)
       assert.equal(layer.extentOf("1"), null)
+      // The same answer the fit and its zoom ceiling read: no content.
+      assert.equal(layer.extent, null)
     })
   }
+
+  it("unions the features of a collection and skips the empty ones", () => {
+    const layer = new ShapeLayer()
+    layer.reconcile([
+      shape(1, {
+        geometry: {
+          type: "FeatureCollection",
+          features: [
+            { type: "Feature", geometry: polygon(4.83), properties: {} },
+            { type: "Feature", geometry: null, properties: {} },
+            { type: "Feature", geometry: polygon(4.93), properties: {} },
+          ],
+        },
+      }),
+      shape(2, { geometry: polygon(4.83) }),
+      shape(3, { geometry: polygon(4.93) }),
+    ])
+
+    const [minX, minY, maxX, maxY] = layer.extentOf("1")
+    assert.equal(minX, layer.extentOf("2")[0])
+    assert.equal(maxX, layer.extentOf("3")[2])
+    assert.ok(minY < maxY)
+  })
 })
