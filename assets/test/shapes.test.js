@@ -358,3 +358,33 @@ describe("styleForShape", () => {
     assert.equal(image.getFill().getColor(), "#7c3aed")
   })
 })
+
+describe("ShapeLayer.extentOf", () => {
+  it("spans every feature of the shape", () => {
+    const layer = new ShapeLayer()
+    layer.reconcile([shape(1)])
+
+    const [minX, minY, maxX, maxY] = layer.extentOf("1")
+    assert.ok(minX < maxX && minY < maxY)
+  })
+
+  it("is null for an unknown shape", () => {
+    assert.equal(new ShapeLayer().extentOf("nope"), null)
+  })
+
+  // GeoJSON allows `"geometry": null`, and since OpenLayers 10.11 an empty
+  // `coordinates` array is read the same way: a feature with no geometry. The
+  // keyboard path asked each feature for its extent and threw a TypeError.
+  for (const [name, geometry] of [
+    ["an empty coordinates array", { type: "Point", coordinates: [] }],
+    ["a null geometry", { type: "Feature", geometry: null, properties: {} }],
+  ]) {
+    it(`is null for a shape drawn from ${name}`, () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([shape(1, { geometry })])
+
+      assert.equal(features(layer, 1).length, 1)
+      assert.equal(layer.extentOf("1"), null)
+    })
+  }
+})

@@ -1,3 +1,4 @@
+import { createEmpty, extend } from "ol/extent.js"
 import GeoJSON from "ol/format/GeoJSON.js"
 import VectorLayer from "ol/layer/Vector.js"
 import VectorSource from "ol/source/Vector.js"
@@ -183,6 +184,27 @@ export class ShapeLayer {
 
   get extent() {
     return this.entries.size > 0 ? this.source.getExtent() : null
+  }
+
+  /**
+   * The extent of everything one shape drew, or `null` when it drew nothing.
+   *
+   * Counting features is not enough to know there is something to point at:
+   * GeoJSON allows `"geometry": null`, and since OpenLayers 10.11 an empty
+   * `coordinates` array is read the same way, so a shape can draw a feature
+   * that has no geometry at all.
+   */
+  extentOf(key) {
+    const entry = this.entries.get(key)
+    if (!entry) return null
+
+    const geometries = entry.features.map((feature) => feature.getGeometry()).filter(Boolean)
+    if (geometries.length === 0) return null
+
+    const extent = createEmpty()
+    geometries.forEach((geometry) => extend(extent, geometry.getExtent()))
+
+    return extent
   }
 
   dispose() {

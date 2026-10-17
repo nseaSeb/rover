@@ -828,17 +828,17 @@ export class RoverMap {
     const entry = this.shapeLayer.entries.get(target.id)
     if (!entry || !this.wants("shapeClick")) return
 
-    // An unreadable geometry is logged and rendered as no features at all, and
-    // the button for it is rendered anyway — the server has no way to know. There
-    // is nothing to point at, so there is nothing to do.
-    if (entry.features.length === 0) return
-
     // A pointer click anchors a shape's popup where the pointer was; a keyboard
     // has no such point, so the centre of the whole shape's extent is the honest
     // answer — inside its bounding box, and where "this shape" is. Every feature,
     // not just the first: a FeatureCollection is one shape.
-    const extent = createEmpty()
-    entry.features.forEach((feature) => extend(extent, feature.getGeometry().getExtent()))
+    const extent = this.shapeLayer.extentOf(target.id)
+
+    // An unreadable geometry is logged and rendered as no features at all, an
+    // empty one as features without geometry, and the button for either is
+    // rendered anyway — the server has no way to know. There is nothing to point
+    // at, so there is nothing to do.
+    if (!extent) return
 
     const [minX, minY, maxX, maxY] = extent
     const { lat, lon } = unproject([(minX + maxX) / 2, (minY + maxY) / 2])

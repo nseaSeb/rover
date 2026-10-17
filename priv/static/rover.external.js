@@ -333,7 +333,7 @@ import PinchRotate from "ol/interaction/PinchRotate.js";
 import PinchZoom from "ol/interaction/PinchZoom.js";
 import Snap from "ol/interaction/Snap.js";
 import Translate from "ol/interaction/Translate.js";
-import { createEmpty, extend } from "ol/extent.js";
+import { createEmpty as createEmpty2, extend as extend2 } from "ol/extent.js";
 
 // js/draw.js
 import VectorLayer from "ol/layer/Vector.js";
@@ -12066,6 +12066,7 @@ function applyOptions(layer, config) {
 }
 
 // js/shapes.js
+import { createEmpty, extend } from "ol/extent.js";
 import GeoJSON2 from "ol/format/GeoJSON.js";
 import VectorLayer4 from "ol/layer/Vector.js";
 import VectorSource5 from "ol/source/Vector.js";
@@ -12200,6 +12201,23 @@ var ShapeLayer = class {
   }
   get extent() {
     return this.entries.size > 0 ? this.source.getExtent() : null;
+  }
+  /**
+   * The extent of everything one shape drew, or `null` when it drew nothing.
+   *
+   * Counting features is not enough to know there is something to point at:
+   * GeoJSON allows `"geometry": null`, and since OpenLayers 10.11 an empty
+   * `coordinates` array is read the same way, so a shape can draw a feature
+   * that has no geometry at all.
+   */
+  extentOf(key) {
+    const entry = this.entries.get(key);
+    if (!entry) return null;
+    const geometries = entry.features.map((feature) => feature.getGeometry()).filter(Boolean);
+    if (geometries.length === 0) return null;
+    const extent = createEmpty();
+    geometries.forEach((geometry) => extend(extent, geometry.getExtent()));
+    return extent;
   }
   dispose() {
     this.source.clear();
@@ -12622,8 +12640,8 @@ var RoverMap = class {
     ].filter(Boolean);
     if (extents.length === 0) return null;
     if (extents.length === 1) return extents[0];
-    const union = createEmpty();
-    extents.forEach((extent) => extend(union, extent));
+    const union = createEmpty2();
+    extents.forEach((extent) => extend2(union, extent));
     return union;
   }
   beQuiet(duration) {
@@ -12904,8 +12922,8 @@ var RoverMap = class {
   zoomToCluster(clusterFeature) {
     const members = clusterFeature.get("features") || [];
     if (members.length === 0) return;
-    const extent = createEmpty();
-    members.forEach((member) => extend(extent, member.getGeometry().getExtent()));
+    const extent = createEmpty2();
+    members.forEach((member) => extend2(extent, member.getGeometry().getExtent()));
     const view = this.map.getView();
     const current = view.getZoom() ?? 0;
     const ceiling = fitMaxZoom(this.config, true);
@@ -12952,9 +12970,8 @@ var RoverMap = class {
     }
     const entry = this.shapeLayer.entries.get(target.id);
     if (!entry || !this.wants("shapeClick")) return;
-    if (entry.features.length === 0) return;
-    const extent = createEmpty();
-    entry.features.forEach((feature) => extend(extent, feature.getGeometry().getExtent()));
+    const extent = this.shapeLayer.extentOf(target.id);
+    if (!extent) return;
     const [minX, minY, maxX, maxY] = extent;
     const { lat, lon } = unproject([(minX + maxX) / 2, (minY + maxY) / 2]);
     this.emit("shapeClick", { id: entry.shape.id, lat, lon, data: entry.shape.data ?? null });
