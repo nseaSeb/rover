@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-10-17
+
+### Changed
+
+- **The bundled OpenLayers is now 10.11.0** (was 10.10.0), in `rover.js` and
+  `rover.min.js`; `rover.external.js` leaves `ol` to the application and is
+  unchanged. What reaches a Rover map:
+  - A `{:wmts, capabilities_url, opts}` basemap no longer takes its extent from
+    the tile matrices, so a layer that covers a wider area at low zoom levels
+    than at high ones is no longer cut off. A layer that covers only part of the
+    world on a world-spanning matrix set (a national basemap on
+    `GoogleMapsCompatible`) now wraps around the antimeridian.
+  - A shape whose GeoJSON geometry has an empty `coordinates` array (other than
+    a `GeometryCollection`) is now read as a feature with no geometry, as RFC
+    7946 recommends. It still renders as nothing.
+  - Tiles the current view no longer needs are dropped from the load queue.
+
+### Fixed
+
+- A shape that draws no coordinate is no longer treated as content. That covers
+  a GeoJSON Feature with `"geometry": null`, with OpenLayers 10.11 a geometry
+  whose `coordinates` array is empty, and a geometry that holds nothing, such
+  as the empty `GeometryCollection` `ST_AsGeoJSON` writes for
+  `GEOMETRYCOLLECTION EMPTY`:
+  - Activating it from the keyboard no longer throws a `TypeError` or sends a
+    `shape_click` with `nil` coordinates. The button does nothing, as it
+    already did for an unreadable geometry.
+  - It no longer lifts the fit's zoom ceiling from the marker-only 16 to the
+    basemap's own, so a lone marker next to it is not framed over-zoomed.
+
 ## [0.9.1] - 2026-10-03
 
 ### Changed
@@ -697,6 +727,7 @@ them.
   back as strings and will not match.
 - `fit` governs *re*fitting; the initial framing is separate.
 
+[0.9.2]: https://github.com/nseaSeb/rover/releases/tag/v0.9.2
 [0.9.1]: https://github.com/nseaSeb/rover/releases/tag/v0.9.1
 [0.9.0]: https://github.com/nseaSeb/rover/releases/tag/v0.9.0
 [0.8.0]: https://github.com/nseaSeb/rover/releases/tag/v0.8.0
