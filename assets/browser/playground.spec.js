@@ -2154,3 +2154,442 @@ test.describe("the playground", () => {
     expect(problems).toEqual([])
   })
 })
+
+/**
+ * The vector-editor gestures, on `/?select=1`: no `:drag_pan`, a selection
+ * rectangle, the parcel and plank-a moving as one group, plank-b moving alone,
+ * the parcel still editable by its vertices, and Space as a temporary hand.
+ *
+ * Who wins a press is settled by the order the interactions are added in, which
+ * no unit test can see — only a real pointer on a real canvas.
+ */
+test.describe("vector-editor gestures", () => {
+  /** A shape's extent in canvas pixels, `{left, top, right, bottom}`. */
+  function shapeBox(page, id) {
+    return page.evaluate(
+      ([sel, shapeId]) => {
+        const rover = document.querySelector(sel)._rover
+        const extent = rover.shapeLayer.extentOf(String(shapeId))
+        const [x1, y1] = rover.map.getPixelFromCoordinate([extent[0], extent[1]])
+        const [x2, y2] = rover.map.getPixelFromCoordinate([extent[2], extent[3]])
+        return {
+          left: Math.min(x1, x2),
+          right: Math.max(x1, x2),
+          top: Math.min(y1, y2),
+          bottom: Math.max(y1, y2),
+        }
+      },
+      [MAP, id]
+    )
+  }
+
+  async function interiorPixel(page, id) {
+    const box = await shapeBox(page, id)
+    return { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 }
+  }
+
+  function centre(page) {
+    return page.evaluate((sel) => document.querySelector(sel)._rover.map.getView().getCenter(), MAP)
+  }
+
+  /** A pointer drag between two canvas pixels, hovering first as a user does. */
+  async function drag(page, from, to) {
+    const canvas = await page.locator(CANVAS).boundingBox()
+    await page.mouse.move(canvas.x + from.x, canvas.y + from.y)
+    await page.mouse.down()
+    await page.mouse.move(canvas.x + to.x, canvas.y + to.y, { steps: 8 })
+    await page.mouse.up()
+  }
+
+  async function openSelect(page) {
+    await stubTiles(page)
+    await page.goto("/?select=1")
+    await mapReady(page)
+  }
+
+  const log = (page) => page.locator(".log")
+
+  /**
+   * Record every `boxSelect` the map emits. The log shows only the last event,
+   * and a click that also fired a zero-size rectangle would be overwritten by
+   * the click a moment later. `observe`, not `on`: a recorder must not be what
+   * arms the rectangle.
+   */
+  async function recordBoxes(page) {
+    await page.evaluate((sel) => {
+      window.__boxes = []
+      document.querySelector(sel)._rover.observe("boxSelect", (payload) => window.__boxes.push(payload))
+    }, MAP)
+  }
+
+  const boxes = (page) => page.evaluate(() => window.__boxes)
+
+  test("a drag on the background draws a rectangle and reports what it caught", async ({
+    page,
+  }) => {
+    const problems = failOnPageErrors(page)
+    await openSelect(page)
+
+    const a = await shapeBox(page, "plank-a")
+    const b = await shapeBox(page, "plank-b")
+    const before = await centre(page)
+
+    await drag(
+      page,
+      { x: a.left - 8, y: Math.min(a.top, b.top) - 8 },
+      { x: b.right + 8, y: Math.max(a.bottom, b.bottom) + 8 }
+    )
+
+    await expect(log(page)).toContainText("boxed shapes [plank-a, plank-b] markers [pin]")
+    expect(await centre(page), "the drag panned instead").toEqual(before)
+
+    expect(problems).toEqual([])
+  })
+
+  test("the rectangle reports shift, for the application to add to its selection", async ({
+    page,
+  }) => {
+    await openSelect(page)
+    const b = await shapeBox(page, "plank-b")
+
+    await page.keyboard.down("Shift")
+    await drag(page, { x: b.left - 8, y: b.top - 8 }, { x: b.right + 8, y: b.bottom + 8 })
+    await page.keyboard.up("Shift")
+
+    await expect(log(page)).toContainText("boxed shapes [plank-b] markers [pin] with shift")
+  })
+
+  test("a key held when the drag started counts, and so does Ctrl", async ({ page }) => {
+    await openSelect(page)
+    const b = await shapeBox(page, "plank-b")
+    const canvas = await page.locator(CANVAS).boundingBox()
+
+    // Shift let go a moment before the button: the user still meant it.
+    await page.mouse.move(canvas.x + b.left - 8, canvas.y + b.top - 8)
+    await page.keyboard.down("Shift")
+    await page.mouse.down()
+    await page.mouse.move(canvas.x + b.right + 8, canvas.y + b.bottom + 8, { steps: 8 })
+    await page.keyboard.up("Shift")
+    await page.mouse.up()
+    await expect(log(page)).toContainText("boxed shapes [plank-b] markers [pin] with shift")
+
+    await page.keyboard.down("Control")
+    await drag(page, { x: b.left - 8, y: b.top - 8 }, { x: b.right + 8, y: b.bottom + 8 })
+    await page.keyboard.up("Control")
+    await expect(log(page)).toContainText("boxed shapes [plank-b] markers [pin] with ctrl")
+  })
+
+  test("moving a shape closes the popup it opened", async ({ page }) => {
+    await openSelect(page)
+    const from = await interiorPixel(page, "plank-a")
+
+    await page.locator(CANVAS).click({ position: from })
+    const popup = page.locator(`${MAP} [data-rover-popup-for="shape:plank-a"]`)
+    await expect(popup).toBeVisible()
+
+    await drag(page, from, { x: from.x + 30, y: from.y + 40 })
+    await expect(log(page)).toContainText("moved shapes [parcel, plank-a]")
+    await expect(popup).toBeHidden()
+  })
+
+  test("a click is still a click, not a rectangle", async ({ page }) => {
+    const problems = failOnPageErrors(page)
+    await openSelect(page)
+    await recordBoxes(page)
+
+    // The route is not translatable, so the press goes to the rectangle.
+    const route = await page.evaluate((sel) => {
+      const rover = document.querySelector(sel)._rover
+      const coordinate = rover.shapeLayer.entries.get("route").features[0].getGeometry().getCoordinates()[1]
+      const [x, y] = rover.map.getPixelFromCoordinate(coordinate)
+      return { x, y }
+    }, MAP)
+
+    await page.locator(CANVAS).click({ position: route })
+    await expect(log(page)).toContainText("shape route clicked")
+
+    await page.locator(CANVAS).click({ position: await emptyPixel(page) })
+    await expect(log(page)).toContainText("map clicked")
+
+    // plank-a: the pin covers the middle of plank-b.
+    await page.locator(CANVAS).click({ position: await interiorPixel(page, "plank-a") })
+    await expect(log(page)).toContainText("shape plank-a clicked")
+
+    expect(await boxes(page), "a click also sent a rectangle").toEqual([])
+    expect(problems).toEqual([])
+  })
+
+  test("a drag that starts on a draggable marker moves the marker", async ({ page }) => {
+    await openSelect(page)
+    const from = await markerPixel(page, 3)
+
+    await drag(page, from, { x: from.x + 40, y: from.y + 30 })
+
+    await expect(log(page)).toContainText("marker 3 dragged")
+  })
+
+  test("a marker sitting on a translatable shape keeps the press", async ({ page }) => {
+    await openSelect(page)
+    const plank = await shapeBox(page, "plank-b")
+    const from = await markerPixel(page, "pin")
+
+    await drag(page, from, { x: from.x + 40, y: from.y + 30 })
+    await page.waitForTimeout(300)
+
+    await expect(log(page)).not.toContainText("moved shapes")
+    expect(await shapeBox(page, "plank-b"), "the plank moved from under the pin").toEqual(plank)
+  })
+
+  test("a translatable shape moves with its group, and the server echo sticks", async ({
+    page,
+  }) => {
+    const problems = failOnPageErrors(page)
+    await openSelect(page)
+
+    const before = await shapeBox(page, "plank-a")
+    const lone = await shapeBox(page, "plank-b")
+    const from = await interiorPixel(page, "plank-a")
+
+    await drag(page, from, { x: from.x + 30, y: from.y + 40 })
+
+    await expect(log(page)).toContainText("moved shapes [parcel, plank-a] — and the server now agrees")
+
+    const after = await shapeBox(page, "plank-a")
+    expect(after.left - before.left).toBeCloseTo(30, 0)
+    expect(after.top - before.top).toBeCloseTo(40, 0)
+    expect(await shapeBox(page, "plank-b"), "a shape outside the group moved").toEqual(lone)
+
+    expect(problems).toEqual([])
+  })
+
+  test("on a shape both editable and translatable, a vertex reshapes", async ({ page }) => {
+    await openSelect(page)
+    const vertex = await shapeVertexPixel(page, MAP, "parcel")
+
+    await drag(page, vertex, { x: vertex.x + 24, y: vertex.y - 18 })
+
+    await expect(log(page)).toContainText("shape parcel edited")
+  })
+
+  test("on a shape both editable and translatable, an edge moves it", async ({ page }) => {
+    await openSelect(page)
+    const edge = await shapeEdgeMidpointPixel(page, MAP, "parcel")
+
+    await drag(page, edge, { x: edge.x + 20, y: edge.y + 20 })
+
+    await expect(log(page)).toContainText("moved shapes [parcel, plank-a]")
+  })
+
+  test("holding Space pans the map instead of drawing a rectangle", async ({ page }) => {
+    const problems = failOnPageErrors(page)
+    await openSelect(page)
+
+    const empty = await emptyPixel(page)
+    const before = await centre(page)
+    const scroll = await page.evaluate(() => window.scrollY)
+
+    const canvas = await page.locator(CANVAS).boundingBox()
+    await page.mouse.move(canvas.x + empty.x, canvas.y + empty.y)
+    await page.keyboard.down("Space")
+    await expect(page.locator(CANVAS)).toHaveClass(/rover-map__canvas--panning/)
+
+    await drag(page, empty, { x: empty.x + 60, y: empty.y + 40 })
+    await page.keyboard.up("Space")
+
+    await expect.poll(() => centre(page)).not.toEqual(before)
+    await expect(page.locator(CANVAS)).not.toHaveClass(/rover-map__canvas--panning/)
+    await expect(log(page)).not.toContainText("boxed")
+    expect(await page.evaluate(() => window.scrollY), "Space scrolled the page").toBe(scroll)
+
+    expect(problems).toEqual([])
+  })
+
+  test("holding Space while drawing pans, and puts down no vertex", async ({ page }) => {
+    const problems = failOnPageErrors(page)
+    await openSelect(page)
+    await page.getByRole("button", { name: /^Draw:/ }).click()
+    await expect(page.getByRole("button", { name: "Draw: polygon" })).toBeVisible()
+
+    const sketching = () =>
+      page.evaluate((sel) => Boolean(document.querySelector(sel)._rover.draw?.sketchFeature_), MAP)
+    const empty = await emptyPixel(page)
+    const canvas = await page.locator(CANVAS).boundingBox()
+
+    // The Draw button kept the focus, and Space is a button's to press; the
+    // map takes it once it has the focus itself.
+    await page.locator(CANVAS).focus()
+    await page.mouse.move(canvas.x + empty.x, canvas.y + empty.y)
+    await page.keyboard.down("Space")
+    await expect(page.locator(CANVAS)).toHaveClass(/rover-map__canvas--panning/)
+    await page.mouse.down()
+    await page.mouse.up()
+    await page.keyboard.up("Space")
+    await page.waitForTimeout(300)
+    expect(await sketching(), "the hand let Draw put down a vertex").toBe(false)
+
+    // The control: the same click without Space starts a sketch.
+    await page.mouse.down()
+    await page.mouse.up()
+    await expect.poll(sketching).toBe(true)
+
+    expect(problems).toEqual([])
+  })
+
+  test("losing the window mid-press lets go of the hand", async ({ page }) => {
+    await openSelect(page)
+
+    const empty = await emptyPixel(page)
+    const canvas = await page.locator(CANVAS).boundingBox()
+    await page.mouse.move(canvas.x + empty.x, canvas.y + empty.y)
+    await page.keyboard.down("Space")
+    await expect(page.locator(CANVAS)).toHaveClass(/rover-map__canvas--panning/)
+
+    // Space released in another window: the keyup never comes here.
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")))
+    await expect(page.locator(CANVAS)).not.toHaveClass(/rover-map__canvas--panning/)
+
+    const before = await centre(page)
+    await drag(page, empty, { x: empty.x + 60, y: empty.y + 40 })
+
+    await expect(log(page)).toContainText("boxed")
+    expect(await centre(page)).toEqual(before)
+  })
+
+  test("Space is left alone while a button has the focus", async ({ page }) => {
+    await openSelect(page)
+
+    const empty = await emptyPixel(page)
+    const canvas = await page.locator(CANVAS).boundingBox()
+    await page.mouse.move(canvas.x + empty.x, canvas.y + empty.y)
+
+    await page.getByRole("button", { name: "Add a marker" }).focus()
+    await page.keyboard.press("Space")
+
+    await expect(log(page)).toContainText("added marker")
+    await expect(page.locator(CANVAS)).not.toHaveClass(/rover-map__canvas--panning/)
+  })
+
+  test("two fingers pan a map in selection mode", async ({ browser, browserName }) => {
+    test.skip(browserName !== "chromium", "touch is driven through CDP")
+
+    // A touch-capable context, as a phone would be.
+    const context = await browser.newContext({ hasTouch: true, viewport: { width: 1280, height: 800 } })
+    const page = await context.newPage()
+    await openSelect(page)
+    await recordBoxes(page)
+
+    const empty = await emptyPixel(page)
+    const canvas = await page.locator(CANVAS).boundingBox()
+    const view = () =>
+      page.evaluate((sel) => {
+        const v = document.querySelector(sel)._rover.map.getView()
+        return { center: v.getCenter(), resolution: v.getResolution() }
+      }, MAP)
+    const before = await view()
+    const cdp = await context.newCDPSession(page)
+
+    // Chromium moves the two fingers one after the other, so between the two
+    // halves of a step PinchZoom sees a pinch. Wide apart and in small steps,
+    // that wobble stays far below the pan being measured.
+    const at = (dx, dy) => [
+      { x: canvas.x + empty.x + dx, y: canvas.y + empty.y + dy, id: 1 },
+      { x: canvas.x + empty.x + 200 + dx, y: canvas.y + empty.y + dy, id: 2 },
+    ]
+
+    // One finger lands — the selection rectangle takes it — then the second.
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at(0, 0)[0]] })
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(0, 0) })
+    for (let step = 1; step <= 32; step++) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(step * 2, step * 1.5) })
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+    await page.waitForTimeout(300)
+
+    // The map follows the fingers: 64 px right and 48 px down puts the centre
+    // 64 px west and 48 px north. Something else nudging the view — a pinch
+    // settling its anchor — does not pass for a pan.
+    const after = await view()
+    const dx = (after.center[0] - before.center[0]) / before.resolution
+    const dy = (after.center[1] - before.center[1]) / before.resolution
+    expect(dx, `the centre moved ${dx.toFixed(1)} px east`).toBeLessThan(-40)
+    expect(dy, `the centre moved ${dy.toFixed(1)} px north`).toBeGreaterThan(25)
+    // Recorded, not read off the log: the pan's moveEnd overwrites it.
+    expect(await boxes(page), "the first finger also drew a rectangle").toEqual([])
+
+    await context.close()
+  })
+
+  test("a locked map answers none of the three", async ({ page }) => {
+    await openSelect(page)
+    await page.getByRole("button", { name: /^Interactive:/ }).click()
+    await expect(page.getByRole("button", { name: "Interactive: off" })).toBeVisible()
+
+    const before = await centre(page)
+    const plank = await shapeBox(page, "plank-b")
+    // plank-a: the pin on plank-b would keep the press whether locked or not.
+    const movable = await shapeBox(page, "plank-a")
+    const from = await interiorPixel(page, "plank-a")
+
+    await drag(page, { x: plank.left - 8, y: plank.top - 8 }, { x: plank.right + 8, y: plank.bottom + 8 })
+    await drag(page, from, { x: from.x + 30, y: from.y + 30 })
+
+    const empty = await emptyPixel(page)
+    const canvas = await page.locator(CANVAS).boundingBox()
+    await page.mouse.move(canvas.x + empty.x, canvas.y + empty.y)
+    await page.keyboard.down("Space")
+    await drag(page, empty, { x: empty.x + 60, y: empty.y + 40 })
+    await page.keyboard.up("Space")
+
+    await page.waitForTimeout(400)
+    await expect(log(page)).not.toContainText("boxed")
+    await expect(log(page)).not.toContainText("moved shapes")
+    expect(await shapeBox(page, "plank-b")).toEqual(plank)
+    expect(await shapeBox(page, "plank-a")).toEqual(movable)
+    expect(await centre(page)).toEqual(before)
+  })
+
+  test("with :drag_pan, a drag on the background still pans, handler or not", async ({ page }) => {
+    await stubTiles(page)
+    // on_box_select is wired here; :drag_pan being listed is what must win.
+    await page.goto("/?select=1&pan=1")
+    await mapReady(page)
+    await recordBoxes(page)
+
+    const empty = await emptyPixel(page)
+    const before = await centre(page)
+    await drag(page, empty, { x: empty.x + 60, y: empty.y + 40 })
+
+    await expect.poll(() => centre(page)).not.toEqual(before)
+    expect(await boxes(page), "a rectangle was drawn instead").toEqual([])
+  })
+
+  test("the rectangle follows on_box_select without a reload", async ({ page }) => {
+    const problems = failOnPageErrors(page)
+    await openSelect(page)
+    await recordBoxes(page)
+
+    const b = await shapeBox(page, "plank-b")
+    const around = [
+      { x: b.left - 8, y: b.top - 8 },
+      { x: b.right + 8, y: b.bottom + 8 },
+    ]
+
+    await page.getByRole("button", { name: "Box select: on" }).click()
+    await expect(page.getByRole("button", { name: "Box select: off" })).toBeVisible()
+    await expect
+      .poll(() => page.evaluate((sel) => Boolean(document.querySelector(sel)._rover.selectionBox), MAP))
+      .toBe(false)
+
+    await drag(page, ...around)
+    await page.waitForTimeout(300)
+    expect(await boxes(page), "the rectangle outlived its handler").toEqual([])
+
+    await page.getByRole("button", { name: "Box select: off" }).click()
+    await expect(page.getByRole("button", { name: "Box select: on" })).toBeVisible()
+
+    await drag(page, ...around)
+    await expect.poll(async () => (await boxes(page)).length, { message: "the rectangle did not come back" }).toBe(1)
+
+    expect(problems).toEqual([])
+  })
+})

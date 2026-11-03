@@ -31,6 +31,8 @@
   --rover-popup-fg: #111827;
   --rover-popup-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 6px 20px rgb(0 0 0 / 0.16);
   --rover-tail-shadow: rgb(0 0 0 / 0.08);
+  --rover-box-border: #2563eb;
+  --rover-box-fill: rgb(37 99 235 / 0.08);
 }
 
 /* The dark values, twice over, because they answer to two different signals.
@@ -59,6 +61,8 @@
     --rover-popup-fg: #e5e7eb;
     --rover-popup-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.5);
     --rover-tail-shadow: rgb(0 0 0 / 0.25);
+    --rover-box-border: #93c5fd;
+    --rover-box-fill: rgb(147 197 253 / 0.12);
   }
 }
 
@@ -75,6 +79,8 @@
   --rover-popup-fg: #e5e7eb;
   --rover-popup-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.5);
   --rover-tail-shadow: rgb(0 0 0 / 0.25);
+  --rover-box-border: #93c5fd;
+  --rover-box-fill: rgb(147 197 253 / 0.12);
 }
 
 /* --- the container -------------------------------------------------------- */
@@ -99,6 +105,29 @@
 .rover-map__canvas--drawing,
 .rover-map__canvas--drawing .ol-viewport {
   cursor: crosshair !important;
+}
+
+/* Moving shapes and the Space hand (`pan_key`). The same `!important` as
+   above, for the same reason. The closed hand while the button is down is
+   `:active`, which needs no help from the client. */
+.rover-map__canvas--translating,
+.rover-map__canvas--translating .ol-viewport,
+.rover-map__canvas--panning:active,
+.rover-map__canvas--panning:active .ol-viewport {
+  cursor: grabbing !important;
+}
+
+.rover-map__canvas--panning,
+.rover-map__canvas--panning .ol-viewport {
+  cursor: grab !important;
+}
+
+/* The selection rectangle of `on_box_select`. OpenLayers positions the element;
+   only its look is ours. */
+.rover-map__box {
+  border: 1px solid var(--rover-box-border);
+  background: var(--rover-box-fill);
+  border-radius: 2px;
 }
 
 /* The map takes focus so its arrow keys work, so it has to show that it has it.

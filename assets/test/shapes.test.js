@@ -199,6 +199,124 @@ describe("ShapeLayer.reconcile", () => {
     assert.equal(layer.extent, null)
   })
 
+  describe("isTranslatable and translateGroup", () => {
+    const collection = (id, extra = {}) => ({
+      id,
+      rev: 1,
+      ...extra,
+      geometry: {
+        type: "FeatureCollection",
+        features: [
+          { type: "Feature", properties: {}, geometry: polygon() },
+          { type: "Feature", properties: {}, geometry: polygon(4.9) },
+        ],
+      },
+    })
+
+    it("is true only for a single-feature shape marked translatable", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([
+        shape(1, { translatable: true }),
+        shape(2),
+        collection("many", { translatable: true }),
+      ])
+
+      assert.equal(layer.isTranslatable(features(layer, 1)[0]), true)
+      assert.equal(layer.isTranslatable(features(layer, 2)[0]), false)
+      features(layer, "many").forEach((feature) => assert.equal(layer.isTranslatable(feature), false))
+    })
+
+    it("moves a shape with no group on its own", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([shape(1, { translatable: true }), shape(2, { translatable: true })])
+
+      assert.deepEqual(layer.translateGroup(features(layer, 1)[0]), [features(layer, 1)[0]])
+    })
+
+    it("moves every translatable member of the group, and nothing else", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([
+        shape(1, { translatable: true, translate_group: "sel" }),
+        shape(2, { translatable: true, translate_group: "sel" }),
+        // Same group, but not translatable: the cadastral outline under the
+        // selection must stay where it is.
+        shape(3, { translate_group: "sel" }),
+        shape(4, { translatable: true, translate_group: "other" }),
+        shape(5, { translatable: true }),
+        collection("many", { translatable: true, translate_group: "sel" }),
+      ])
+
+      const moved = layer.translateGroup(features(layer, 2)[0])
+      assert.deepEqual(moved, [features(layer, 1)[0], features(layer, 2)[0]])
+    })
+
+    it("compares groups as strings", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([
+        shape(1, { translatable: true, translate_group: 7 }),
+        shape(2, { translatable: true, translate_group: "7" }),
+      ])
+
+      assert.equal(layer.translateGroup(features(layer, 1)[0]).length, 2)
+    })
+
+    it("tells a feature still drawn from one a server render replaced", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([shape(1, { translatable: true }), shape(2, { translatable: true })])
+      const held = features(layer, 1)[0]
+      const dropped = features(layer, 2)[0]
+
+      // A new rev rebuilds shape 1; shape 2 is removed.
+      layer.reconcile([shape(1, { translatable: true, rev: 2 })])
+
+      assert.equal(layer.isCurrent(held), false)
+      assert.equal(layer.isCurrent(dropped), false)
+      assert.equal(layer.isCurrent(features(layer, 1)[0]), true)
+    })
+
+    it("leaves a shape with no geometry out of the group", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([
+        shape(1, { translatable: true, translate_group: "g" }),
+        shape(2, { translatable: true, translate_group: "g", geometry: { type: "Feature", properties: {}, geometry: null } }),
+      ])
+
+      assert.equal(layer.isTranslatable(features(layer, 2)[0]), false)
+      assert.deepEqual(layer.translateGroup(features(layer, 1)[0]), [features(layer, 1)[0]])
+    })
+
+    it("knows whether anything on the layer can move", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([shape(1)])
+      assert.equal(layer.hasTranslatable(), false)
+
+      layer.reconcile([shape(1), shape(2, { translatable: true })])
+      assert.equal(layer.hasTranslatable(), true)
+    })
+
+    it("is empty for a shape that cannot move", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([shape(1, { translate_group: "sel" })])
+
+      assert.deepEqual(layer.translateGroup(features(layer, 1)[0]), [])
+    })
+
+    it("re-applies the server geometry after a move, even under the same rev", () => {
+      const layer = new ShapeLayer()
+      layer.reconcile([shape(1, { translatable: true }), shape(2, { translatable: true })])
+
+      const moved = features(layer, 1)[0]
+      const untouched = features(layer, 2)[0]
+      moved.getGeometry().translate(1000, 1000)
+      layer.forgetRev(moved)
+
+      layer.reconcile([shape(1, { translatable: true }), shape(2, { translatable: true })])
+
+      assert.notEqual(features(layer, 1)[0], moved, "the moved shape was left where it was dragged")
+      assert.equal(features(layer, 2)[0], untouched, "an unrelated shape was rebuilt")
+    })
+  })
+
   describe("isEditable", () => {
     it("is true for a single-feature shape marked editable", () => {
       const layer = new ShapeLayer()

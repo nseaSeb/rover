@@ -142,6 +142,71 @@ export class ShapeLayer {
   }
 
   /**
+   * Whether a rendered feature may be dragged as a whole — `:translatable`, and
+   * the same single-feature rule as `isEditable`, for the same reason: a move is
+   * reported back as one `:geometry`.
+   */
+  isTranslatable(feature) {
+    const shape = this.shapeFor(feature)
+    // A feature with no geometry has nothing to move and nothing to report.
+    if (!shape || !shape.translatable || !feature.getGeometry()) return false
+
+    const entry = this.entries.get(String(shape.id))
+    return Boolean(entry && entry.features.length === 1)
+  }
+
+  /**
+   * The features that move when this one is dragged: every translatable shape
+   * of its `translate_group`, or the feature alone when it has none. Empty when
+   * the feature is not translatable at all.
+   *
+   * Compared as strings: the server already sends the group as one, and a
+   * caller feeding `reconcile` by hand with `7` and `"7"` means the same group.
+   */
+  translateGroup(feature) {
+    if (!this.isTranslatable(feature)) return []
+
+    const group = this.shapeFor(feature).translate_group
+    if (group === undefined || group === null) return [feature]
+
+    const key = String(group)
+    const members = []
+
+    for (const entry of this.entries.values()) {
+      const shape = entry.shape
+      if (!shape.translatable || entry.features.length !== 1) continue
+      if (!entry.features[0].getGeometry()) continue
+      if (shape.translate_group === undefined || shape.translate_group === null) continue
+      if (String(shape.translate_group) === key) members.push(entry.features[0])
+    }
+
+    return members
+  }
+
+  /** Is any shape on the layer marked translatable at all? */
+  hasTranslatable() {
+    for (const entry of this.entries.values()) {
+      if (entry.shape.translatable) return true
+    }
+
+    return false
+  }
+
+  /**
+   * Is this feature still the one drawn for its shape?
+   *
+   * A server render that changes a shape's rev, or removes it, replaces or
+   * drops its features. A gesture that took hold of the old one before that
+   * must not report it: its geometry is the previous revision plus the drag,
+   * and reporting it would overwrite what the server has just said.
+   */
+  isCurrent(feature) {
+    const shape = this.shapeFor(feature)
+    const entry = shape && this.entries.get(String(shape.id))
+    return Boolean(entry && entry.features.includes(feature))
+  }
+
+  /**
    * Drop the cached revision for a feature the client edited on its own.
    *
    * Mirrors `MarkerLayer.forgetGeometry`, but for the rev a shape is diffed by

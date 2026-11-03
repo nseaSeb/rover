@@ -50,6 +50,20 @@ defmodule Rover.Shape do
   | `:rev` | term | Revision. See below. |
   | `:data` | map | Echoed back verbatim in shape events. |
   | `:editable` | boolean | Lets the user drag its vertices — see `on_shape_edit_end`. Only for a shape backed by a single feature; a `FeatureCollection` of several is not editable. |
+  | `:translatable` | boolean | Lets the user drag the whole shape — see `on_shape_translate_end`. Same single-feature rule as `:editable`. |
+  | `:translate_group` | term | Shapes that share it move together: dragging one drags every `:translatable` shape of the group. Compared by its string form, so `:a` and `"a"` are the same group; `nil` and `false` mean no group. |
+
+  ## Editable, translatable, or both
+
+  A shape that is both `:editable` and `:translatable` splits the gesture by where
+  the pointer goes down: on a vertex it reshapes, anywhere else on the shape —
+  an edge included — it moves. A shape that is only `:editable` keeps the whole
+  outline for reshaping, as before.
+
+  Moving a shape does not depend on the map's `interactions`: a `:translatable`
+  shape wins the drag over `:drag_pan` exactly as a `draggable` marker does. To
+  make a shape stay put, do not mark it translatable. The one gesture that beats
+  it is the temporary hand of `pan_key`.
 
   ## Why there is a `:rev`
 
@@ -81,7 +95,9 @@ defmodule Rover.Shape do
           tooltip: String.t() | nil,
           rev: term(),
           data: map() | nil,
-          editable: boolean()
+          editable: boolean(),
+          translatable: boolean(),
+          translate_group: String.t() | nil
         }
 
   @enforce_keys [:id, :geometry]
@@ -96,7 +112,9 @@ defmodule Rover.Shape do
     :tooltip,
     :rev,
     :data,
-    editable: false
+    :translate_group,
+    editable: false,
+    translatable: false
   ]
 
   @default_mapping [
@@ -110,7 +128,9 @@ defmodule Rover.Shape do
     tooltip: [:tooltip, "tooltip"],
     rev: [:rev, "rev"],
     data: [:data, "data"],
-    editable: [:editable, "editable"]
+    editable: [:editable, "editable"],
+    translatable: [:translatable, "translatable"],
+    translate_group: [:translate_group, "translate_group", "translateGroup"]
   ]
 
   @geometry_types ~w(
@@ -139,7 +159,13 @@ defmodule Rover.Shape do
 
   def new!(%__MODULE__{} = shape, _opts) do
     geometry = validate_geometry!(shape.geometry, shape)
-    %{shape | geometry: geometry, rev: shape.rev || default_rev(geometry)}
+
+    %{
+      shape
+      | geometry: geometry,
+        rev: shape.rev || default_rev(geometry),
+        translate_group: group_key(shape.translate_group)
+    }
   end
 
   def new!(source, opts) when is_map(source) do
@@ -162,7 +188,9 @@ defmodule Rover.Shape do
       tooltip: source |> extract(:tooltip, opts) |> to_string_or_nil(),
       rev: extract(source, :rev, opts) || default_rev(geometry),
       data: extract(source, :data, opts),
-      editable: extract(source, :editable, opts) == true
+      editable: extract(source, :editable, opts) == true,
+      translatable: extract(source, :translatable, opts) == true,
+      translate_group: source |> extract(:translate_group, opts) |> group_key()
     }
   end
 
@@ -208,6 +236,7 @@ defmodule Rover.Shape do
     |> Map.from_struct()
     |> Enum.reject(fn
       {:editable, false} -> true
+      {:translatable, false} -> true
       {_key, value} -> is_nil(value)
     end)
     |> Map.new()
@@ -265,6 +294,18 @@ defmodule Rover.Shape do
   defp walk(_other), do: []
 
   defp default_rev(geometry), do: :erlang.phash2(geometry)
+
+  # The group travels as JSON and is compared with `===` in the browser, so it
+  # has to become a string here: a tuple or a ref would not even encode.
+  # Lists go through `inspect`, not `to_string`: `List.to_string([:a])` raises,
+  # and `[?a, ?b]` would otherwise join the group `"ab"`.
+  defp group_key(nil), do: nil
+  # `translate_group: selected? && :selection` — false means no group, not a
+  # group called "false" that every unselected shape would share.
+  defp group_key(false), do: nil
+  defp group_key(group) when is_binary(group), do: group
+  defp group_key(group) when is_atom(group) or is_number(group), do: to_string(group)
+  defp group_key(group), do: inspect(group)
 
   defp validate_geometry!(geometry, source) when is_binary(geometry) do
     geometry |> decode!(source) |> validate_geometry!(source)
