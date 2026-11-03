@@ -58,6 +58,13 @@ export class Popups {
     // a group, which claims the click and would otherwise leave the popup anchored
     // to a marker the view has just moved away from.
     roverMap.observe("clusterClick", () => this.close())
+    // A popup anchored where a shape was clicked would point at empty ground
+    // once the shape is dragged away.
+    roverMap.observe("shapeTranslateStart", ({ ids }) => {
+      if (this.current?.kind === "shape" && ids.some((id) => String(id) === this.current.id)) {
+        this.close()
+      }
+    })
     roverMap.observe("mapClick", () => this.close())
     // Geometry from a `shape_source` opens nothing — there is no popup for a
     // feature the server has never seen — but a click on it is still a click on

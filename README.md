@@ -274,6 +274,88 @@ Four things worth knowing:
 A map rendered with `interactive={false}` refuses to arm, and locking one that
 is already drawing cancels the mode outright rather than remembering it.
 
+### Selecting and moving shapes like a vector editor
+
+Three gestures turn a map into a small vector editor, for a page where the user
+lays out shapes — beds on a parcel, stands on a floor plan — and moves them
+around:
+
+- **`on_box_select`** — with `:drag_pan` left out of `interactions`, a drag on
+  the background draws a selection rectangle. You receive every shape and
+  marker it touched, plus the modifier keys; Rover keeps no selection state, so
+  what Shift or Ctrl means is your call. `"ids"` is *every* shape of `shapes`
+  the rectangle touched, scenery included — filter it on your side. On a touch
+  screen one finger draws the rectangle and two fingers pan the map.
+- **`:translatable`** on a shape lets the user drag it whole, and a shared
+  **`:translate_group`** moves every translatable shape of the group together —
+  which is what a multi-selection is. `on_shape_translate_end` reports all of
+  them. Moving a shape does not depend on `interactions`: a translatable shape
+  wins the drag over `:drag_pan`, as a draggable marker does.
+- **`pan_key={:space}`** gives a temporary hand: hold Space and drag to pan,
+  whatever `interactions` says.
+
+A shape that is both `:editable` and `:translatable` reshapes from a vertex and
+moves from anywhere else on it.
+
+```heex
+<.map
+  id="parcel"
+  tiles={:ign_plan}
+  interactions={[:double_click_zoom, :pinch_zoom, :keyboard_pan, :keyboard_zoom, :mouse_wheel_zoom]}
+  shapes={@planks}
+  on_shape_click="plank_clicked"
+  on_box_select="planks_boxed"
+  on_shape_translate_end="planks_moved"
+  pan_key={:space}
+/>
+```
+
+```elixir
+def handle_event("planks_boxed", %{"ids" => ids, "modifiers" => modifiers}, socket) do
+  # Shift on a Mac, Ctrl on Windows and Linux.
+  add? = modifiers["shift"] or modifiers["ctrl"]
+  # Everything the rectangle touched, cadastral outline included: keep the planks.
+  ids = ids |> Enum.filter(&plank_id?/1) |> MapSet.new()
+  selected = if add?, do: MapSet.union(socket.assigns.selected, ids), else: ids
+
+  {:noreply, socket |> assign(selected: selected) |> assign_planks()}
+end
+
+def handle_event("plank_clicked", %{"id" => id}, socket) do
+  {:noreply, socket |> assign(selected: MapSet.new([id])) |> assign_planks()}
+end
+
+# Geometries are keyed by id *as a string*: JSON object keys can be nothing else.
+def handle_event("planks_moved", %{"geometries" => geometries}, socket) do
+  Enum.each(geometries, fn {id, geometry} -> Planks.move!(id, geometry) end)
+  {:noreply, assign_planks(socket)}
+end
+
+defp assign_planks(socket) do
+  selected = socket.assigns.selected
+
+  planks =
+    for plank <- Planks.list(socket.assigns.parcel_id) do
+      selected? = plank.id in selected
+
+      %{
+        id: plank.id,
+        geometry: plank.geojson,
+        rev: plank.updated_at,
+        color: if(selected?, do: "#2563eb", else: "#16a34a"),
+        translatable: selected?,
+        translate_group: if(selected?, do: :selection),
+        data: %{name: plank.name}
+      }
+    end
+
+  assign(socket, planks: planks)
+end
+```
+
+The server stays the source of truth: what the user dragged is a sketch until
+your next render, which replaces it — whatever `:rev` it carries.
+
 ### Geometry the browser fetches for itself
 
 `shapes` puts geometry in an HTML attribute, which is a single dynamic slot:

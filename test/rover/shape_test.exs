@@ -37,6 +37,40 @@ defmodule Rover.ShapeTest do
       assert Shape.new!(%{id: 1, geometry: @polygon, editable: true}).editable == true
     end
 
+    test "translatable defaults to false and passes through only when true" do
+      assert Shape.new!(%{id: 1, geometry: @polygon}).translatable == false
+      assert Shape.new!(%{id: 1, geometry: @polygon, translatable: true}).translatable == true
+      assert Shape.new!(%{id: 1, geometry: @polygon, translatable: "yes"}).translatable == false
+      assert Shape.new!(%{"id" => 1, "geometry" => @polygon, "translatable" => true}).translatable
+    end
+
+    test "translate_group becomes a string, whatever term it was" do
+      group = fn value ->
+        Shape.new!(%{id: 1, geometry: @polygon, translate_group: value}).translate_group
+      end
+
+      assert group.(nil) == nil
+      assert group.(false) == nil
+      assert group.("plot-7") == "plot-7"
+      assert group.(:selection) == "selection"
+      assert group.(42) == "42"
+      assert group.({:plot, 7}) == "{:plot, 7}"
+      assert group.([:a]) == "[:a]"
+      assert group.(~c"ab") != group.("ab")
+      assert group.(:a) == group.("a")
+    end
+
+    test "translate_group is normalised on a struct too, so it always encodes" do
+      shape = Shape.new!(%Shape{id: 1, geometry: @polygon, translate_group: {:plot, 7}})
+      assert shape.translate_group == "{:plot, 7}"
+      assert shape |> Shape.dump() |> Jason.encode!() =~ ~s("translate_group":"{:plot, 7}")
+    end
+
+    test "translate_group accepts the camelCase key" do
+      assert Shape.new!(%{"id" => 1, "geometry" => @polygon, "translateGroup" => "g"}).translate_group ==
+               "g"
+    end
+
     test "recognises :geom and :geojson as geometry fields" do
       assert Shape.new!(%{id: 1, geom: @polygon}).geometry == @polygon
       assert Shape.new!(%{id: 1, geojson: @polygon}).geometry == @polygon
@@ -177,6 +211,19 @@ defmodule Rover.ShapeTest do
       assert Shape.new!(%{id: 1, geometry: @polygon, editable: true})
              |> Shape.dump()
              |> Map.fetch!(:editable)
+    end
+
+    test "keeps translatable only when true, and the group only when set" do
+      dumped = Shape.new!(%{id: 1, geometry: @polygon}) |> Shape.dump()
+      refute Map.has_key?(dumped, :translatable)
+      refute Map.has_key?(dumped, :translate_group)
+
+      dumped =
+        Shape.new!(%{id: 1, geometry: @polygon, translatable: true, translate_group: :g})
+        |> Shape.dump()
+
+      assert dumped.translatable == true
+      assert dumped.translate_group == "g"
     end
   end
 

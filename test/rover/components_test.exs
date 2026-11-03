@@ -595,6 +595,24 @@ defmodule Rover.ComponentsTest do
     end
   end
 
+  describe "pan_key" do
+    test "is absent by default" do
+      refute Map.has_key?(config(render_map([])), "panKey")
+    end
+
+    test "sends :space to the client" do
+      assert config(render_map(pan_key: :space))["panKey"] == "space"
+    end
+
+    test "rejects anything but :space" do
+      for key <- [:ctrl, "space", true] do
+        assert_raise ArgumentError, ~r/expected `pan_key` to be nil or :space/, fn ->
+          render_map(pan_key: key)
+        end
+      end
+    end
+  end
+
   describe "events" do
     test "are absent unless requested" do
       assert config(render_map([]))["events"] == %{}
@@ -617,6 +635,17 @@ defmodule Rover.ComponentsTest do
                "moveEnd" => "moved",
                "markerDragEnd" => "dragged"
              }
+    end
+
+    test "carry the vector-editor gestures only when asked for" do
+      events =
+        config(render_map(on_box_select: "boxed", on_shape_translate_end: "moved"))["events"]
+
+      assert events == %{"boxSelect" => "boxed", "shapeTranslateEnd" => "moved"}
+
+      events = config(render_map([]))["events"]
+      refute Map.has_key?(events, "boxSelect")
+      refute Map.has_key?(events, "shapeTranslateEnd")
     end
 
     test "route to a live component when given a target" do
@@ -724,6 +753,28 @@ defmodule Rover.ComponentsTest do
         shapes(render_map(shapes: [%{id: "p", geometry: @polygon, editable: true}]))
 
       assert shape["editable"] == true
+    end
+
+    test "carry :translatable and :translate_group only when set" do
+      polygon = %{
+        "type" => "Polygon",
+        "coordinates" => [[[4.83, 45.76], [4.84, 45.76], [4.84, 45.77], [4.83, 45.76]]]
+      }
+
+      [moving, still] =
+        shapes(
+          render_map(
+            shapes: [
+              %{id: 1, geometry: polygon, translatable: true, translate_group: {:plot, 7}},
+              %{id: 2, geometry: polygon}
+            ]
+          )
+        )
+
+      assert moving["translatable"] == true
+      assert moving["translate_group"] == "{:plot, 7}"
+      refute Map.has_key?(still, "translatable")
+      refute Map.has_key?(still, "translate_group")
     end
 
     test "an on_shape_edit_end handler reaches the client" do

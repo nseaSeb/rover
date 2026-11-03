@@ -6001,6 +6001,11 @@ var Popups = class {
       ({ id, lat, lon }) => this.open("shape", id, project(lat, lon))
     );
     roverMap.observe("clusterClick", () => this.close());
+    roverMap.observe("shapeTranslateStart", ({ ids }) => {
+      if (this.current?.kind === "shape" && ids.some((id) => String(id) === this.current.id)) {
+        this.close();
+      }
+    });
     roverMap.observe("mapClick", () => this.close());
     roverMap.observe("sourceShapeClick", () => this.close());
     this.onPostrender = () => this.position();
@@ -9122,11 +9127,11 @@ function inflateEnds(flatCoordinates, ends) {
   let startOrientation;
   for (let i = 0, ii = ends.length; i < ii; ++i) {
     const end = ends[i];
-    const orientation = linearRingIsClockwise(flatCoordinates, offset, end, 2);
+    const orientation2 = linearRingIsClockwise(flatCoordinates, offset, end, 2);
     if (startOrientation === void 0) {
-      startOrientation = orientation;
+      startOrientation = orientation2;
     }
-    if (orientation === startOrientation) {
+    if (orientation2 === startOrientation) {
       endss.push(ends.slice(prevEndIndex, i + 1));
     } else {
       if (endss.length === 0) {
@@ -37906,6 +37911,252 @@ function pendingStyle() {
   });
 }
 
+// js/gestures.js
+var BOX_MIN_PIXELS = 4;
+function isTextEntry(target) {
+  if (!target || !target.tagName) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
+function boxSelectArmed(config, gestures, wants) {
+  if (!config || config.interactive === false) return false;
+  if (gestures.includes("dragPan")) return false;
+  return Boolean(wants("boxSelect"));
+}
+function boxBigEnough(startPixel, endPixel) {
+  return Math.max(
+    Math.abs(endPixel[0] - startPixel[0]),
+    Math.abs(endPixel[1] - startPixel[1])
+  ) >= BOX_MIN_PIXELS;
+}
+function boxModifiers(start, end) {
+  const held = (key) => Boolean(start && start[key] || end && end[key]);
+  return {
+    shift: held("shiftKey"),
+    ctrl: held("ctrlKey"),
+    alt: held("altKey"),
+    meta: held("metaKey")
+  };
+}
+function panKeyArmed(config) {
+  return Boolean(config) && config.interactive !== false && config.panKey === "space";
+}
+function intersectsPolygon(geometry, ring) {
+  if (!geometry || !ring || ring.length < 4) return false;
+  const type = geometry.getType();
+  if (type === "GeometryCollection") {
+    return geometry.getGeometries().some((member) => intersectsPolygon(member, ring));
+  }
+  if (!extentsOverlap(geometry.getExtent(), ringExtent(ring))) return false;
+  const paths = pathsOf(geometry);
+  for (const path of paths) {
+    for (const coordinate of path) {
+      if (insideRing(coordinate, ring)) return true;
+    }
+  }
+  if (type === "Polygon" || type === "MultiPolygon") {
+    for (const corner of ring) {
+      if (geometry.intersectsCoordinate(corner)) return true;
+    }
+  }
+  for (const path of paths) {
+    for (let i = 1; i < path.length; i++) {
+      for (let j = 1; j < ring.length; j++) {
+        if (segmentsCross(path[i - 1], path[i], ring[j - 1], ring[j])) return true;
+      }
+    }
+  }
+  return false;
+}
+function pathsOf(geometry) {
+  const coordinates2 = geometry.getCoordinates();
+  switch (geometry.getType()) {
+    case "Point":
+      return [[coordinates2]];
+    case "MultiPoint":
+      return coordinates2.map((coordinate) => [coordinate]);
+    case "LineString":
+      return [coordinates2];
+    case "MultiLineString":
+    case "Polygon":
+      return coordinates2;
+    case "MultiPolygon":
+      return coordinates2.flat(1);
+    default:
+      return [];
+  }
+}
+function ringExtent(ring) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  return [minX, minY, maxX, maxY];
+}
+function extentsOverlap(a, b) {
+  return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+}
+function insideRing([x, y], ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+function orientation(a, b, c) {
+  const value = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  return value > 0 ? 1 : value < 0 ? -1 : 0;
+}
+function onSegment(a, b, c) {
+  return Math.min(a[0], b[0]) <= c[0] && c[0] <= Math.max(a[0], b[0]) && Math.min(a[1], b[1]) <= c[1] && c[1] <= Math.max(a[1], b[1]);
+}
+function segmentsCross(p12, p22, q1, q2) {
+  const o1 = orientation(p12, p22, q1);
+  const o2 = orientation(p12, p22, q2);
+  const o3 = orientation(q1, q2, p12);
+  const o4 = orientation(q1, q2, p22);
+  if (o1 !== o2 && o3 !== o4) return true;
+  return o1 === 0 && onSegment(p12, p22, q1) || o2 === 0 && onSegment(p12, p22, q2) || o3 === 0 && onSegment(q1, q2, p12) || o4 === 0 && onSegment(q1, q2, p22);
+}
+function panKeyClaims(event, { canvas, hovered, body }) {
+  if (!event || event.code !== "Space" && event.key !== " ") return false;
+  if (event.ctrlKey || event.altKey || event.metaKey) return false;
+  const target = event.target;
+  if (isTextEntry(target)) return false;
+  if (target === canvas) return true;
+  return Boolean(hovered) && target === body;
+}
+var PanKey = class {
+  constructor(onChange) {
+    this.held = false;
+    this.onChange = onChange || (() => {
+    });
+  }
+  /**
+   * Returns true when the map took the key. The browser default — scrolling the
+   * page — is prevented for repeats too, or holding Space scrolls in bursts.
+   */
+  keydown(event, context) {
+    if (!context.armed || !panKeyClaims(event, context)) return false;
+    event.preventDefault();
+    this.set(true);
+    return true;
+  }
+  keyup(event) {
+    if (!this.held) return false;
+    if (event.code !== "Space" && event.key !== " ") return false;
+    this.set(false);
+    return true;
+  }
+  /** The window lost focus, the page was hidden, or the map is going away. */
+  reset() {
+    this.set(false);
+  }
+  set(held) {
+    if (this.held === held) return;
+    this.held = held;
+    this.onChange(held);
+  }
+};
+var SelectionBox = class extends DragBox_default {
+  handleDragEvent(mapBrowserEvent) {
+    if (this.targetPointers.length > 1) {
+      this.setActive(false);
+      this.setActive(true);
+      return;
+    }
+    super.handleDragEvent(mapBrowserEvent);
+  }
+};
+var ShapeTranslate = class extends Pointer_default {
+  constructor({ hit, group, enabled, onStart, onFinish, onMove, onEnd }) {
+    super();
+    this.hit = hit;
+    this.group = group;
+    this.enabled = enabled || (() => true);
+    this.onStart = onStart || (() => {
+    });
+    this.onFinish = onFinish || (() => {
+    });
+    this.onMove = onMove || (() => {
+    });
+    this.onEnd = onEnd || (() => {
+    });
+    this.features = null;
+  }
+  handleDownEvent(event) {
+    if (!this.enabled() || this.targetPointers.length > 1 || !primaryAction(event)) return false;
+    if (this.features) return false;
+    const feature = this.hit(event.pixel);
+    if (!feature) return false;
+    this.features = this.group(feature);
+    if (this.features.length === 0) {
+      this.features = null;
+      return false;
+    }
+    this.from = event.coordinate;
+    this.last = event.coordinate;
+    this.startPixel = event.pixel;
+    this.moved = false;
+    this.onStart();
+    return true;
+  }
+  handleEvent(event) {
+    if (this.features && event.type === "pointerdown") this.abandon();
+    return super.handleEvent(event);
+  }
+  handleDragEvent(event) {
+    if (!this.features) return;
+    if (!this.moved && !boxBigEnough(this.startPixel, event.pixel)) return;
+    const dx = event.coordinate[0] - this.last[0];
+    const dy = event.coordinate[1] - this.last[1];
+    if (dx === 0 && dy === 0) return;
+    this.shift(this.features, dx, dy);
+    this.last = event.coordinate;
+    if (!this.moved) this.onMove(this.features);
+    this.moved = true;
+  }
+  shift(features, dx, dy) {
+    features.forEach((feature) => {
+      const geometry = feature.getGeometry();
+      if (geometry) geometry.translate(dx, dy);
+    });
+  }
+  handleUpEvent(event) {
+    if (!this.features) return false;
+    const features = this.features;
+    const moved = this.moved;
+    const from = this.from;
+    const to = this.last;
+    this.features = null;
+    this.onFinish();
+    if (moved) this.onEnd({ features, from, to, event });
+    return false;
+  }
+  setMap(map) {
+    this.abandon();
+    super.setMap(map);
+  }
+  /** Put the shapes back where the press found them, and report nothing. */
+  abandon() {
+    if (!this.features) return;
+    if (this.moved) {
+      this.shift(this.features, this.from[0] - this.last[0], this.from[1] - this.last[1]);
+    }
+    this.features = null;
+    this.onFinish();
+  }
+};
+
 // node_modules/ol/vec/mat4.js
 function create2() {
   return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -65395,6 +65646,60 @@ var ShapeLayer = class {
     return Boolean(entry && entry.features.length === 1);
   }
   /**
+   * Whether a rendered feature may be dragged as a whole — `:translatable`, and
+   * the same single-feature rule as `isEditable`, for the same reason: a move is
+   * reported back as one `:geometry`.
+   */
+  isTranslatable(feature) {
+    const shape = this.shapeFor(feature);
+    if (!shape || !shape.translatable || !feature.getGeometry()) return false;
+    const entry = this.entries.get(String(shape.id));
+    return Boolean(entry && entry.features.length === 1);
+  }
+  /**
+   * The features that move when this one is dragged: every translatable shape
+   * of its `translate_group`, or the feature alone when it has none. Empty when
+   * the feature is not translatable at all.
+   *
+   * Compared as strings: the server already sends the group as one, and a
+   * caller feeding `reconcile` by hand with `7` and `"7"` means the same group.
+   */
+  translateGroup(feature) {
+    if (!this.isTranslatable(feature)) return [];
+    const group = this.shapeFor(feature).translate_group;
+    if (group === void 0 || group === null) return [feature];
+    const key = String(group);
+    const members = [];
+    for (const entry of this.entries.values()) {
+      const shape = entry.shape;
+      if (!shape.translatable || entry.features.length !== 1) continue;
+      if (!entry.features[0].getGeometry()) continue;
+      if (shape.translate_group === void 0 || shape.translate_group === null) continue;
+      if (String(shape.translate_group) === key) members.push(entry.features[0]);
+    }
+    return members;
+  }
+  /** Is any shape on the layer marked translatable at all? */
+  hasTranslatable() {
+    for (const entry of this.entries.values()) {
+      if (entry.shape.translatable) return true;
+    }
+    return false;
+  }
+  /**
+   * Is this feature still the one drawn for its shape?
+   *
+   * A server render that changes a shape's rev, or removes it, replaces or
+   * drops its features. A gesture that took hold of the old one before that
+   * must not report it: its geometry is the previous revision plus the drag,
+   * and reporting it would overwrite what the server has just said.
+   */
+  isCurrent(feature) {
+    const shape = this.shapeFor(feature);
+    const entry = shape && this.entries.get(String(shape.id));
+    return Boolean(entry && entry.features.includes(feature));
+  }
+  /**
    * Drop the cached revision for a feature the client edited on its own.
    *
    * Mirrors `MarkerLayer.forgetGeometry`, but for the rev a shape is diffed by
@@ -65655,6 +65960,10 @@ var RoverMap = class {
     this.listeners = {};
     this.observers = {};
     this.drawing = null;
+    this.panKey = new PanKey(
+      (held) => this.element.classList.toggle("rover-map__canvas--panning", held)
+    );
+    this.hovered = false;
     this.markerLayer = new MarkerLayer();
     this.shapeLayer = new ShapeLayer();
     this.overlayLayers = new OverlayLayers();
@@ -65696,9 +66005,9 @@ var RoverMap = class {
     this.markerLayer.setClustering(this.config.cluster);
     this.applyAccessibility(this.config);
     this.setupTooltip();
-    this.setupEditing();
-    this.setupDragging();
+    this.setupGestures();
     this.setupEvents();
+    this.setupPanKey();
     this.observeResize();
   }
   // -- updates from the server ---------------------------------------------
@@ -65761,7 +66070,7 @@ var RoverMap = class {
     if (changed(previous.controls, next.controls) || previous.interactive !== next.interactive) {
       this.applyControls(next);
     }
-    if (previous.interactive !== next.interactive || changed(previous.interactions, next.interactions)) {
+    if (previous.interactive !== next.interactive || changed(previous.interactions, next.interactions) || this.boxArmed(previous) !== this.boxArmed(next) || previous.panKey !== next.panKey) {
       this.applyInteractions(next);
     }
     if (previous.interactive !== next.interactive || previous.label !== next.label) {
@@ -65911,9 +66220,13 @@ var RoverMap = class {
     buildInteractions(config).forEach((interaction) => interactions.push(interaction));
     if (this.modify) this.modify.dispose();
     this.modify = null;
-    this.setupEditing();
     this.translate = null;
-    this.setupDragging();
+    this.shapeTranslate = null;
+    this.selectionBox = null;
+    this.twoFingerPan = null;
+    this.spacePan = null;
+    this.setupGestures();
+    if (!panKeyArmed(config)) this.panKey.reset();
     const type = this.drawing && this.drawing.type;
     this.stopDrawing();
     if (type && config.interactive !== false) this.armDrawing(type);
@@ -65947,9 +66260,9 @@ var RoverMap = class {
       });
       this.emit("drawEnd", { type: geometry.type, geometry });
     });
-    this.map.addInteraction(this.draw);
+    this.addBelowHand(this.draw);
     this.snap = new Snap_default({ source: this.shapeLayer.source, pixelTolerance: HIT_TOLERANCE });
-    this.map.addInteraction(this.snap);
+    this.addBelowHand(this.snap);
     this.onDrawKeydown = (event) => {
       if (event.key !== "Escape" || !this.draw) return;
       if (isTextEntry(event.target)) return;
@@ -65957,6 +66270,22 @@ var RoverMap = class {
     };
     document.addEventListener("keydown", this.onDrawKeydown);
     this.element.classList.add("rover-map__canvas--drawing");
+  }
+  /**
+   * Add an interaction on top of the stack but under the Space hand, which
+   * must keep the last word: a press meant to pan must not also put down a
+   * vertex. Inserted rather than re-adding the hand above, which cannot be
+   * done mid-drag — removing a DragPan then skips its pointerup, and the view
+   * stays flagged as interacting.
+   */
+  addBelowHand(interaction) {
+    const interactions = this.map.getInteractions();
+    const at = this.spacePan ? interactions.getArray().indexOf(this.spacePan) : -1;
+    if (at >= 0) {
+      interactions.insertAt(at, interaction);
+    } else {
+      interactions.push(interaction);
+    }
   }
   /** Disarm, from `Rover.stop_drawing/2` — and discard the sketch with the mode. */
   stopDrawing() {
@@ -66020,6 +66349,165 @@ var RoverMap = class {
     this.tooltipEl.hidden = true;
     this.tooltip.setPosition(void 0);
   }
+  /**
+   * Every pointer gesture Rover adds on top of `interactions`, in the order
+   * that settles who wins a press. OpenLayers offers an event to the most
+   * recently added interaction first, and one that claims the press keeps it
+   * from the rest. So, from the last word to the first:
+   *
+   * 1. the Space hand — it beats everything while Space is held;
+   * 2. dragging a `draggable` marker;
+   * 3. reshaping an `editable` shape by a vertex;
+   * 4. moving a `translatable` shape;
+   * 5. the selection rectangle on the background;
+   * 6. the configured gestures (`interactions`).
+   *
+   * Draw and Snap, when a drawing is armed, are added after all of these and
+   * sit just under the Space hand — see `armDrawing`.
+   */
+  setupGestures() {
+    this.setupSelection();
+    this.setupShapeTranslate();
+    this.setupEditing();
+    this.setupDragging();
+    this.setupSpacePan();
+  }
+  /** Would `config` arm the selection rectangle on this map? */
+  boxArmed(config) {
+    return boxSelectArmed(
+      config,
+      gesturesFor(config),
+      (name) => wantsEvent(config, this.listeners, name)
+    );
+  }
+  setupSelection() {
+    if (!this.boxArmed(this.config)) return;
+    const twoFingerPan = new DragPan_default({
+      condition: () => twoFingerPan.targetPointers.length > 1
+    });
+    this.twoFingerPan = twoFingerPan;
+    this.map.addInteraction(twoFingerPan);
+    this.selectionBox = new SelectionBox({
+      className: "rover-map__box",
+      condition: (event) => primaryAction(event) && !this.drawing && !this.panKey.held,
+      boxEndCondition: (_event, startPixel, endPixel) => boxBigEnough(startPixel, endPixel)
+    });
+    this.selectionBox.on("boxstart", (event) => {
+      this.boxStartKeys = event.mapBrowserEvent?.originalEvent || null;
+    });
+    this.selectionBox.on("boxend", (event) => this.emitBoxSelect(event));
+    this.map.addInteraction(this.selectionBox);
+  }
+  emitBoxSelect(event) {
+    const polygon = this.selectionBox.getGeometry();
+    if (!polygon) return;
+    const ring = polygon.getCoordinates()[0];
+    const ids = [];
+    for (const entry of this.shapeLayer.entries.values()) {
+      if (entry.features.some((feature) => intersectsPolygon(feature.getGeometry(), ring))) {
+        ids.push(entry.shape.id);
+      }
+    }
+    const markerIds = [];
+    for (const entry of this.markerLayer.entries.values()) {
+      if (intersectsPolygon(entry.feature.getGeometry(), ring)) markerIds.push(entry.marker.id);
+    }
+    this.emit("boxSelect", {
+      ids,
+      marker_ids: markerIds,
+      geometry: format.writeGeometryObject(polygon, { decimals: 7 }),
+      modifiers: boxModifiers(this.boxStartKeys, event.mapBrowserEvent?.originalEvent)
+    });
+  }
+  setupShapeTranslate() {
+    if (this.config.interactive === false) return;
+    const canvas = this.element;
+    this.shapeTranslate = new ShapeTranslate({
+      hit: (pixel) => this.translatableAt(pixel),
+      group: (feature) => this.shapeLayer.translateGroup(feature),
+      enabled: () => !this.drawing && !this.panKey.held,
+      onStart: () => canvas.classList.add("rover-map__canvas--translating"),
+      onFinish: () => canvas.classList.remove("rover-map__canvas--translating"),
+      // Client-side only — no server event by that name — so the popup layer
+      // can close a popup pointing at where the shape no longer is.
+      onMove: (features) => this.emit("shapeTranslateStart", {
+        ids: features.map((feature) => this.shapeLayer.shapeFor(feature)?.id)
+      }),
+      onEnd: ({ features, from, to }) => this.emitShapeTranslate(features, from, to)
+    });
+    this.map.addInteraction(this.shapeTranslate);
+  }
+  translatableAt(pixel) {
+    if (!this.shapeLayer.hasTranslatable()) return null;
+    const { marker, cluster } = this.featureAt(pixel);
+    if (marker || cluster) return null;
+    let found = null;
+    this.map.forEachFeatureAtPixel(
+      pixel,
+      (feature) => {
+        if (this.shapeLayer.isTranslatable(feature)) found = feature;
+        return Boolean(found);
+      },
+      {
+        layerFilter: (layer) => layer === this.shapeLayer.layer,
+        hitTolerance: HIT_TOLERANCE
+      }
+    );
+    return found;
+  }
+  emitShapeTranslate(features, from, to) {
+    const ids = [];
+    const geometries = {};
+    const properties = {};
+    const data = {};
+    features.forEach((feature) => {
+      const shape = this.shapeLayer.shapeFor(feature);
+      if (!shape || !this.shapeLayer.isCurrent(feature)) return;
+      this.shapeLayer.forgetRev(feature);
+      ids.push(shape.id);
+      geometries[shape.id] = format.writeGeometryObject(feature.getGeometry(), {
+        decimals: 7
+      });
+      properties[shape.id] = this.shapeLayer.propertiesFor(feature);
+      data[shape.id] = shape.data ?? null;
+    });
+    if (ids.length === 0) return;
+    this.emit("shapeTranslateEnd", {
+      ids,
+      geometries,
+      from: unproject(from),
+      to: unproject(to),
+      properties,
+      data
+    });
+  }
+  setupSpacePan() {
+    if (!panKeyArmed(this.config)) return;
+    this.spacePan = new DragPan_default({
+      condition: (event) => this.panKey.held && primaryAction(event),
+      kinetic: new Kinetic_default(-5e-3, 0.05, 100)
+    });
+    this.spacePan.stopDown = (handled) => handled;
+    this.map.addInteraction(this.spacePan);
+  }
+  setupPanKey() {
+    const context = () => ({
+      armed: panKeyArmed(this.config),
+      canvas: this.element,
+      hovered: this.hovered,
+      body: document.body
+    });
+    this.onPanKeydown = (event) => this.panKey.keydown(event, context());
+    this.onPanKeyup = (event) => this.panKey.keyup(event);
+    this.onPanReset = () => this.panKey.reset();
+    this.onPanVisibility = () => {
+      if (document.visibilityState === "hidden") this.panKey.reset();
+    };
+    document.addEventListener("keydown", this.onPanKeydown);
+    document.addEventListener("keyup", this.onPanKeyup);
+    window.addEventListener("blur", this.onPanReset);
+    document.addEventListener("visibilitychange", this.onPanVisibility);
+  }
   setupDragging() {
     if (this.config.interactive === false) return;
     this.translate = new Translate_default({
@@ -66051,6 +66539,11 @@ var RoverMap = class {
       // like a read-only click on the shape (e.g. one that also opens its
       // popup via on_shape_click). Dragging an existing vertex is this
       // feature's whole scope; inserting new ones is not.
+      //
+      // It is also what leaves an edge free for moving a shape that is both
+      // editable and translatable: with insertion off, Modify drops its claim
+      // on a press that is near an edge but not on a vertex (OpenLayers 10.11,
+      // `handlePointerAtPixel_`), so the press reaches the shape translate.
       insertVertexCondition: never
     });
     this.modify.on("modifyend", (event) => {
@@ -66077,9 +66570,10 @@ var RoverMap = class {
       if (this.config.interactive === false) return;
       if (this.drawing) return this.hideTooltip();
       if (event.dragging) return this.hideTooltip();
-      const { marker, cluster, markerFeature, shape, sourceShape } = this.featureAt(event.pixel);
+      const { marker, cluster, markerFeature, shape, shapeFeature, sourceShape } = this.featureAt(event.pixel);
       const clickableShape = shape && this.wants("shapeClick") || sourceShape && this.wants("sourceShapeClick");
-      this.map.getTargetElement().style.cursor = marker || cluster || clickableShape ? "pointer" : "";
+      const movableShape = Boolean(shapeFeature) && Boolean(this.translatableAt(event.pixel));
+      this.map.getTargetElement().style.cursor = marker || cluster ? "pointer" : movableShape ? "move" : clickableShape ? "pointer" : "";
       if (cluster) {
         this.hideTooltip();
       } else if (marker) {
@@ -66090,7 +66584,13 @@ var RoverMap = class {
         this.hideTooltip();
       }
     });
-    this.map.getViewport().addEventListener("pointerleave", () => this.hideTooltip());
+    this.map.getViewport().addEventListener("pointerenter", () => {
+      this.hovered = true;
+    });
+    this.map.getViewport().addEventListener("pointerleave", () => {
+      this.hovered = false;
+      this.hideTooltip();
+    });
     this.map.on("singleclick", (event) => {
       if (this.config.interactive === false) return;
       if (this.drawing) return;
@@ -66253,6 +66753,9 @@ var RoverMap = class {
   on(name, fn) {
     this.listeners[name] = this.listeners[name] || [];
     this.listeners[name].push(fn);
+    if (name === "boxSelect" && !this.selectionBox && this.boxArmed(this.config)) {
+      this.applyInteractions(this.config);
+    }
   }
   // Subscribe without expressing interest: called for every event like `on()`,
   // but invisible to `wants()`. For Rover's own components, which react to what
@@ -66273,6 +66776,11 @@ var RoverMap = class {
   destroy() {
     if (this.resizeObserver) this.resizeObserver.disconnect();
     this.stopDrawing();
+    document.removeEventListener("keydown", this.onPanKeydown);
+    document.removeEventListener("keyup", this.onPanKeyup);
+    window.removeEventListener("blur", this.onPanReset);
+    document.removeEventListener("visibilitychange", this.onPanVisibility);
+    this.panKey.reset();
     this.markerLayer.dispose();
     this.overlayLayers.dispose();
     this.urlShapeLayer.dispose();
@@ -66341,10 +66849,6 @@ function shouldFit({ hasFitted, derivedCenter, fit }) {
 function fitMaxZoom(config, hasShapes) {
   const tileMax = config.tiles && config.tiles.maxZoom || 19;
   return hasShapes ? tileMax : Math.min(tileMax, 16);
-}
-function isTextEntry(target) {
-  if (!target || !target.tagName) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 function parseFocusKey(key) {
   if (typeof key !== "string") return null;

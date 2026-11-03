@@ -38,8 +38,10 @@ defmodule Rover.Components do
   | `on_source_shape_click` | `%{"id" => id, "lat" => lat, "lon" => lon, "data" => data}` |
   | `on_map_click` | `%{"lat" => lat, "lon" => lon}` |
   | `on_move_end` | `%{"center" => [lat, lon], "zoom" => zoom, "bbox" => %{"south" =>, "west" =>, "north" =>, "east" =>}}` |
-  | `on_marker_drag_end` | `%{"id" => id, "lat" => lat, "lon" => lon}` |
+  | `on_marker_drag_end` | `%{"id" => id, "lat" => lat, "lon" => lon, "data" => data}` |
   | `on_shape_edit_end` | `%{"id" => id, "geometry" => geojson_geometry, "properties" => geojson_properties, "data" => data}` |
+  | `on_shape_translate_end` | `%{"ids" => [id, …], "geometries" => %{id => geojson_geometry}, "from" => %{"lat" =>, "lon" =>}, "to" => %{"lat" =>, "lon" =>}, "properties" => %{id => geojson_properties}, "data" => %{id => data}}` |
+  | `on_box_select` | `%{"ids" => [id, …], "marker_ids" => [id, …], "geometry" => geojson_polygon, "modifiers" => %{"shift" =>, "ctrl" =>, "alt" =>, "meta" =>}}` |
   | `on_draw_end` | `%{"type" => type, "geometry" => geojson_geometry}` |
 
   Inside a `Phoenix.LiveComponent`, route the events to yourself with
@@ -348,8 +350,12 @@ defmodule Rover.Components do
 
     `interactions={[]}` is not `interactive={false}`: it removes the gestures
     and keeps the tooltips, the clicks and the cursor. Dragging a `:draggable`
-    marker, reshaping an `:editable` shape and drawing are not in this list and
-    cannot be removed through it.
+    marker, reshaping an `:editable` shape, moving a `:translatable` one and
+    drawing are not in this list and cannot be removed through it — they win the
+    drag over `:drag_pan` whether or not it is listed.
+
+    Leaving `:drag_pan` out is also what lets `on_box_select` have the drag on
+    the background: see there.
     """
 
   attr :interactive, :boolean,
@@ -368,6 +374,86 @@ defmodule Rover.Components do
   attr :on_move_end, :string, default: nil
   attr :on_marker_drag_end, :string, default: nil
   attr :on_shape_edit_end, :string, default: nil
+
+  attr :on_shape_translate_end, :string,
+    default: nil,
+    doc: """
+    Receives the end of a drag on a `:translatable` shape. Dragging a shape with
+    a `:translate_group` moves every translatable shape of that group, and the
+    payload covers them all:
+
+        %{"ids" => [id, …],
+          "geometries" => %{id => geojson_geometry},
+          "from" => %{"lat" => lat, "lon" => lon},
+          "to" => %{"lat" => lat, "lon" => lon},
+          "properties" => %{id => geojson_properties},
+          "data" => %{id => data}}
+
+    The geometries are WGS84 GeoJSON at 7 decimals, and `"properties"` the
+    GeoJSON properties a `Feature`-wrapped geometry carried (or nil), both as in
+    `on_shape_edit_end`. The keys of `"geometries"`, `"properties"` and `"data"`
+    are the ids as strings — JSON object
+    keys can be nothing else — while `"ids"` keeps them as sent. `"from"` is
+    where the pointer took hold and `"to"` where it let go; the delta is yours
+    to compute in whatever unit suits you.
+
+    The server stays the source of truth: the moved geometry is only a sketch
+    until your next render. Store it (or not) and send the shapes back; a new
+    `:rev` — or even the old one — replaces what the user dragged. A drag that
+    did not move fires nothing, so the press still reaches `on_shape_click`.
+    """
+
+  attr :on_box_select, :string,
+    default: nil,
+    doc: """
+    Lets the user draw a selection rectangle by dragging on the background, and
+    receives what it caught:
+
+        %{"ids" => [id, …],
+          "marker_ids" => [id, …],
+          "geometry" => geojson_polygon,
+          "modifiers" => %{"shift" => bool, "ctrl" => bool, "alt" => bool, "meta" => bool}}
+
+    The rectangle is only armed while `:drag_pan` is **absent** from
+    `interactions` — with it, a drag on the background is a pan and there is
+    nothing to arbitrate. Once armed it also takes shift-drag (`:drag_zoom`) and
+    alt-shift-drag (`:drag_rotate`), which is the point: `"modifiers"` tells you
+    whether the user meant to add to the selection. A key counts if it was held
+    when the drag started or when it ended. Shift is the add-to-selection key on
+    a Mac and Ctrl on Windows and Linux, so check both. Rover keeps no
+    selection state; what a key means is your decision.
+
+    `"ids"` lists **every** shape of `shapes` whose geometry the rectangle
+    touches — scenery included, a cadastral outline as much as the parcels drawn
+    on it; filter it on your side. Shapes fetched by `shape_source` are not
+    counted. `"marker_ids"` lists the markers inside, clustered or not.
+    `"geometry"` is a WGS84 polygon, not a bbox: the view may be rotated.
+
+    A press that moves less than 4 pixels is neither a rectangle nor, because
+    OpenLayers counts any movement as a drag, a click.
+
+    A drag that starts on a `:draggable` marker, on a vertex of an `:editable`
+    shape or on a `:translatable` shape is that gesture, never a rectangle. A
+    rectangle smaller than 4 pixels sends nothing; a plain click still reaches
+    `on_shape_click` and `on_map_click`. On a touch screen one finger draws the
+    rectangle and two fingers pan the map, so the map can still be moved.
+    """
+
+  attr :pan_key, :atom,
+    default: nil,
+    doc: """
+    `:space` gives the user a temporary hand: while Space is held, a drag pans
+    the map even if `:drag_pan` is not in `interactions`, and the selection
+    rectangle and shape moving stand aside. Releasing Space restores exactly the
+    configured gestures, as does the window losing focus mid-press.
+
+    Space is only taken when the map has the keyboard focus, or when it is under
+    the pointer and nothing else on the page has the focus — then the page does
+    not scroll. It is never taken from a focused text field, button or link, so
+    the feature index and the popups still answer to it, and never with Ctrl,
+    Alt or Meta held. It all happens in the browser, with no round trip to the
+    server.
+    """
 
   attr :on_draw_end, :string,
     default: nil,
@@ -612,6 +698,7 @@ defmodule Rover.Components do
       controls: encode_controls(assigns.controls, assigns.tiles, assigns.layers),
       interactions: encode_interactions(assigns.interactions),
       interactive: assigns.interactive,
+      panKey: encode_pan_key(assigns.pan_key),
       # A shape with a popup is a click target even when no handler is wired, and
       # only the server knows whether the slot was given. Without this the client
       # cannot tell a shape with a popup from scenery, which must not claim the
@@ -632,6 +719,8 @@ defmodule Rover.Components do
           moveEnd: assigns.on_move_end,
           markerDragEnd: assigns.on_marker_drag_end,
           shapeEditEnd: assigns.on_shape_edit_end,
+          shapeTranslateEnd: assigns.on_shape_translate_end,
+          boxSelect: assigns.on_box_select,
           drawEnd: assigns.on_draw_end
         })
     }
@@ -1009,6 +1098,13 @@ defmodule Rover.Components do
 
   defp encode_interactions(other) do
     raise ArgumentError, "expected `interactions` to be a list, got: #{inspect(other)}"
+  end
+
+  defp encode_pan_key(nil), do: nil
+  defp encode_pan_key(:space), do: "space"
+
+  defp encode_pan_key(other) do
+    raise ArgumentError, "expected `pan_key` to be nil or :space, got: #{inspect(other)}"
   end
 
   defp encode_target(nil), do: nil

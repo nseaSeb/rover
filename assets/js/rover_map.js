@@ -8,7 +8,7 @@ import Rotate from "ol/control/Rotate.js"
 import ScaleLine from "ol/control/ScaleLine.js"
 import Zoom from "ol/control/Zoom.js"
 import Kinetic from "ol/Kinetic.js"
-import { never } from "ol/events/condition.js"
+import { never, primaryAction } from "ol/events/condition.js"
 import DoubleClickZoom from "ol/interaction/DoubleClickZoom.js"
 import DragPan from "ol/interaction/DragPan.js"
 import DragRotate from "ol/interaction/DragRotate.js"
@@ -26,6 +26,17 @@ import { createEmpty, extend } from "ol/extent.js"
 
 import { extentToBbox, project, unproject } from "./coords.js"
 import { DrawLayer, drawTypeFor } from "./draw.js"
+import {
+  PanKey,
+  SelectionBox,
+  ShapeTranslate,
+  boxBigEnough,
+  boxModifiers,
+  boxSelectArmed,
+  intersectsPolygon,
+  isTextEntry,
+  panKeyArmed,
+} from "./gestures.js"
 import { HeatmapLayer } from "./heatmap.js"
 import { MarkerLayer } from "./markers.js"
 import { OverlayLayers } from "./overlays.js"
@@ -36,6 +47,8 @@ import { UrlShapeLayer } from "./url_shapes.js"
 // Re-exported where it has always lived, so a caller reaching for it — and the
 // unit suite that does — is not moved by an internal reshuffle.
 export { buildBasemapLayer }
+// Moved to gestures.js, where the Space bar asks the same question.
+export { isTextEntry }
 
 const HIT_TOLERANCE = 6
 const ANIMATION_MS = 350
@@ -71,6 +84,13 @@ export class RoverMap {
     // the interaction, because `applyInteractions` throws every interaction away
     // and needs to know whether to arm a new one afterwards.
     this.drawing = null
+
+    // Space held for the map (`pan_key`), and whether the pointer is over it —
+    // the second decides who a Space press on the bare page belongs to.
+    this.panKey = new PanKey((held) =>
+      this.element.classList.toggle("rover-map__canvas--panning", held)
+    )
+    this.hovered = false
 
     this.markerLayer = new MarkerLayer()
     this.shapeLayer = new ShapeLayer()
@@ -121,13 +141,9 @@ export class RoverMap {
     this.applyAccessibility(this.config)
 
     this.setupTooltip()
-    // Editing before dragging: OpenLayers checks the most-recently-added
-    // interaction first, so this order is what makes a draggable marker win a
-    // pointer-gesture tie against an editable shape's vertex sitting under it —
-    // matching featureAt()'s "markers win ties" rule for clicks.
-    this.setupEditing()
-    this.setupDragging()
+    this.setupGestures()
     this.setupEvents()
+    this.setupPanKey()
     this.observeResize()
   }
 
@@ -207,9 +223,13 @@ export class RoverMap {
       this.applyControls(next)
     }
 
+    // The selection rectangle and the Space hand are armed by more than
+    // `interactions`: whether anything wants `boxSelect`, and `panKey`.
     if (
       previous.interactive !== next.interactive ||
-      changed(previous.interactions, next.interactions)
+      changed(previous.interactions, next.interactions) ||
+      this.boxArmed(previous) !== this.boxArmed(next) ||
+      previous.panKey !== next.panKey
     ) {
       this.applyInteractions(next)
     }
@@ -394,10 +414,14 @@ export class RoverMap {
     // this leaks one Modify's worth of listeners every time interactive toggles.
     if (this.modify) this.modify.dispose()
     this.modify = null
-    this.setupEditing()
-
     this.translate = null
-    this.setupDragging()
+    this.shapeTranslate = null
+    this.selectionBox = null
+    this.twoFingerPan = null
+    this.spacePan = null
+    this.setupGestures()
+
+    if (!panKeyArmed(config)) this.panKey.reset()
 
     // Draw and Snap went out with the rest, and need disposing for the same
     // reason Modify above does. A map that has just been locked is a picture, so
@@ -467,7 +491,7 @@ export class RoverMap {
       this.emit("drawEnd", { type: geometry.type, geometry })
     })
 
-    this.map.addInteraction(this.draw)
+    this.addBelowHand(this.draw)
 
     // Snap last. OpenLayers runs interactions in reverse-add order, so this one
     // sees the pointer event before Draw does — which is the only order in which
@@ -475,7 +499,7 @@ export class RoverMap {
     // shape layer is what lets a new parcel share a border with the one next to
     // it instead of leaving a sliver.
     this.snap = new Snap({ source: this.shapeLayer.source, pixelTolerance: HIT_TOLERANCE })
-    this.map.addInteraction(this.snap)
+    this.addBelowHand(this.snap)
 
     // Escape abandons the sketch in progress without disarming the mode, the way
     // it does in every drawing tool. The server is not told: it armed a mode, and
@@ -493,6 +517,24 @@ export class RoverMap {
     document.addEventListener("keydown", this.onDrawKeydown)
 
     this.element.classList.add("rover-map__canvas--drawing")
+  }
+
+  /**
+   * Add an interaction on top of the stack but under the Space hand, which
+   * must keep the last word: a press meant to pan must not also put down a
+   * vertex. Inserted rather than re-adding the hand above, which cannot be
+   * done mid-drag — removing a DragPan then skips its pointerup, and the view
+   * stays flagged as interacting.
+   */
+  addBelowHand(interaction) {
+    const interactions = this.map.getInteractions()
+    const at = this.spacePan ? interactions.getArray().indexOf(this.spacePan) : -1
+
+    if (at >= 0) {
+      interactions.insertAt(at, interaction)
+    } else {
+      interactions.push(interaction)
+    }
   }
 
   /** Disarm, from `Rover.stop_drawing/2` — and discard the sketch with the mode. */
@@ -569,6 +611,221 @@ export class RoverMap {
     this.tooltip.setPosition(undefined)
   }
 
+  /**
+   * Every pointer gesture Rover adds on top of `interactions`, in the order
+   * that settles who wins a press. OpenLayers offers an event to the most
+   * recently added interaction first, and one that claims the press keeps it
+   * from the rest. So, from the last word to the first:
+   *
+   * 1. the Space hand — it beats everything while Space is held;
+   * 2. dragging a `draggable` marker;
+   * 3. reshaping an `editable` shape by a vertex;
+   * 4. moving a `translatable` shape;
+   * 5. the selection rectangle on the background;
+   * 6. the configured gestures (`interactions`).
+   *
+   * Draw and Snap, when a drawing is armed, are added after all of these and
+   * sit just under the Space hand — see `armDrawing`.
+   */
+  setupGestures() {
+    this.setupSelection()
+    this.setupShapeTranslate()
+    this.setupEditing()
+    this.setupDragging()
+    this.setupSpacePan()
+  }
+
+  /** Would `config` arm the selection rectangle on this map? */
+  boxArmed(config) {
+    return boxSelectArmed(config, gesturesFor(config), (name) =>
+      wantsEvent(config, this.listeners, name)
+    )
+  }
+
+  setupSelection() {
+    if (!this.boxArmed(this.config)) return
+
+    // Without `:drag_pan`, nothing moves the map with one finger, PinchZoom
+    // only zooms, and a phone has no Space bar. Two fingers pan, so a map in
+    // selection mode can still be moved on a touch screen.
+    const twoFingerPan = new DragPan({
+      condition: () => twoFingerPan.targetPointers.length > 1,
+    })
+    this.twoFingerPan = twoFingerPan
+    this.map.addInteraction(twoFingerPan)
+
+    this.selectionBox = new SelectionBox({
+      className: "rover-map__box",
+      condition: (event) => primaryAction(event) && !this.drawing && !this.panKey.held,
+      boxEndCondition: (_event, startPixel, endPixel) => boxBigEnough(startPixel, endPixel),
+    })
+
+    this.selectionBox.on("boxstart", (event) => {
+      this.boxStartKeys = event.mapBrowserEvent?.originalEvent || null
+    })
+    this.selectionBox.on("boxend", (event) => this.emitBoxSelect(event))
+    this.map.addInteraction(this.selectionBox)
+  }
+
+  emitBoxSelect(event) {
+    const polygon = this.selectionBox.getGeometry()
+    if (!polygon) return
+
+    // The rectangle as drawn, in view projection: a rotated view makes it a
+    // rotated polygon, which its bounding box would misrepresent.
+    const ring = polygon.getCoordinates()[0]
+
+    const ids = []
+    for (const entry of this.shapeLayer.entries.values()) {
+      if (entry.features.some((feature) => intersectsPolygon(feature.getGeometry(), ring))) {
+        ids.push(entry.shape.id)
+      }
+    }
+
+    // The markers themselves, not what the clusterer drew: a group straddling
+    // the edge is split into the members inside and those outside.
+    const markerIds = []
+    for (const entry of this.markerLayer.entries.values()) {
+      if (intersectsPolygon(entry.feature.getGeometry(), ring)) markerIds.push(entry.marker.id)
+    }
+
+    this.emit("boxSelect", {
+      ids,
+      marker_ids: markerIds,
+      geometry: geoJsonFormat.writeGeometryObject(polygon, { decimals: 7 }),
+      modifiers: boxModifiers(this.boxStartKeys, event.mapBrowserEvent?.originalEvent),
+    })
+  }
+
+  setupShapeTranslate() {
+    if (this.config.interactive === false) return
+
+    const canvas = this.element
+
+    this.shapeTranslate = new ShapeTranslate({
+      hit: (pixel) => this.translatableAt(pixel),
+      group: (feature) => this.shapeLayer.translateGroup(feature),
+      enabled: () => !this.drawing && !this.panKey.held,
+      onStart: () => canvas.classList.add("rover-map__canvas--translating"),
+      onFinish: () => canvas.classList.remove("rover-map__canvas--translating"),
+      // Client-side only — no server event by that name — so the popup layer
+      // can close a popup pointing at where the shape no longer is.
+      onMove: (features) =>
+        this.emit("shapeTranslateStart", {
+          ids: features.map((feature) => this.shapeLayer.shapeFor(feature)?.id),
+        }),
+      onEnd: ({ features, from, to }) => this.emitShapeTranslate(features, from, to),
+    })
+
+    this.map.addInteraction(this.shapeTranslate)
+  }
+
+  translatableAt(pixel) {
+    // Every press on every interactive map comes through here; most maps have
+    // nothing to move, and need not pay for a hit test to learn it.
+    if (!this.shapeLayer.hasTranslatable()) return null
+
+    // Markers and clusters win ties, as they do for clicks: a pin sitting on a
+    // movable shape is pressed, not the shape under it.
+    const { marker, cluster } = this.featureAt(pixel)
+    if (marker || cluster) return null
+
+    let found = null
+
+    this.map.forEachFeatureAtPixel(
+      pixel,
+      (feature) => {
+        if (this.shapeLayer.isTranslatable(feature)) found = feature
+        return Boolean(found)
+      },
+      {
+        layerFilter: (layer) => layer === this.shapeLayer.layer,
+        hitTolerance: HIT_TOLERANCE,
+      }
+    )
+
+    return found
+  }
+
+  emitShapeTranslate(features, from, to) {
+    const ids = []
+    const geometries = {}
+    const properties = {}
+    const data = {}
+
+    features.forEach((feature) => {
+      const shape = this.shapeLayer.shapeFor(feature)
+      if (!shape || !this.shapeLayer.isCurrent(feature)) return
+
+      // As after an edit: the geometry no longer matches the rev the server last
+      // sent, and its next payload must be applied whatever it decided.
+      this.shapeLayer.forgetRev(feature)
+
+      ids.push(shape.id)
+      geometries[shape.id] = geoJsonFormat.writeGeometryObject(feature.getGeometry(), {
+        decimals: 7,
+      })
+      // As in shapeEditEnd: the bare geometry drops the `properties` a Feature
+      // carried, and merging it back into `:geometry` would lose them.
+      properties[shape.id] = this.shapeLayer.propertiesFor(feature)
+      data[shape.id] = shape.data ?? null
+    })
+
+    if (ids.length === 0) return
+
+    this.emit("shapeTranslateEnd", {
+      ids,
+      geometries,
+      from: unproject(from),
+      to: unproject(to),
+      properties,
+      data,
+    })
+  }
+
+  setupSpacePan() {
+    if (!panKeyArmed(this.config)) return
+
+    // One DragPan gated on the key — not one added on keydown and removed on
+    // keyup. Removing a DragPan mid-drag skips its
+    // pointerup, which is what ends the view's "interacting" state; the shapes
+    // layer does not redraw while that lasts. The condition is read on the
+    // press only, so letting go of Space mid-drag finishes the drag cleanly.
+    this.spacePan = new DragPan({
+      condition: (event) => this.panKey.held && primaryAction(event),
+      kinetic: new Kinetic(-0.005, 0.05, 100),
+    })
+    // DragPan lets a press it took carry on to the interactions below it. This
+    // one is the hand that overrides them: a marker, a vertex or a shape under
+    // the pointer must not also start moving.
+    this.spacePan.stopDown = (handled) => handled
+    this.map.addInteraction(this.spacePan)
+  }
+
+  setupPanKey() {
+    const context = () => ({
+      armed: panKeyArmed(this.config),
+      canvas: this.element,
+      hovered: this.hovered,
+      body: document.body,
+    })
+
+    this.onPanKeydown = (event) => this.panKey.keydown(event, context())
+    this.onPanKeyup = (event) => this.panKey.keyup(event)
+    this.onPanReset = () => this.panKey.reset()
+    this.onPanVisibility = () => {
+      if (document.visibilityState === "hidden") this.panKey.reset()
+    }
+
+    // The document, not the canvas: a map under the pointer takes Space while
+    // the focus is nowhere in particular, and a keyup can land anywhere.
+    document.addEventListener("keydown", this.onPanKeydown)
+    document.addEventListener("keyup", this.onPanKeyup)
+    // Space released in another window never sends its keyup here.
+    window.addEventListener("blur", this.onPanReset)
+    document.addEventListener("visibilitychange", this.onPanVisibility)
+  }
+
   setupDragging() {
     if (this.config.interactive === false) return
 
@@ -610,6 +867,11 @@ export class RoverMap {
       // like a read-only click on the shape (e.g. one that also opens its
       // popup via on_shape_click). Dragging an existing vertex is this
       // feature's whole scope; inserting new ones is not.
+      //
+      // It is also what leaves an edge free for moving a shape that is both
+      // editable and translatable: with insertion off, Modify drops its claim
+      // on a press that is near an edge but not on a vertex (OpenLayers 10.11,
+      // `handlePointerAtPixel_`), so the press reaches the shape translate.
       insertVertexCondition: never,
     })
 
@@ -651,12 +913,18 @@ export class RoverMap {
       if (this.drawing) return this.hideTooltip()
       if (event.dragging) return this.hideTooltip()
 
-      const { marker, cluster, markerFeature, shape, sourceShape } = this.featureAt(event.pixel)
+      const { marker, cluster, markerFeature, shape, shapeFeature, sourceShape } =
+        this.featureAt(event.pixel)
       const clickableShape =
         (shape && this.wants("shapeClick")) || (sourceShape && this.wants("sourceShapeClick"))
+      // The same question the press will ask, so the cursor does not hide a
+      // move behind scenery drawn over it. One gap: on a vertex of a shape
+      // that is also editable the press reshapes, and the cursor still says
+      // "move".
+      const movableShape = Boolean(shapeFeature) && Boolean(this.translatableAt(event.pixel))
 
       this.map.getTargetElement().style.cursor =
-        marker || cluster || clickableShape ? "pointer" : ""
+        marker || cluster ? "pointer" : movableShape ? "move" : clickableShape ? "pointer" : ""
 
       if (cluster) {
         this.hideTooltip()
@@ -671,7 +939,13 @@ export class RoverMap {
       }
     })
 
-    this.map.getViewport().addEventListener("pointerleave", () => this.hideTooltip())
+    this.map.getViewport().addEventListener("pointerenter", () => {
+      this.hovered = true
+    })
+    this.map.getViewport().addEventListener("pointerleave", () => {
+      this.hovered = false
+      this.hideTooltip()
+    })
 
     this.map.on("singleclick", (event) => {
       if (this.config.interactive === false) return
@@ -909,6 +1183,13 @@ export class RoverMap {
   on(name, fn) {
     this.listeners[name] = this.listeners[name] || []
     this.listeners[name].push(fn)
+
+    // A subscriber is a reason to arm the rectangle, as a server handler is.
+    // Only when it would arm: with :drag_pan on, a rebuild would change nothing
+    // and still throw away a sketch in progress.
+    if (name === "boxSelect" && !this.selectionBox && this.boxArmed(this.config)) {
+      this.applyInteractions(this.config)
+    }
   }
 
   // Subscribe without expressing interest: called for every event like `on()`,
@@ -937,6 +1218,12 @@ export class RoverMap {
   destroy() {
     if (this.resizeObserver) this.resizeObserver.disconnect()
     this.stopDrawing()
+    // Bound to the document and the window, which map.dispose() knows nothing of.
+    document.removeEventListener("keydown", this.onPanKeydown)
+    document.removeEventListener("keyup", this.onPanKeyup)
+    window.removeEventListener("blur", this.onPanReset)
+    document.removeEventListener("visibilitychange", this.onPanVisibility)
+    this.panKey.reset()
     this.markerLayer.dispose()
     this.overlayLayers.dispose()
     this.urlShapeLayer.dispose()
@@ -1094,21 +1381,6 @@ export function fitMaxZoom(config, hasShapes) {
   const tileMax = (config.tiles && config.tiles.maxZoom) || 19
 
   return hasShapes ? tileMax : Math.min(tileMax, 16)
-}
-
-/**
- * Is an Escape aimed at what the user is typing into, rather than at the map?
- *
- * Exported so the one case that matters can be asserted without a form, a map and
- * a half-traced polygon on the same page.
- */
-export function isTextEntry(target) {
-  if (!target || !target.tagName) return false
-
-  return (
-    target.isContentEditable ||
-    ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
-  )
 }
 
 /**

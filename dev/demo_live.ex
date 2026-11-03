@@ -128,11 +128,22 @@ defmodule RoverDev.DemoLive do
   # `?interactions=no_wheel` renders the main map without `:mouse_wheel_zoom`,
   # which is what a map in the flow of a page wants and what the browser suite
   # needs to see a wheel event leave the zoom alone.
+  #
+  # `?select=1` is the vector-editor setup: no `:drag_pan`, so a drag on the
+  # background draws a selection rectangle (`on_box_select`); the parcel and a
+  # plank move together as one `translate_group`, a second plank moves alone,
+  # and the parcel is still `editable` by its vertices; Space is a temporary
+  # hand (`pan_key`). Every gesture lands in the log. `&pan=1` keeps
+  # `:drag_pan`, which must leave the rectangle unarmed even with a handler; the
+  # "Box select" button drops `on_box_select` alone, to see the rectangle follow
+  # it without `interactions` changing.
   @impl true
   def handle_params(params, _uri, socket) do
     {:noreply,
      assign(socket,
-       shapes: shapes(shape_mode(params)),
+       select: params["select"] == "1",
+       box_select: true,
+       shapes: if(params["select"] == "1", do: select_shapes(), else: shapes(shape_mode(params))),
        wmts: params["tiles"] == "wmts",
        declutter: params["declutter"] == "1",
        url_shapes: params["source"] == "url",
@@ -140,7 +151,13 @@ defmodule RoverDev.DemoLive do
        shape_click: params["shape_click"] != "off",
        source_shape_click: params["source_click"] != "off",
        scenery: params["scenery"] == "1",
-       interactions: interactions(params["interactions"])
+       interactions:
+         interactions(
+           if(params["select"] == "1" and params["pan"] != "1",
+             do: "no_pan",
+             else: params["interactions"]
+           )
+         )
      )
      |> then(fn socket ->
        case params["icon"] do
@@ -180,6 +197,7 @@ defmodule RoverDev.DemoLive do
   ]
 
   defp interactions("no_wheel"), do: @all_interactions -- [:mouse_wheel_zoom]
+  defp interactions("no_pan"), do: @all_interactions -- [:drag_pan]
   defp interactions(_), do: @all_interactions
 
   defp shape_mode(%{"shapes" => "parcel"}), do: :parcel_only
@@ -221,6 +239,9 @@ defmodule RoverDev.DemoLive do
         Edits: {if @reject_edits, do: "rejected", else: "accepted"}
       </button>
       <button phx-click="cycle_draw">Draw: {@draw || "off"}</button>
+      <button :if={@select} phx-click="toggle_box_select">
+        Box select: {if @box_select, do: "on", else: "off"}
+      </button>
     </div>
 
     <.map
@@ -228,7 +249,7 @@ defmodule RoverDev.DemoLive do
       label="Clients around Lyon"
       interactive={@interactive}
       interactions={@interactions}
-      markers={markers(@clients, @crowd, @no_markers)}
+      markers={markers(@clients, @crowd, @no_markers) ++ if(@select, do: [pin()], else: [])}
       cluster={@cluster}
       shapes={@shapes}
       heatmap={if @heat, do: heat_points(), else: []}
@@ -251,6 +272,9 @@ defmodule RoverDev.DemoLive do
       on_marker_drag_end="marker_dragged"
       on_shape_edit_end="shape_edited"
       on_draw_end="drew"
+      on_box_select={if @select and @box_select, do: "boxed"}
+      on_shape_translate_end="shapes_moved"
+      pan_key={if @select, do: :space}
     >
       <:popup :let={marker}>
         <strong>{marker.emoji} {marker.label}</strong>
@@ -637,6 +661,42 @@ defmodule RoverDev.DemoLive do
      |> log("map is now #{if interactive, do: "interactive", else: "a picture"}")}
   end
 
+  def handle_event("boxed", %{"ids" => ids, "marker_ids" => marker_ids} = params, socket) do
+    held =
+      for {key, true} <- Map.get(params, "modifiers", %{}), do: key
+
+    {:noreply,
+     log(
+       socket,
+       "boxed shapes [#{Enum.join(ids, ", ")}] markers [#{Enum.join(marker_ids, ", ")}]" <>
+         if(held == [], do: "", else: " with #{held |> Enum.sort() |> Enum.join("+")}")
+     )}
+  end
+
+  # Accepted as sent, with a fresh :rev — the echo replaces what the user
+  # dragged, which is the server staying the source of truth.
+  def handle_event("shapes_moved", %{"ids" => ids, "geometries" => geometries}, socket) do
+    shapes =
+      Enum.map(socket.assigns.shapes, fn shape ->
+        case Map.fetch(geometries, to_string(shape.id)) do
+          {:ok, geometry} ->
+            Map.merge(shape, %{geometry: geometry, rev: :erlang.phash2(geometry)})
+
+          :error ->
+            shape
+        end
+      end)
+
+    {:noreply,
+     socket
+     |> assign(shapes: shapes)
+     |> log("moved shapes [#{Enum.join(ids, ", ")}] — and the server now agrees")}
+  end
+
+  def handle_event("toggle_box_select", _params, socket) do
+    {:noreply, assign(socket, box_select: !socket.assigns.box_select)}
+  end
+
   def handle_event("toggle_edit_reject", _params, socket) do
     {:noreply, assign(socket, reject_edits: !socket.assigns.reject_edits)}
   end
@@ -672,6 +732,43 @@ defmodule RoverDev.DemoLive do
   defp shapes(:route_only), do: [route()]
 
   defp shapes(:both), do: [parcel(), route()]
+
+  # Not draggable, sitting on plank-b: a press on it is the pin's, not the
+  # plank's.
+  defp pin, do: %{id: "pin", lat: 45.7705, lon: 4.8480, emoji: "📍", label: "Pin"}
+
+  defp select_shapes do
+    [
+      Map.merge(parcel(), %{translatable: true, translate_group: :plot}),
+      plank("plank-a", 4.8400, "#ca8a04", :plot),
+      plank("plank-b", 4.8460, "#9333ea", nil),
+      route()
+    ]
+  end
+
+  defp plank(id, lon, color, group) do
+    %{
+      id: id,
+      geometry: %{
+        "type" => "Polygon",
+        "coordinates" => [
+          [
+            [lon, 45.7690],
+            [lon + 0.0040, 45.7690],
+            [lon + 0.0040, 45.7720],
+            [lon, 45.7720],
+            [lon, 45.7690]
+          ]
+        ]
+      },
+      color: color,
+      fill_color: color,
+      fill_opacity: 0.25,
+      label: id,
+      translatable: true,
+      translate_group: group
+    }
+  end
 
   defp parcel do
     %{
