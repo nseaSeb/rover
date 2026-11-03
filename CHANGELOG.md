@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-11-03
+
+### Added
+
+- **A selection rectangle, `on_box_select`.** With `:drag_pan` left out of
+  `interactions`, a drag on the background draws a rectangle and reports every
+  shape of `shapes` and every marker it touched, the rectangle itself as a
+  WGS84 polygon (a rotated view makes it one), and the Shift, Ctrl, Alt and
+  Meta keys, counted if held when the drag started or when it ended. A plain
+  click still reaches `on_shape_click` and `on_map_click`; a press that moves
+  less than 4 pixels is neither a rectangle nor, since OpenLayers counts any
+  movement as a drag, a click. A drag starting on a draggable marker, an
+  editable vertex or a translatable shape is that gesture instead.
+  - On a touch screen one finger draws the rectangle and two fingers pan, so a
+    map in selection mode can still be moved.
+  - Once armed, the rectangle also takes shift-drag and alt-shift-drag, which
+    `:drag_zoom` and `:drag_rotate` had.
+- **Shapes the user can move, `:translatable` and `:translate_group`.** Dragging
+  a translatable shape moves it, and every translatable shape sharing its
+  group; `on_shape_translate_end` reports all of them, with their new
+  geometries and GeoJSON properties, where the drag started and where it
+  ended. A shape both editable
+  and translatable reshapes from a vertex and moves from anywhere else. A shape
+  popup that is open closes when its shape starts to move, rather than point
+  at where the shape was.
+  - The group is sent as a string, so any term works and `:a` and `"a"` are
+    the same group. `false` is no group, so `selected? && :selection` works.
+- **A temporary hand, `pan_key={:space}`.** While Space is held over the map,
+  or while the map has the focus, a drag pans even without `:drag_pan`, and
+  the rectangle and shape moving stand aside. Space typed into a field or on a
+  button is left alone, and the window losing focus mid-press lets go.
+
+### Fixed
+
+- **The `on_marker_drag_end` row of the events table** now lists the `"data"`
+  the payload has always carried.
+
 ## [0.9.2] - 2026-10-17
 
 ### Changed
@@ -727,6 +764,7 @@ them.
   back as strings and will not match.
 - `fit` governs *re*fitting; the initial framing is separate.
 
+[0.10.0]: https://github.com/nseaSeb/rover/releases/tag/v0.10.0
 [0.9.2]: https://github.com/nseaSeb/rover/releases/tag/v0.9.2
 [0.9.1]: https://github.com/nseaSeb/rover/releases/tag/v0.9.1
 [0.9.0]: https://github.com/nseaSeb/rover/releases/tag/v0.9.0
